@@ -30,15 +30,20 @@ class Record:
         return struct.pack(self.format, *processed_values)
 
     @staticmethod
-    def unpack(schema, buffer):
+    def unpack(record_buffer, schema):
         format_str = ''.join(fmt for _, fmt in schema)
-        values = struct.unpack(format_str, buffer)
+        values = struct.unpack(format_str, record_buffer)
         processed_values = []
         for (_, fmt), value in zip(schema, values):
             if 's' in fmt:
                 value = value.rstrip(b'\x00').decode('utf-8')
             processed_values.append(value)
         return Record(schema, processed_values)
+    
+    @staticmethod
+    def get_size(schema):
+        format_str = ''.join(fmt for _, fmt in schema)
+        return struct.calcsize(format_str)
 
     def print(self):
         for (_, fmt), value in zip(self.schema, self.values):
