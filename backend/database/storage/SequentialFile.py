@@ -140,7 +140,7 @@ class SecuentialFile:
                 record = Record.unpack(buffer)
                 if record.id == id:
                     return record
-                z
+                
         return None
     
     def delete_record(self, id: int):

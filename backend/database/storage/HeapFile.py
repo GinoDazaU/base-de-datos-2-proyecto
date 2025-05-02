@@ -66,5 +66,3 @@ class HeapFile:
             print("-" * (len(headers) * 10)) 
             for record in records:
                 record.print()
-
-    
