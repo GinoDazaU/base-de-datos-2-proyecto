@@ -1,9 +1,11 @@
-from backend.database.storage.Record import Record
+from ..storage.IndexRecord import IndexRecord
 import struct
 import math
 import os
 
-class SecuentialFile:
+
+
+class SequentialIndex:
 
     METADATA_FORMAT = ("iii")
     METADATA_SIZE = struct.calcsize(METADATA_FORMAT)
@@ -16,19 +18,25 @@ class SecuentialFile:
                 metadata_buffer = file.read(self.METADATA_SIZE)
                 self.main_size, self.aux_size, self.max_aux_size = struct.unpack(self.METADATA_FORMAT, metadata_buffer)
         else:
-            with open(filename, "wb") as file:
-                self.main_size = 0
-                self.aux_size = 0
-                self.max_aux_size = 1
-                metadata_buffer = struct.pack(self.METADATA_FORMAT, self.main_size, self.aux_size, self.max_aux_size)
+            raise FileNotFoundError(f"El indice para {filename} no exite. Crea el indice primero.")
+
+    @staticmethod
+    def build_index(filename):
+        filename = filename.replace(".dat", ".idx")
+        with open(filename, "wb") as file:
+                main_size = 0
+                aux_size = 0
+                max_aux_size = 1
+                metadata_buffer = struct.pack(SequentialIndex.METADATA_FORMAT, main_size, aux_size, max_aux_size)
                 file.write(metadata_buffer)
+
 
     def update_metadata(self):
         with open(self.filename, "r+b") as file:
             metadata_buffer = struct.pack(self.METADATA_FORMAT, self.main_size, self.aux_size, self.max_aux_size)
             file.write(metadata_buffer)
 
-    def insert_record(self, record: Record):
+    def insert_record(self, record: IndexRecord):
         """Inserta un registro en el area auxiliar y reconstruye si es necesario"""
 
         # 0. Verificar que el registro no exista
@@ -39,7 +47,7 @@ class SecuentialFile:
         # 1. Escribir en área auxiliar
         with open(self.filename, "r+b") as file:
             # Posicionarse al final del área auxiliar
-            file.seek(self.METADATA_SIZE + self.main_size * Record.size + self.aux_size * Record.size)
+            file.seek(self.METADATA_SIZE + self.main_size * IndexRecord.size + self.aux_size * IndexRecord.size)
             file.write(record.pack())
             self.aux_size += 1
             self.update_metadata()
