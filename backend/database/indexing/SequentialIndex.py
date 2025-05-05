@@ -1,9 +1,7 @@
-from ..storage.IndexRecord import IndexRecord
+from .IndexRecord import IndexRecord
 import struct
 import math
 import os
-
-
 
 class SequentialIndex:
 
@@ -24,12 +22,11 @@ class SequentialIndex:
     def build_index(filename):
         filename = filename.replace(".dat", ".idx")
         with open(filename, "wb") as file:
-                main_size = 0
-                aux_size = 0
-                max_aux_size = 1
-                metadata_buffer = struct.pack(SequentialIndex.METADATA_FORMAT, main_size, aux_size, max_aux_size)
-                file.write(metadata_buffer)
-
+            main_size = 0
+            aux_size = 0
+            max_aux_size = 1
+            metadata_buffer = struct.pack(SequentialIndex.METADATA_FORMAT, main_size, aux_size, max_aux_size)
+            file.write(metadata_buffer)
 
     def update_metadata(self):
         with open(self.filename, "r+b") as file:
@@ -38,16 +35,10 @@ class SequentialIndex:
 
     def insert_record(self, record: IndexRecord):
         """Inserta un registro en el area auxiliar y reconstruye si es necesario"""
-
-        # 0. Verificar que el registro no exista
-        if self.search_record(record.id) != None:
-            print(f"El registro con id: {record.id} ya existe")
-            return False
-
         # 1. Escribir en área auxiliar
         with open(self.filename, "r+b") as file:
             # Posicionarse al final del área auxiliar
-            file.seek(self.METADATA_SIZE + self.main_size * IndexRecord.size + self.aux_size * IndexRecord.size)
+            file.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE + self.aux_size * IndexRecord.SIZE)
             file.write(record.pack())
             self.aux_size += 1
             self.update_metadata()
@@ -61,33 +52,33 @@ class SequentialIndex:
     def rebuild_file(self):
         """Reconstruye el archivo fusionando areas principal y auxiliar"""
         # 1. Leer todos los registros activos
-        active_records = []
+        active_records: list[IndexRecord] = []
         
         # Leer área principal
         with open(self.filename, "rb") as file:
             file.seek(self.METADATA_SIZE)
             for _ in range(self.main_size):
-                buffer = file.read(Record.size)
+                buffer = file.read(IndexRecord.SIZE)
                 if not buffer: break
-                record = Record.unpack(buffer)
+                record = IndexRecord.unpack(buffer)
                 if record.id != -1:
                     active_records.append(record)
         
         # Leer área auxiliar
         with open(self.filename, "rb") as file:
-            file.seek(self.METADATA_SIZE + self.main_size * Record.size)
+            file.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE)
             for _ in range(self.aux_size):
-                buffer = file.read(Record.size)
+                buffer = file.read(IndexRecord.SIZE)
                 if not buffer: break
-                record = Record.unpack(buffer)
+                record = IndexRecord.unpack(buffer)
                 if record.id != -1:
                     active_records.append(record)
         
         # 2. Ordenar por ID (insertion sort)
         for i in range(1, len(active_records)):
-            key = active_records[i]
+            key: IndexRecord = active_records[i]
             j = i - 1
-            while j >= 0 and active_records[j].id > key.id:
+            while j >= 0 and active_records[j].key > key.key:
                 active_records[j + 1] = active_records[j]
                 j -= 1
             active_records[j + 1] = key
@@ -108,7 +99,7 @@ class SequentialIndex:
                 file.write(record.pack())
             
             # Escribir area auxiliar vacia
-            empty_record = Record(-1, "", 0, 0.0, "").pack()
+            empty_record = IndexRecord(-1, "", 0, 0.0, "").pack()
             for _ in range(new_max_aux):
                 file.write(empty_record)
         
@@ -120,7 +111,7 @@ class SequentialIndex:
         self.aux_size = 0
         self.max_aux_size = new_max_aux
 
-    def search_record(self, id: int):
+    def search_record(self, key: int):
         """Busca un registro por ID usando búsqueda binaria (principal) + secuencial (auxiliar)"""
         # 1. Busqueda binaria en area principal
         with open(self.filename, "rb") as file:
@@ -129,29 +120,29 @@ class SequentialIndex:
             
             while left <= right:
                 mid = (left + right) // 2
-                file.seek(self.METADATA_SIZE + mid * Record.SIZE)
-                buffer = file.read(Record.SIZE)
-                record = Record.unpack(buffer)
+                file.seek(self.METADATA_SIZE + mid * IndexRecord.SIZE)
+                buffer = file.read(IndexRecord.SIZE)
+                record = IndexRecord.unpack(buffer)
                 
-                if record.id == id:
+                if record.key == key:
                     return record
-                elif record.id < id:
+                elif record.key < key:
                     left = mid + 1
                 else:
                     right = mid - 1
         
         # 2. Busqueda secuencial en area auxiliar (cargada en RAM)
         with open(self.filename, "rb") as file:
-            file.seek(self.METADATA_SIZE + self.main_size * Record.SIZE)
+            file.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE)
             for _ in range(self.aux_size):
-                buffer = file.read(Record.SIZE)
-                record = Record.unpack(buffer)
+                buffer = file.read(IndexRecord.SIZE)
+                record = IndexRecord.unpack(buffer)
                 if record.id == id:
                     return record
                 
         return None
     
-    def delete_record(self, id: int):
+    def delete_record(self, key: int):
         """Lo mismo que el search_record, esta vez al encontrar el registro lo reemplaza por uno vacio"""
         """Elimina lógicamente un registro marcando su ID como -1"""
         # 1. Buscar el registro en el area principal
@@ -161,96 +152,95 @@ class SequentialIndex:
             
             while left <= right:
                 mid = (left + right) // 2
-                file.seek(self.METADATA_SIZE + mid * Record.SIZE)
-                buffer = file.read(Record.SIZE)
-                record = Record.unpack(buffer)
+                file.seek(self.METADATA_SIZE + mid * IndexRecord.SIZE)
+                buffer = file.read(IndexRecord.SIZE)
+                record = IndexRecord.unpack(buffer)
                 
-                if record.id == id:
+                if record.key == key:
                     # Encontrado en area principal - retroceder y escribir -1
-                    file.seek(-Record.SIZE, os.SEEK_CUR)
-                    empty_record = Record(-1, "", 0, 0.0, "").pack()
+                    file.seek(-IndexRecord.SIZE, os.SEEK_CUR)
+                    empty_record = IndexRecord(-1, "", 0, 0.0, "").pack()
                     file.write(empty_record)
                     return True
-                elif record.id < id:
+                elif record.key < key:
                     left = mid + 1
                 else:
                     right = mid - 1
         
         # 2. Buscar en el area auxiliar
         with open(self.filename, "r+b") as file:
-            file.seek(self.METADATA_SIZE + self.main_size * Record.SIZE)
+            file.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE)
             for _ in range(self.aux_size):
                 pos = file.tell()
-                buffer = file.read(Record.SIZE)
-                record = Record.unpack(buffer)
+                buffer = file.read(IndexRecord.SIZE)
+                record = IndexRecord.unpack(buffer)
                 
-                if record.id == id:
+                if record.key == key:
                     # Encontrado en area auxiliar - retroceder y escribir -1
                     file.seek(pos)
-                    empty_record = Record(-1, "", 0, 0.0, "").pack()
+                    empty_record = IndexRecord(-1, "", 0, 0.0, "").pack()
                     file.write(empty_record)
                     return True
         
         return False
     
-    def search_range(self, start_id: int, end_id: int) -> list[Record]:
-        """Busca registros en el rango [start_id, end_id]"""
+    def search_range(self, start_key: int, end_key: int) -> list[IndexRecord]:
+        """Busca registros en el rango [start_key, end_key]"""
         results = []
         
         # 1. Búsqueda en área principal (ordenada)
         with open(self.filename, "rb") as file:
             file.seek(self.METADATA_SIZE)
             
-            # Encontrar el primer ID >= start_id con búsqueda binaria
+            # Encontrar el primer ID >= start_key con búsqueda binaria
             left, right = 0, self.main_size - 1
             start_pos = 0
             
             while left <= right:
                 mid = (left + right) // 2
-                file.seek(self.METADATA_SIZE + mid * Record.SIZE)
-                buffer = file.read(Record.SIZE)
-                record = Record.unpack(buffer)
+                file.seek(self.METADATA_SIZE + mid * IndexRecord.SIZE)
+                buffer = file.read(IndexRecord.SIZE)
+                record = IndexRecord.unpack(buffer)
                 
-                if record.id < start_id:
+                if record.key < start_key:
                     left = mid + 1
                 else:
                     right = mid - 1
                     start_pos = mid
             
             # Recorrer secuencialmente desde start_pos
-            file.seek(self.METADATA_SIZE + start_pos * Record.SIZE)
+            file.seek(self.METADATA_SIZE + start_pos * IndexRecord.SIZE)
             for _ in range(start_pos, self.main_size):
-                buffer = file.read(Record.SIZE)
+                buffer = file.read(IndexRecord.SIZE)
                 if not buffer: break
                 
-                record = Record.unpack(buffer)
-                if record.id > end_id:
+                record = IndexRecord.unpack(buffer)
+                if record.key > end_key:
                     break
-                if start_id <= record.id <= end_id and record.id != -1:
+                if start_key <= record.id <= end_key and record.key != -1:
                     results.append(record)
         
         # 2. Búsqueda en área auxiliar (secuencial)
         with open(self.filename, "rb") as file:
-            file.seek(self.METADATA_SIZE + self.main_size * Record.SIZE)
+            file.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE)
             for _ in range(self.aux_size):
-                buffer = file.read(Record.SIZE)
+                buffer = file.read(IndexRecord.SIZE)
                 if not buffer: break
                 
-                record = Record.unpack(buffer)
-                if start_id <= record.id <= end_id and record.id != -1:
+                record = IndexRecord.unpack(buffer)
+                if start_key <= record.id <= end_key and record.key != -1:
                     results.append(record)
         
         return results
     
-
     def load(self):
         with open(self.filename, 'rb') as file:
             metadata_buffer = file.read(self.METADATA_SIZE)
             main_size, aux_size, max_aux_size = struct.unpack(self.METADATA_FORMAT, metadata_buffer)
             records = []
             for i in range(main_size + aux_size):
-                record_buffer = file.read(Record.SIZE)
-                records.append(Record.unpack(record_buffer))
+                record_buffer = file.read(IndexRecord.SIZE)
+                records.append(IndexRecord.unpack(record_buffer))
 
             print("\nMetadata:")
             print(f"Tamaño de la zona principal: {main_size}")

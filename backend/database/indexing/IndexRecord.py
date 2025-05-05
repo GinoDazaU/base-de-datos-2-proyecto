@@ -3,7 +3,7 @@ import struct
 class IndexRecord:
 
     FORMAT = "ii"
-    FORMAT_SIZE = struct.calcsize(FORMAT)
+    SIZE = struct.calcsize(FORMAT)
 
     def __init__(self, key, offset):
         self.key = key
