@@ -233,6 +233,7 @@ class SecuentialFile:
                     results.append(record)
         
         return results
+    
 
     def load(self):
         with open(self.filename, 'rb') as file:

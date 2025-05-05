@@ -34,7 +34,6 @@ class HeapFile:
         }
         with open(schema_file, "w") as f:
             json.dump(schema_json, f, indent=4)
-
         
     def load_schema(self, filename):
         schema_file = filename.replace(".dat", ".schema.json")
@@ -52,6 +51,34 @@ class HeapFile:
             file.write(record.pack())
             self.heap_size += 1
         self.update_metadata()
+    
+    def search_record(self, target_id):
+        id_index = None
+        for i, (name, _) in enumerate(self.schema):
+            if name == "id":
+                id_index = i
+                break
+        if id_index is None:
+            print("El campo 'id' no está definido en el esquema.")
+            return
+
+        with open(self.filename, "rb") as file:
+            file.seek(self.METADATA_SIZE, 0)
+            for i in range(self.heap_size):
+                offset = self.METADATA_SIZE + i * self.record_size
+                file.seek(offset)
+                record_buffer = file.read(self.record_size)
+                record = Record.unpack(record_buffer, self.schema)
+                record_id = record.values[id_index]
+
+                if str(record_id).strip() == str(target_id).strip():
+                    print("Registro encontrado:")
+                    record.print()
+                    return record
+
+        print(f"No se encontró un registro con id = {target_id}")
+        return None
+
 
     def load(self):
         with open(self.filename, "rb") as file:

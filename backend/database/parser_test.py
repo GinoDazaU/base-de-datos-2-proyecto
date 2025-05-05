@@ -108,11 +108,30 @@ def run_sql(sql: str):
         print(f"Comando no reconocido: {s}")
 
 if __name__ == "__main__":
-    # Ejemplos de uso:
+    # Tabla productos
     run_sql("CREATE TABLE productos (id i, nombre 20s, precio f, cantidad i);")
     run_sql("INSERT INTO productos VALUES (1, 'Galletas', 3.5, 10);")
     run_sql("INSERT INTO productos VALUES (2, 'Chocolate', 5.2, 8);")
+    run_sql("INSERT INTO productos VALUES (3, 'Jugo de Naranja', 4.0, 20);")
+    run_sql("INSERT INTO productos VALUES (4, 'Pan Integral', 2.3, 15);")
+    run_sql("INSERT INTO productos VALUES (5, 'Queso', 7.8, 5);")
     run_sql("SELECT * FROM productos;")
+
     run_sql("CREATE TABLE backup (id i, nombre 20s, precio f, cantidad i);")
     run_sql("INSERT INTO backup SELECT * FROM productos;")
     run_sql("SELECT * FROM backup;")
+
+
+    # Tabla clientes
+    run_sql("CREATE TABLE clientes (id i, nombre 30s, email 40s, edad i, telefono 15s, ciudad 20s, saldo f, vip i);")
+    run_sql("INSERT INTO clientes VALUES (1, 'Ana Torres', 'ana.torres@gmail.com', 29, '987654321', 'Lima', 1200.50, 1);")
+    run_sql("INSERT INTO clientes VALUES (2, 'Luis Pérez', 'luisp@hotmail.com', 35, '912345678', 'Cusco', 850.75, 0);")
+    run_sql("INSERT INTO clientes VALUES (3, 'María López', 'mlopez@yahoo.com', 42, '900111222', 'Arequipa', 432.00, 1);")
+    run_sql("INSERT INTO clientes VALUES (4, 'Carlos Díaz', 'carlos.diaz@outlook.com', 27, '987112233', 'Lima', 1570.00, 0);")
+    run_sql("INSERT INTO clientes VALUES (5, 'Sofía Ramírez', 'sofiaramirez@gmail.com', 31, '921223344', 'Piura', 300.25, 1);")
+    run_sql("INSERT INTO clientes VALUES (6, 'Daniel Vega', 'daniel.vega@gmail.com', 45, '988887777', 'Trujillo', 675.00, 0);")
+    run_sql("SELECT * FROM clientes;")
+    
+    run_sql("CREATE TABLE clientes_backup (id i, nombre 30s, email 40s, edad i, telefono 15s, ciudad 20s, saldo f, vip i);")
+    run_sql("INSERT INTO clientes_backup SELECT * FROM clientes;")
+    run_sql("SELECT * FROM clientes_backup;")

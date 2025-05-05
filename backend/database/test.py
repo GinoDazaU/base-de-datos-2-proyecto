@@ -28,7 +28,6 @@ def crear_tabla():
             break
 
     print("Creando nueva tabla...")
-    # <-- Aquí pasamos la ruta completa
     HeapFile.build_file(filename, schema)
     print(f"Tabla {table_name} creada exitosamente.")
 
@@ -49,7 +48,8 @@ def interactuar_con_tabla():
         print("\nOpciones disponibles:")
         print("1. Insertar un nuevo registro")
         print("2. Cargar todo el contenido de la tabla")
-        print("3. Volver al menú principal")
+        print("3. Buscar por id")
+        print("4. Volver al menú principal")
         opc = input("Elige una opción: ").strip()
 
         if opc == '1':
@@ -74,6 +74,10 @@ def interactuar_con_tabla():
             heap.load()
 
         elif opc == '3':
+            target_id = input("Introduce el ID del registro a buscar: ")
+            heap.search_record(target_id)
+
+        elif opc == '4':
             break
         else:
             print("Opción no válida.")
