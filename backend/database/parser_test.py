@@ -92,7 +92,7 @@ def parse_select(sql: str):
         return
     h = HeapFile(dat)
     print(f"Contenido de {name}:")
-    h.load()
+    h.print_all()
 
 def run_sql(sql: str):
     s = sql.strip()

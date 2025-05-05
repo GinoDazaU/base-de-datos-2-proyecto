@@ -4,4 +4,4 @@
 *__pycache__
 *venv
 *.schema.json
-*.idx
+*.seq.idx

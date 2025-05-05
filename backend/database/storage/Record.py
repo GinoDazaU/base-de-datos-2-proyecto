@@ -20,7 +20,7 @@ class Record:
         self.format = ''.join(fmt for _, fmt in schema)
         self.size = struct.calcsize(self.format)
 
-    def pack(self):
+    def pack(self) -> bytes:
         processed_values = []
         for (_, fmt), value in zip(self.schema, self.values):
             if 's' in fmt:
@@ -41,11 +41,11 @@ class Record:
         return Record(schema, processed_values)
     
     @staticmethod
-    def get_size(schema):
+    def get_size(schema) -> int:
         format_str = ''.join(fmt for _, fmt in schema)
         return struct.calcsize(format_str)
 
-    def print(self):
+    def print(self) -> None:
         for (_, fmt), value in zip(self.schema, self.values):
             if 'f' in fmt:
                 print(f"{value:.2f}", end=" | ")

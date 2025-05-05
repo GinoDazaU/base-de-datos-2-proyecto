@@ -9,6 +9,7 @@ class SequentialIndex:
     METADATA_SIZE = struct.calcsize(METADATA_FORMAT)
 
     def __init__(self, filename: str):
+        # Inicializa el índice secuencial leyendo los metadatos.
         self.filename = filename
 
         if not os.path.exists(filename):
@@ -25,56 +26,58 @@ class SequentialIndex:
         `extract_index_fn(key_field)` debe devolver una lista de tuplas (key, offset).
         Genera automáticamente el nombre `{base}.seq.idx`.
         """
-        # Derivar nombre de índice .seq.idx
         base, _ = os.path.splitext(heap_filename)
-        idx_filename = f"{base}.seq.idx"
+        idx_filename = f"{base}.{key_field}.seq.idx"
 
-        # Extraer entradas (key, offset) del heap - extract_index_fn es método ligado al heap
         entries = extract_index_fn(key_field)
-        # Ordenar por key
         entries.sort(key=lambda x: x[0])
 
-        # Metadatos iniciales
         main_size = len(entries)
         aux_size = 0
         max_aux_size = max(1, math.floor(math.log2(main_size))) if main_size > 0 else 1
 
-        # Crear archivo .seq.idx
         with open(idx_filename, "wb") as f:
             f.write(struct.pack(SequentialIndex.METADATA_FORMAT, main_size, aux_size, max_aux_size))
             for key, offset in entries:
                 rec = IndexRecord(key, offset)
                 f.write(rec.pack())
-            # Zona auxiliar vacía
             empty = IndexRecord(-1, 0).pack()
             for _ in range(max_aux_size):
                 f.write(empty)
 
         return SequentialIndex(idx_filename)
 
-    def update_metadata(self):
-        with open(self.filename, "r+b") as f:
-            f.seek(0)
-            f.write(struct.pack(self.METADATA_FORMAT,
-                                self.main_size,
-                                self.aux_size,
-                                self.max_aux_size))
+    def update_metadata(self, file_handle=None):
+        """
+        Actualiza los metadatos en disco. Si se pasa un file_handle abierto, lo utiliza, sino abre el archivo.
+        """
+        if file_handle:
+            file_handle.seek(0)
+            file_handle.write(struct.pack(self.METADATA_FORMAT, self.main_size, self.aux_size, self.max_aux_size))
+        else:
+            with open(self.filename, "r+b") as f:
+                f.seek(0)
+                f.write(struct.pack(self.METADATA_FORMAT, self.main_size, self.aux_size, self.max_aux_size))
 
     def insert_record(self, record: IndexRecord):
-        """Inserta un IndexRecord en el área auxiliar y reconstruye si supera max_aux_size."""
+        """
+        Inserta un IndexRecord en el área auxiliar. Si se supera el tamaño máximo permitido para auxiliar,
+        se reconstruye el archivo fusionando principal y auxiliar.
+        """
         with open(self.filename, "r+b") as f:
-            f.seek(self.METADATA_SIZE +
-                   self.main_size * IndexRecord.SIZE +
-                   self.aux_size * IndexRecord.SIZE)
+            f.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE + self.aux_size * IndexRecord.SIZE)
             f.write(record.pack())
             self.aux_size += 1
-            self.update_metadata()
+            self.update_metadata(file_handle=f)
 
         if self.aux_size > self.max_aux_size:
             self.rebuild_file()
 
     def rebuild_file(self):
-        """Fusiona zona principal y auxiliar, ordena y vuelve a escribir el archivo."""
+        """
+        Fusiona las zonas principal y auxiliar, elimina los eliminados lógicamente, ordena por clave
+        y reescribe el archivo de índice completo con metadatos actualizados.
+        """
         all_recs: list[IndexRecord] = []
         with open(self.filename, "rb") as f:
             f.seek(self.METADATA_SIZE)
@@ -95,7 +98,6 @@ class SequentialIndex:
                     all_recs.append(r)
 
         all_recs.sort(key=lambda r: r.key)
-
         new_main = len(all_recs)
         new_aux_max = max(1, math.floor(math.log2(new_main))) if new_main > 0 else 1
 
@@ -114,7 +116,10 @@ class SequentialIndex:
         self.max_aux_size = new_aux_max
 
     def search_record(self, key: int) -> IndexRecord | None:
-        """Búsqueda binaria en principal y secuencial en auxiliar."""
+        """
+        Busca un IndexRecord por clave. Utiliza búsqueda binaria en la zona principal
+        y búsqueda secuencial en la zona auxiliar.
+        """
         with open(self.filename, "rb") as f:
             f.seek(self.METADATA_SIZE)
             left, right = 0, self.main_size - 1
@@ -129,7 +134,6 @@ class SequentialIndex:
                 else:
                     right = mid - 1
 
-            # auxiliar
             f.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE)
             for _ in range(self.aux_size):
                 rec = IndexRecord.unpack(f.read(IndexRecord.SIZE))
@@ -139,7 +143,10 @@ class SequentialIndex:
         return None
 
     def delete_record(self, key: int) -> bool:
-        """Borrado lógico: marca key=-1."""
+        """
+        Realiza un borrado lógico (key = -1) en la zona principal o auxiliar. 
+        Devuelve True si se encuentra y elimina, False en caso contrario.
+        """
         with open(self.filename, "r+b") as f:
             f.seek(self.METADATA_SIZE)
             left, right = 0, self.main_size - 1
@@ -156,7 +163,6 @@ class SequentialIndex:
                 else:
                     right = mid - 1
 
-            # auxiliar
             f.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE)
             for _ in range(self.aux_size):
                 pos = f.tell()
@@ -165,12 +171,17 @@ class SequentialIndex:
                     f.seek(pos)
                     f.write(IndexRecord(-1, 0).pack())
                     self.aux_size -= 1
-                    self.update_metadata()
+                    self.update_metadata(file_handle=f)
                     return True
 
         return False
 
     def search_range(self, start_key: int, end_key: int) -> list[IndexRecord]:
+        """
+        Devuelve todos los registros cuya clave esté dentro del rango [start_key, end_key].
+        La zona principal se recorre desde el primer índice válido.
+        La zona auxiliar se recorre completamente.
+        """
         results: list[IndexRecord] = []
         with open(self.filename, "rb") as f:
             f.seek(self.METADATA_SIZE)
@@ -201,7 +212,10 @@ class SequentialIndex:
 
         return results
 
-    def load(self):
+    def print_all(self):
+        """
+        Imprime los metadatos y todos los registros, diferenciando entre zona principal y auxiliar.
+        """
         with open(self.filename, "rb") as f:
             meta = f.read(self.METADATA_SIZE)
             ms, au, ma = struct.unpack(self.METADATA_FORMAT, meta)
