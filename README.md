@@ -39,3 +39,5 @@
   - Mostrar resultados de consultas
   - Crear/editar tablas
   - Ejecutar sentencias SQL visualmente
+
+(https://media1.tenor.com/m/jRaSFSY9f78AAAAC/postgresql-heart-locket.gif)
