@@ -11,15 +11,15 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 tables_dir = os.path.join(base_dir, "tables")
 os.makedirs(tables_dir, exist_ok=True)
 
-def _get_table_path(table_name):
+def get_table_path(table_name):
     return os.path.join(tables_dir, table_name)
 
 def create_table(table_name: str, schema: list[tuple[str:str]]):
-    table_name = _get_table_path(table_name)
+    table_name = get_table_path(table_name)
     HeapFile.build_file(table_name, schema)
 
 def insert_record(table_name: str, record: Record):
-    table_path = _get_table_path(table_name)
+    table_path = get_table_path(table_name)
     heap = HeapFile(table_path)
     offset = heap.insert_record(record)
     schema = heap.schema
@@ -44,17 +44,17 @@ def insert_record(table_name: str, record: Record):
                 pass
 
 def print_table(table_name: str):
-    table_name = _get_table_path(table_name)
+    table_name = get_table_path(table_name)
     heap = HeapFile(table_name)
     heap.print_all()
 
 def create_seq_idx(table_name: str, field_name):
-    table_name = _get_table_path(table_name)
+    table_name = get_table_path(table_name)
     heap = HeapFile(table_name)
     SequentialIndex.build_index(table_name, heap.extract_index, field_name)
 
 def search_seq_idx(table_name: str, field_name, field_value):
-    table_name = _get_table_path(table_name)
+    table_name = get_table_path(table_name)
     heap = HeapFile(table_name)
     seq_idx = SequentialIndex(table_name, field_name)
     matching_records = seq_idx.search_record(field_value)
@@ -63,11 +63,12 @@ def search_seq_idx(table_name: str, field_name, field_value):
         record.print()
 
 def print_all_seq_idx(table_name: str, field_name: str):
-    table_name = _get_table_path(table_name)
+    table_name = get_table_path(table_name)
     seq_idx = SequentialIndex(table_name, field_name)
     seq_idx.print_all()
 
-def main():
+# para probar las funciones
+def test():
     table_name = "test"
     schema = [("id", "i"), ("nombre", "20s"), ("precio", "f"), ("cantidad", "i")]
 
@@ -103,5 +104,3 @@ def main():
     insert_record(table_name, records[4])
 
     print_all_seq_idx(table_name, "nombre")
-
-main()
