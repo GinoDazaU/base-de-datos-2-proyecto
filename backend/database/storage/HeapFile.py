@@ -90,7 +90,7 @@ class HeapFile:
                 rec_num += 1
         return entries
 
-    def insert_record(self, record: Record) -> None:
+    def insert_record(self, record: Record) -> int:
         """
         Inserta un registro al final y actualiza metadata en el mismo file handle.
         """
@@ -101,6 +101,7 @@ class HeapFile:
             f.write(record.pack())
             self.heap_size += 1
             self.update_metadata(file_handle=f)
+            return self.heap_size - 1
 
     def search_record(self, target_id: int) -> Optional[Record]:
         # Busca un registro cuyo campo 'id' coincida con `target_id`. Muestra el resultado si se encuentra.
