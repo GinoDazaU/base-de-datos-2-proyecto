@@ -14,15 +14,31 @@ def create_table(table_name: str, schema: list[tuple[str:str]]):
     table_name = _get_table_path(table_name)
     HeapFile.build_file(table_name, schema)
 
-def create_seq_index(table_name: str, field_name):
-    table_name = _get_table_path(table_name)
-    heap = HeapFile(table_name)
-    SequentialIndex.build_index(table_name, heap.extract_index, field_name)
-
 def insert_record(table_name: str, record: Record):
     table_name = _get_table_path(table_name)
     heap = HeapFile(table_name)
     heap.insert_record(record)
+
+def print_table(table_name: str):
+    table_name = _get_table_path(table_name)
+    heap = HeapFile(table_name)
+    heap.print_all()
+
+def create_seq_idx(table_name: str, field_name):
+    table_name = _get_table_path(table_name)
+    heap = HeapFile(table_name)
+    SequentialIndex.build_index(table_name, heap.extract_index, field_name)
+
+def search_seq_idx(table_name: str, field_name, field_value):
+    table_name = _get_table_path(table_name)
+    heap = HeapFile(table_name)
+    seq_idx = SequentialIndex(table_name, field_name)
+    matching_records = seq_idx.search_record(field_value)
+    for idx_record in matching_records:
+        record = heap.fetch_record_by_offset(idx_record.offset)
+        record.print()
+
+
 
 def print_all_seq_idx(table_name: str, field_name: str):
     table_name = _get_table_path(table_name)
@@ -41,6 +57,7 @@ def main():
         Record(schema, [7, "Caramelos", 1.75, 25]),
         Record(schema, [1, "Cereal", 4.0, 12]),
         Record(schema, [9, "Yogurt", 2.8, 6]),
+        Record(schema, [10, "Yogurt", 2.5, 3]),
         Record(schema, [4, "Pan", 1.5, 20]),
         Record(schema, [6, "Leche", 3.1, 15]),
     ]
@@ -48,12 +65,17 @@ def main():
     for r in records:
         insert_record(table_name, r)
 
-    create_seq_index(table_name, "nombre")
+    print_table(table_name)
+
+    create_seq_idx(table_name, "nombre")
 
     print_all_seq_idx(table_name, "nombre")
 
-    create_seq_index(table_name, "precio")
+    create_seq_idx(table_name, "precio")
 
     print_all_seq_idx(table_name, "precio")
+
+    print("\n Buscando yogurt:") # hay dos yogurt en el heapfile se debe mostrar ambos
+    search_seq_idx(table_name, "nombre" , "Yogurt")
 
 main()
