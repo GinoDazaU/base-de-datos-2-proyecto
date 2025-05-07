@@ -10,36 +10,37 @@ class HeapFile:
     METADATA_FORMAT = "i"
     METADATA_SIZE = struct.calcsize(METADATA_FORMAT)
 
-    def __init__(self, filename: str) -> None:
+    def __init__(self, table_name: str) -> None:
         # Inicializa el archivo heap cargando el esquema y el tamaño actual.
-        self.filename = filename
-        self.schema = self.load_schema(filename)
+        self.filename = table_name + ".dat"
+        self.schema = self._load_schema(self.filename)
         self.record_size = Record.get_size(self.schema)
-        if os.path.exists(filename):
-            with open(filename, "rb") as f:
+        if os.path.exists(self.filename):
+            with open(self.filename, "rb") as f:
                 metadata_buffer = f.read(self.METADATA_SIZE)
                 self.heap_size = struct.unpack(self.METADATA_FORMAT, metadata_buffer)[0]
         else:
-            raise FileNotFoundError(f"El archivo {filename} no existe. Crea la tabla primero.")
+            raise FileNotFoundError(f"El archivo {self.filename} no existe. Crea la tabla primero.")
 
     @staticmethod
-    def build_file(filename: str, schema: list[tuple[str, str]]) -> None:
+    def build_file(table_name: str, schema: list[tuple[str, str]]) -> None:
         # Crea un nuevo archivo heap vacío y guarda su esquema en un archivo .json.
+        filename = table_name + ".dat"
         with open(filename, "wb") as f:
             heap_size = 0
             metadata = struct.pack(HeapFile.METADATA_FORMAT, heap_size)
             f.write(metadata)
 
-        schema_file = filename.replace(".dat", ".schema.json")
+        schema_file = table_name + ".schema.json"
         fields = [{"name": name, "type": fmt} for name, fmt in schema]
         schema_json = {
-            "table_name": os.path.splitext(os.path.basename(filename))[0],
+            "table_name": os.path.splitext(os.path.basename(table_name))[0],
             "fields": fields
         }
         with open(schema_file, "w") as f:
             json.dump(schema_json, f, indent=4)
 
-    def load_schema(self, filename: str) -> list[tuple[str, str]]:
+    def _load_schema(self, filename: str) -> list[tuple[str, str]]:
         # Carga el esquema desde un archivo .json asociado al archivo de datos.
         schema_file = filename.replace(".dat", ".schema.json")
         with open(schema_file, "r") as f:
@@ -59,15 +60,20 @@ class HeapFile:
                 f.seek(0)
                 f.write(struct.pack(self.METADATA_FORMAT, self.heap_size))
 
-    def extract_index(self, key_field: str) -> list[tuple[int, int]]:
-        # Devuelve una lista de tuplas (valor_clave, número_de_registro) del campo clave especificado,
-        # ignorando registros eliminados (valor entero -1).
+    def extract_index(self, key_field: str) -> list[tuple[object, int]]:
+        """
+        Devuelve una lista de tuplas (valor_clave, número_de_registro) del campo clave especificado,
+        ignorando registros eliminados si el campo 'id' es -1.
+        """
         field_names = [name for name, _ in self.schema]
         if key_field not in field_names:
             raise KeyError(f"Campo '{key_field}' no existe en esquema")
         key_pos = field_names.index(key_field)
 
-        entries: list[tuple[int, int]] = []
+        # Asumimos que el campo 'id' (el primero) se usa para detectar eliminados
+        id_pos = field_names.index("id") if "id" in field_names else None
+
+        entries: list[tuple[object, int]] = []
         with open(self.filename, "rb") as f:
             f.seek(self.METADATA_SIZE)
             rec_num = 0
@@ -76,9 +82,11 @@ class HeapFile:
                 if len(buffer) < self.record_size:
                     break
                 rec = Record.unpack(buffer, self.schema)
+                if id_pos is not None and isinstance(rec.values[id_pos], int) and rec.values[id_pos] == -1:
+                    rec_num += 1
+                    continue
                 key_val = rec.values[key_pos]
-                if isinstance(key_val, int) and key_val != -1:
-                    entries.append((key_val, rec_num))
+                entries.append((key_val, rec_num))
                 rec_num += 1
         return entries
 

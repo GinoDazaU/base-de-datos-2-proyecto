@@ -10,13 +10,13 @@ os.makedirs(tables_dir, exist_ok=True)
 
 def get_table_path(table_name):
     """Obtiene la ruta completa del archivo de tabla"""
-    return os.path.join(tables_dir, f"{table_name}.dat")
+    return os.path.join(tables_dir, table_name)
 
 def get_index_path(table_name, field_name):
     """Obtiene la ruta completa del archivo de índice"""
     table_path = get_table_path(table_name)
     base, _ = os.path.splitext(table_path)
-    return f"{base}.{field_name}.seq.idx"
+    return f"{base}"
 
 def crear_tabla():
     table_name = input("Introduce el nombre de la tabla (sin extensión .dat): ")
@@ -47,7 +47,7 @@ def interactuar_con_tabla():
     table_name = input("Introduce el nombre de la tabla (sin extensión .dat): ")
     filename = get_table_path(table_name)
 
-    if not os.path.exists(filename):
+    if not os.path.exists(filename + ".dat"):
         print(f"La tabla {table_name} no existe.")
         return
 
@@ -95,6 +95,7 @@ def interactuar_con_tabla():
             if field_name not in [field[0] for field in heap.schema]:
                 print(f"El campo {field_name} no existe en la tabla.")
                 continue
+            # Se llama a build_index sin la extensión .dat
             SequentialIndex.build_index(filename, heap.extract_index, field_name)
             print(f"Índice para {field_name} creado.")
 
@@ -149,10 +150,10 @@ def interactuar_con_tabla():
         elif opc == '7':
             field_name = input("Introduce el campo indexado: ")
             index_path = get_index_path(table_name, field_name)
-            if not os.path.exists(index_path):
+            if not os.path.exists(index_path + "." + field_name + ".seq.idx"):
                 print(f"No existe índice para {field_name}")
                 continue
-            index = SequentialIndex(index_path)
+            index = SequentialIndex(index_path, field_name)
             index.print_all()
 
         elif opc == '8':

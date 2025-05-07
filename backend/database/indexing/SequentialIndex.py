@@ -1,56 +1,101 @@
 import struct
 import math
 import os
-
+import json
+from typing import Union, List, Optional, BinaryIO
 from .IndexRecord import IndexRecord
+from . import utils
 
 class SequentialIndex:
-    METADATA_FORMAT = "iii"
+    METADATA_FORMAT = "iii"  # main_size, aux_size, max_aux_size
     METADATA_SIZE = struct.calcsize(METADATA_FORMAT)
 
-    def __init__(self, filename: str):
-        # Inicializa el índice secuencial leyendo los metadatos.
-        self.filename = filename
+    def __init__(self, table_name: str, indexed_field: str):
 
-        if not os.path.exists(filename):
-            raise FileNotFoundError(f"El índice para {filename} no existe. Crea el índice primero.")
+        if not os.path.exists(table_name + "." + indexed_field + ".seq.idx"):
+            raise FileNotFoundError(f"El índice para {table_name} no existe. Crea el índice primero.")
 
+        self.filename = table_name + "." + indexed_field + ".seq.idx"
+        
+        # Cargar schema y determinar formato de la clave
+        self.schema = utils.load_schema(table_name)
+        self.key_field = indexed_field
+        self.key_format = utils.get_key_format_from_schema(self.schema, self.key_field)
+        
+        # Tamaño dinámico de registro basado en el formato
+        sample_record = IndexRecord(self.key_format, utils.get_default_key(self.key_format), 0)
+        self.record_size = sample_record.size
+        
         with open(self.filename, "rb+") as f:
             meta = f.read(self.METADATA_SIZE)
             self.main_size, self.aux_size, self.max_aux_size = struct.unpack(self.METADATA_FORMAT, meta)
-
+    
     @staticmethod
-    def build_index(heap_filename: str, extract_index_fn, key_field: str = "id"):
+    def build_index(heap_filename: str, extract_index_fn, key_field: str):
         """
-        Construye el índice desde cero a partir de un heapfile dado su nombre.
-        `extract_index_fn(key_field)` debe devolver una lista de tuplas (key, offset).
-        Genera automáticamente el nombre `{base}.seq.idx`.
+        Construye un nuevo índice secuencial para el campo especificado.
         """
+        # Cargar schema para validación
+        schema_file = heap_filename + ".schema.json"
+        with open(schema_file, "r") as f:
+            schema = json.load(f)
+        
+        # Obtener formato del campo
+        key_format = next(f["type"] for f in schema["fields"] if f["name"] == key_field)
+        
+        # Generar nombre de archivo de índice
         base, _ = os.path.splitext(heap_filename)
         idx_filename = f"{base}.{key_field}.seq.idx"
 
+        # Obtener y validar entradas
         entries = extract_index_fn(key_field)
-        entries.sort(key=lambda x: x[0])
+        valid_entries = [(k, o) for k, o in entries if SequentialIndex._validate_type(k, key_format)]
+        
+        # Ordenar según el tipo de dato
+        valid_entries.sort(key=lambda x: x[0])
 
-        main_size = len(entries)
+        main_size = len(valid_entries)
         aux_size = 0
         max_aux_size = max(1, math.floor(math.log2(main_size))) if main_size > 0 else 1
 
+        # Crear archivo de índice
         with open(idx_filename, "wb") as f:
+            # Escribir metadatos
             f.write(struct.pack(SequentialIndex.METADATA_FORMAT, main_size, aux_size, max_aux_size))
-            for key, offset in entries:
-                rec = IndexRecord(key, offset)
+            
+            # Escribir registros
+            for key, offset in valid_entries:
+                rec = IndexRecord(key_format, key, offset)
                 f.write(rec.pack())
-            empty = IndexRecord(-1, 0).pack()
+            
+            # Escribir área auxiliar vacía
+            empty_rec = IndexRecord(key_format, 
+                                  -1 if key_format == 'i' else '' if 's' in key_format else -1.0, 
+                                  0)
             for _ in range(max_aux_size):
-                f.write(empty)
+                f.write(empty_rec.pack())
+        
+        return True
 
-        return SequentialIndex(idx_filename)
+    @staticmethod
+    def _validate_type(value, format: str) -> bool:
+        """Valida que el valor coincida con el formato esperado"""
+        if format == 'i':
+            return isinstance(value, int)
+        elif format == 'f':
+            return isinstance(value, float)
+        elif 's' in format:
+            return isinstance(value, str)
+        return False
+
+    def _compare_keys(self, a, b) -> int:
+        """Compara dos claves devolviendo -1, 0 o 1"""
+        if a == b:
+            return 0
+        return -1 if a < b else 1
 
     def update_metadata(self, file_handle=None):
-        """
-        Actualiza los metadatos en disco. Si se pasa un file_handle abierto, lo utiliza, sino abre el archivo.
-        """
+        """Actualiza los metadatos en el archivo."""
         if file_handle:
             file_handle.seek(0)
             file_handle.write(struct.pack(self.METADATA_FORMAT, self.main_size, self.aux_size, self.max_aux_size))
@@ -60,167 +105,248 @@ class SequentialIndex:
                 f.write(struct.pack(self.METADATA_FORMAT, self.main_size, self.aux_size, self.max_aux_size))
 
     def insert_record(self, record: IndexRecord):
-        """
-        Inserta un IndexRecord en el área auxiliar. Si se supera el tamaño máximo permitido para auxiliar,
-        se reconstruye el archivo fusionando principal y auxiliar.
-        """
+        """Inserta un nuevo registro en el área auxiliar."""
+        if record.format != self.key_format:
+            raise TypeError(f"El registro tiene formato {record.format}, se esperaba {self.key_format}")
+
         with open(self.filename, "r+b") as f:
-            f.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE + self.aux_size * IndexRecord.SIZE)
+            # Posicionarse al final del área auxiliar
+            pos = self.METADATA_SIZE + (self.main_size + self.aux_size) * self.record_size
+            f.seek(pos)
+            
+            # Escribir el registro
             f.write(record.pack())
             self.aux_size += 1
             self.update_metadata(file_handle=f)
 
+        # Reconstruir si el área auxiliar es demasiado grande
         if self.aux_size > self.max_aux_size:
             self.rebuild_file()
 
     def rebuild_file(self):
-        """
-        Fusiona las zonas principal y auxiliar, elimina los eliminados lógicamente, ordena por clave
-        y reescribe el archivo de índice completo con metadatos actualizados.
-        """
-        all_recs: list[IndexRecord] = []
+        """Reconstruye el archivo fusionando áreas principal y auxiliar."""
+        all_recs = []
+        
+        # Leer todos los registros válidos
         with open(self.filename, "rb") as f:
+            # Leer área principal
             f.seek(self.METADATA_SIZE)
             for _ in range(self.main_size):
-                buf = f.read(IndexRecord.SIZE)
-                if not buf:
+                data = f.read(self.record_size)
+                if not data:
                     break
-                r = IndexRecord.unpack(buf)
-                if r.key != -1:
-                    all_recs.append(r)
-            f.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE)
+                rec = IndexRecord.unpack(data, self.key_format)
+                if not self._is_deleted(rec):
+                    all_recs.append(rec)
+            
+            # Leer área auxiliar
+            f.seek(self.METADATA_SIZE + self.main_size * self.record_size)
             for _ in range(self.aux_size):
-                buf = f.read(IndexRecord.SIZE)
-                if not buf:
+                data = f.read(self.record_size)
+                if not data:
                     break
-                r = IndexRecord.unpack(buf)
-                if r.key != -1:
-                    all_recs.append(r)
+                rec = IndexRecord.unpack(data, self.key_format)
+                if not self._is_deleted(rec):
+                    all_recs.append(rec)
 
+        # Ordenar registros
         all_recs.sort(key=lambda r: r.key)
+
+        # Calcular nuevos parámetros
         new_main = len(all_recs)
         new_aux_max = max(1, math.floor(math.log2(new_main))) if new_main > 0 else 1
+        empty_rec = utils.get_empty_record(self.key_format)
 
-        tmp = self.filename + ".tmp"
-        with open(tmp, "wb") as f:
+        # Escribir archivo temporal
+        tmp_file = self.filename + ".tmp"
+        with open(tmp_file, "wb") as f:
+            # Escribir metadatos
             f.write(struct.pack(self.METADATA_FORMAT, new_main, 0, new_aux_max))
-            for r in all_recs:
-                f.write(r.pack())
-            empty = IndexRecord(-1, 0).pack()
+            
+            # Escribir registros
+            for rec in all_recs:
+                f.write(rec.pack())
+            
+            # Escribir área auxiliar vacía
             for _ in range(new_aux_max):
-                f.write(empty)
+                f.write(empty_rec.pack())
 
-        os.replace(tmp, self.filename)
+        # Reemplazar archivo original
+        os.replace(tmp_file, self.filename)
+        
+        # Actualizar estado
         self.main_size = new_main
         self.aux_size = 0
         self.max_aux_size = new_aux_max
 
-    def search_record(self, key: int) -> IndexRecord | None:
-        """
-        Busca un IndexRecord por clave. Utiliza búsqueda binaria en la zona principal
-        y búsqueda secuencial en la zona auxiliar.
-        """
-        with open(self.filename, "rb") as f:
-            f.seek(self.METADATA_SIZE)
-            left, right = 0, self.main_size - 1
-            while left <= right:
-                mid = (left + right) // 2
-                f.seek(self.METADATA_SIZE + mid * IndexRecord.SIZE)
-                rec = IndexRecord.unpack(f.read(IndexRecord.SIZE))
-                if rec.key == key:
-                    return rec
-                if rec.key < key:
-                    left = mid + 1
-                else:
-                    right = mid - 1
-
-            f.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE)
-            for _ in range(self.aux_size):
-                rec = IndexRecord.unpack(f.read(IndexRecord.SIZE))
-                if rec.key == key:
-                    return rec
-
-        return None
-
-    def delete_record(self, key: int) -> bool:
-        """
-        Realiza un borrado lógico (key = -1) en la zona principal o auxiliar. 
-        Devuelve True si se encuentra y elimina, False en caso contrario.
-        """
-        with open(self.filename, "r+b") as f:
-            f.seek(self.METADATA_SIZE)
-            left, right = 0, self.main_size - 1
-            while left <= right:
-                mid = (left + right) // 2
-                f.seek(self.METADATA_SIZE + mid * IndexRecord.SIZE)
-                rec = IndexRecord.unpack(f.read(IndexRecord.SIZE))
-                if rec.key == key:
-                    f.seek(-IndexRecord.SIZE, os.SEEK_CUR)
-                    f.write(IndexRecord(-1, 0).pack())
-                    return True
-                if rec.key < key:
-                    left = mid + 1
-                else:
-                    right = mid - 1
-
-            f.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE)
-            for _ in range(self.aux_size):
-                pos = f.tell()
-                rec = IndexRecord.unpack(f.read(IndexRecord.SIZE))
-                if rec.key == key:
-                    f.seek(pos)
-                    f.write(IndexRecord(-1, 0).pack())
-                    self.aux_size -= 1
-                    self.update_metadata(file_handle=f)
-                    return True
-
+    def _is_deleted(self, record: IndexRecord) -> bool:
+        """Determina si un registro está marcado como eliminado."""
+        if self.key_format == 'i':
+            return record.key == -1
+        elif self.key_format == 'f':
+            return record.key == -1.0
+        elif 's' in self.key_format:
+            return record.key == ''
         return False
 
-    def search_range(self, start_key: int, end_key: int) -> list[IndexRecord]:
-        """
-        Devuelve todos los registros cuya clave esté dentro del rango [start_key, end_key].
-        La zona principal se recorre desde el primer índice válido.
-        La zona auxiliar se recorre completamente.
-        """
-        results: list[IndexRecord] = []
-        with open(self.filename, "rb") as f:
-            f.seek(self.METADATA_SIZE)
-            left, right = 0, self.main_size - 1
-            pos0 = 0
-            while left <= right:
-                mid = (left + right) // 2
-                f.seek(self.METADATA_SIZE + mid * IndexRecord.SIZE)
-                rec = IndexRecord.unpack(f.read(IndexRecord.SIZE))
-                if rec.key < start_key:
-                    left = mid + 1
-                else:
-                    right = mid - 1
-                    pos0 = mid
-            f.seek(self.METADATA_SIZE + pos0 * IndexRecord.SIZE)
-            for _ in range(pos0, self.main_size):
-                rec = IndexRecord.unpack(f.read(IndexRecord.SIZE))
-                if rec.key > end_key:
-                    break
-                if rec.key != -1:
-                    results.append(rec)
+    def search_record(self, key: Union[int, float, str]) -> List[IndexRecord]:
+        """Busca todos los registros con la clave especificada."""
+        if not self._validate_type(key, self.key_format):
+            raise TypeError(f"Clave {key} no es del tipo {self.key_format}")
 
-            f.seek(self.METADATA_SIZE + self.main_size * IndexRecord.SIZE)
+        results = []
+        with open(self.filename, "rb") as f:
+            # Búsqueda binaria en área principal
+            low, high = 0, self.main_size - 1
+            found_pos = -1
+            
+            while low <= high:
+                mid = (low + high) // 2
+                f.seek(self.METADATA_SIZE + mid * self.record_size)
+                rec = IndexRecord.unpack(f.read(self.record_size), self.key_format)
+                
+                cmp = self._compare_keys(rec.key, key)
+                if cmp == 0:
+                    found_pos = mid
+                    high = mid - 1  # Buscar primera ocurrencia
+                elif cmp < 0:
+                    low = mid + 1
+                else:
+                    high = mid - 1
+
+            if found_pos != -1:
+                # Leer todos los registros con la misma clave
+                f.seek(self.METADATA_SIZE + found_pos * self.record_size)
+                while True:
+                    pos = f.tell()
+                    data = f.read(self.record_size)
+                    if not data or pos >= self.METADATA_SIZE + (self.main_size * self.record_size):
+                        break
+                    
+                    rec = IndexRecord.unpack(data, self.key_format)
+                    if self._compare_keys(rec.key, key) != 0:
+                        break
+                    if not self._is_deleted(rec):
+                        results.append(rec)
+
+            # Buscar en área auxiliar
+            f.seek(self.METADATA_SIZE + self.main_size * self.record_size)
             for _ in range(self.aux_size):
-                rec = IndexRecord.unpack(f.read(IndexRecord.SIZE))
-                if start_key <= rec.key <= end_key:
+                data = f.read(self.record_size)
+                if not data:
+                    break
+                rec = IndexRecord.unpack(data, self.key_format)
+                if self._compare_keys(rec.key, key) == 0 and not self._is_deleted(rec):
                     results.append(rec)
 
         return results
 
-    def print_all(self):
-        """
-        Imprime los metadatos y todos los registros, diferenciando entre zona principal y auxiliar.
-        """
+    def delete_record(self, key: Union[int, float, str]) -> bool:
+        """Elimina lógicamente todos los registros con la clave especificada."""
+        if not self._validate_type(key, self.key_format):
+            raise TypeError(f"Clave {key} no es del tipo {self.key_format}")
+
+        deleted = False
+        empty_rec = utils.get_empty_record(self.key_format)
+
+        with open(self.filename, "r+b") as f:
+            # Buscar en área principal
+            f.seek(self.METADATA_SIZE)
+            for i in range(self.main_size):
+                pos = f.tell()
+                rec = IndexRecord.unpack(f.read(self.record_size), self.key_format)
+                if self._compare_keys(rec.key, key) == 0 and not self._is_deleted(rec):
+                    f.seek(pos)
+                    f.write(empty_rec.pack())
+                    deleted = True
+
+            # Buscar en área auxiliar
+            f.seek(self.METADATA_SIZE + self.main_size * self.record_size)
+            for i in range(self.aux_size):
+                pos = f.tell()
+                rec = IndexRecord.unpack(f.read(self.record_size), self.key_format)
+                if self._compare_keys(rec.key, key) == 0 and not self._is_deleted(rec):
+                    f.seek(pos)
+                    f.write(empty_rec.pack())
+                    deleted = True
+
+        return deleted
+
+    def search_range(self, start_key: Union[int, float, str], end_key: Union[int, float, str]) -> List[IndexRecord]:
+        """Busca registros cuyo key esté en el rango [start_key, end_key]."""
+        if not self._validate_type(start_key, self.key_format) or not self._validate_type(end_key, self.key_format):
+            raise TypeError("Las claves del rango no coinciden con el tipo de índice")
+
+        results = []
         with open(self.filename, "rb") as f:
+            # Encontrar primer registro en rango (búsqueda binaria)
+            low, high = 0, self.main_size - 1
+            first_pos = 0
+            
+            while low <= high:
+                mid = (low + high) // 2
+                f.seek(self.METADATA_SIZE + mid * self.record_size)
+                rec = IndexRecord.unpack(f.read(self.record_size), self.key_format)
+                
+                if self._compare_keys(rec.key, start_key) < 0:
+                    low = mid + 1
+                else:
+                    high = mid - 1
+                    first_pos = mid
+
+            # Leer registros en rango del área principal
+            f.seek(self.METADATA_SIZE + first_pos * self.record_size)
+            for _ in range(first_pos, self.main_size):
+                data = f.read(self.record_size)
+                if not data:
+                    break
+                rec = IndexRecord.unpack(data, self.key_format)
+                if self._compare_keys(rec.key, start_key) < 0:
+                    continue
+                if self._compare_keys(rec.key, end_key) > 0:
+                    break
+                if not self._is_deleted(rec):
+                    results.append(rec)
+
+            # Buscar en área auxiliar
+            f.seek(self.METADATA_SIZE + self.main_size * self.record_size)
+            for _ in range(self.aux_size):
+                data = f.read(self.record_size)
+                if not data:
+                    break
+                rec = IndexRecord.unpack(data, self.key_format)
+                if self._compare_keys(rec.key, start_key) >= 0 and self._compare_keys(rec.key, end_key) <= 0:
+                    if not self._is_deleted(rec):
+                        results.append(rec)
+
+        return results
+
+    def print_all(self):
+        """Imprime todos los registros del índice."""
+        with open(self.filename, "rb") as f:
+            # Leer metadatos
             meta = f.read(self.METADATA_SIZE)
             ms, au, ma = struct.unpack(self.METADATA_FORMAT, meta)
-            print(f"Main: {ms}, Aux: {au}, MaxAux: {ma}")
-            for i in range(ms + au):
-                rec = IndexRecord.unpack(f.read(IndexRecord.SIZE))
-                prefix = "[Aux]" if i >= ms else "[Main]"
-                print(f"{prefix} {rec.key} -> {rec.offset}")
+            print(f"Metadata: Main={ms}, Aux={au}, MaxAux={ma}")
+            print("Type:", self.key_format)
+            print("-" * 50)
+            
+            # Leer área principal
+            print("[MAIN AREA]")
+            for i in range(ms):
+                data = f.read(self.record_size)
+                if not data:
+                    break
+                rec = IndexRecord.unpack(data, self.key_format)
+                status = "DELETED" if self._is_deleted(rec) else "ACTIVE"
+                print(f"Pos {i}: Key={rec.key}, Offset={rec.offset} [{status}]")
+            
+            # Leer área auxiliar
+            print("\n[AUX AREA]")
+            for i in range(au):
+                data = f.read(self.record_size)
+                if not data:
+                    break
+                rec = IndexRecord.unpack(data, self.key_format)
+                status = "DELETED" if self._is_deleted(rec) else "ACTIVE"
+                print(f"Pos {i}: Key={rec.key}, Offset={rec.offset} [{status}]")
