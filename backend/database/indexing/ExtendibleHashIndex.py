@@ -82,8 +82,8 @@ class ExtendibleHashIndex:
 
     def __init__(self, table_name: str, indexed_field: str, D: int = 3, fb: int = 4):
 
-        self.filename = f"{table_name}.{indexed_field}.eh.idx"
-        self.hash_file = f"{table_name}.{indexed_field}.eh.tree"
+        self.filename = f"{table_name}.{indexed_field}.hash.idx"
+        self.hash_file = f"{table_name}.{indexed_field}.hash.tree"
 
         if not os.path.exists(self.filename):
             raise FileNotFoundError(f"El índice hash para {table_name} no existe. Crea el índice primero.")
