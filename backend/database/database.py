@@ -69,7 +69,7 @@ def print_all_seq_idx(table_name: str, field_name: str):
 
 # para probar las funciones
 def test():
-    table_name = "test"
+    table_name = "Productos"
     schema = [("id", "i"), ("nombre", "20s"), ("precio", "f"), ("cantidad", "i")]
 
     create_table(table_name, schema)
@@ -98,9 +98,11 @@ def test():
 
     print_all_seq_idx(table_name, "precio")
 
-    print("\n Buscando yogurt:") # hay dos yogurt en el heapfile se debe mostrar ambos
+    print("\n Buscando yogurt con indice secuencial:") # hay dos yogurt en el heapfile se debe mostrar ambos
     search_seq_idx(table_name, "nombre" , "Yogurt")
 
     insert_record(table_name, records[4])
 
     print_all_seq_idx(table_name, "nombre")
+
+test()
