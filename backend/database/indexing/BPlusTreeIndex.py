@@ -1,11 +1,13 @@
-#renato
+from IndexRecord import IndexRecord
+import struct
+import os
 
 class BPlusTreeIndex:
     
     def __init__(self, table_name: str, indexed_file: str):
         self.filename = table_name + "." + indexed_file + ".btree.idx"
 
-import struct
+
 
 FORMAT = 'i20si'
 RECORD_SIZE = struct.calcsize(FORMAT)
@@ -29,17 +31,23 @@ class Record:
 class BPlusTreeNode:
     def __init__(self, is_leaf=False):
         self.is_leaf = is_leaf
-        self.keys = []
-        self.children = []  
-        self.next = None   
+
+        if is_leaf:
+            self.records = []      # List[IndexRecord] en hojas
+            self.next = None       
+        else:
+            self.keys = []         
+            self.children = []     
+   
 
 class BPlusTree:
-    def __init__(self, order, filename, auxname):
+    def __init__(self, order, filename, auxname, index_format='i'):
         self.order = order
         self.max_keys = order
         self.node_size = 16 + 4 * self.max_keys + 8 * (self.max_keys + 1)
         self.filename = filename
         self.auxname = auxname
+        self.index_format = index_format  # tipo de indice
 
         try:
             with open(self.auxname, 'rb') as f:
@@ -60,71 +68,82 @@ class BPlusTree:
             buffer = f.read(self.node_size)
 
         is_leaf, key_count, next_leaf = struct.unpack('iiQ', buffer[:16])
-        
-        keys = list(struct.unpack(f'{self.max_keys}i', buffer[16:16 + 4 * self.max_keys]))
-
-        if is_leaf:
-            children = list(struct.unpack(f'{self.max_keys}Q', buffer[64:64 + 8 * self.max_keys]))
-        else:
-            children = list(struct.unpack(f'{self.max_keys + 1}Q', buffer[64:64 + 8 * (self.max_keys + 1)]))
 
         node = BPlusTreeNode(is_leaf=bool(is_leaf))
-        node.keys = keys[:key_count]
-        node.children = children[:key_count + (0 if is_leaf else 1)]
-        node.next = next_leaf if is_leaf else None
+
+        if is_leaf:
+            record_size = IndexRecord(self.index_format, 0, 0).size
+            node.records = []
+            for i in range(key_count):
+                start = 16 + i * record_size
+                end = start + record_size
+                record_data = buffer[start:end]
+                record = IndexRecord.unpack(record_data, self.index_format)
+                node.records.append(record)
+            node.next = next_leaf
+        else:
+            keys_start = 16
+            keys_size = 4 * self.max_keys
+            keys = list(struct.unpack(f'{self.max_keys}i', buffer[keys_start:keys_start + keys_size]))
+
+            children_start = keys_start + keys_size
+            children = list(struct.unpack(
+                f'{self.max_keys + 1}Q',
+                buffer[children_start:children_start + 8 * (self.max_keys + 1)]
+            ))
+
+            node.keys = keys[:key_count]
+            node.children = children[:key_count + 1]
 
         return node
 
     def save_node(self, node):
         is_leaf = int(node.is_leaf)
-        key_count = len(node.keys)
-        next_leaf = node.next if node.is_leaf else 0
-
-        keys = node.keys + [0] * (self.max_keys - len(node.keys))
-
-        if node.is_leaf:
-            children = node.children + [0] * (self.max_keys - len(node.children))
-        else:
-            children = node.children + [0] * (self.max_keys + 1 - len(node.children))
+        key_count = len(node.records if node.is_leaf else node.keys)
+        next_leaf = node.next if (node.is_leaf and node.next is not None) else 0
 
         header = struct.pack('iiQ', is_leaf, key_count, next_leaf)
-        key_data = struct.pack(f'{self.max_keys}i', *keys)
 
         if node.is_leaf:
-            child_data = struct.pack(f'{self.max_keys}Q', *children)
+            records_bytes = b''.join(record.pack() for record in node.records)
+            padding = b'\x00' * (self.node_size - 16 - len(records_bytes))  # 16 = header size
+            buffer = header + records_bytes + padding
         else:
-            child_data = struct.pack(f'{self.max_keys + 1}Q', *children)
+            keys = node.keys + [0] * (self.max_keys - len(node.keys))
+            children = node.children + [0] * (self.max_keys + 1 - len(node.children))
 
-        buffer = header + key_data + child_data
-        buffer += b'\x00' * (self.node_size - len(buffer))
+            key_data = struct.pack(f'{self.max_keys}i', *keys)
+            child_data = struct.pack(f'{self.max_keys + 1}Q', *children)
+            buffer = header + key_data + child_data
+            buffer += b'\x00' * (self.node_size - len(buffer))
 
         with open(self.auxname, 'ab') as f:
             pos = f.tell()
             f.write(buffer)
             return pos
+
         
     def save_node_at(self, offset, node):
         is_leaf = int(node.is_leaf)
-        key_count = len(node.keys)
-        next_leaf = node.next if node.is_leaf and node.next is not None else 0
-
-        keys = node.keys + [0] * (self.max_keys - len(node.keys))
-
-        if node.is_leaf:
-            children = node.children + [0] * (self.max_keys - len(node.children))
-        else:
-            children = node.children + [0] * ((self.max_keys + 1) - len(node.children))
+        key_count = len(node.records if node.is_leaf else node.keys)
+        next_leaf = node.next if (node.is_leaf and node.next is not None) else 0
 
         header = struct.pack('iiQ', is_leaf, key_count, next_leaf)
-        key_data = struct.pack(f'{self.max_keys}i', *keys)
 
         if node.is_leaf:
-            child_data = struct.pack(f'{self.max_keys}Q', *children)
+            # Pack IndexRecord objects
+            records_bytes = b''.join(record.pack() for record in node.records)
+            padding = b'\x00' * (self.node_size - 16 - len(records_bytes))  # 16 = header size
+            buffer = header + records_bytes + padding
         else:
-            child_data = struct.pack(f'{self.max_keys + 1}Q', *children)
+            # Pack keys and children as before
+            keys = node.keys + [0] * (self.max_keys - len(node.keys))
+            children = node.children + [0] * ((self.max_keys + 1) - len(node.children))
 
-        buffer = header + key_data + child_data
-        buffer += b'\x00' * (self.node_size - len(buffer))
+            key_data = struct.pack(f'{self.max_keys}i', *keys)
+            child_data = struct.pack(f'{self.max_keys + 1}Q', *children)
+            buffer = header + key_data + child_data
+            buffer += b'\x00' * (self.node_size - len(buffer))
 
         with open(self.auxname, 'r+b') as f:
             f.seek(offset)
@@ -215,4 +234,106 @@ class BPlusTree:
 
         return new_offset, separator_key
 
+    def search(self, id):
+        offset = self.search_aux(self.root_offset, id)
+
+        if offset is None:
+            return None
+
+        with open(self.filename, 'rb') as file:
+            file.seek(offset)
+            binary_record = file.read(RECORD_SIZE)
+            return Record.from_bytes(binary_record)
+
+    def search_aux(self, node_offset, id):
+        node = self.load_node(node_offset)
+
+        if node.is_leaf:
+            for record in node.records:
+                if record.key == id:
+                    return record.offset
+            return None
+
+        else:
+            idx = 0
+            while idx < len(node.keys) and node.keys[idx] < id:
+                idx += 1
+            return self.search_aux(node.children[idx], id)
+        
+    def range_search(self, min, max):
+        answers = []
+        self.range_search_aux(self.root_offset, min, max, answers)
+
+        if not answers:
+            return None
+
+        final_answer = []
+        with open(self.filename, 'rb') as file:
+            for offset in answers:
+                file.seek(offset)
+                binary_record = file.read(RECORD_SIZE)
+                final_answer.append(Record.from_bytes(binary_record))
+
+        return final_answer
+
+    def range_search_aux(self, node_offset, min, max, vector):
+        node = self.load_node(node_offset)
+
+        if node.is_leaf:
+            while node is not None:
+                for record in node.records:
+                    if min <= record.key <= max:
+                        vector.append(record.offset)
+                    elif record.key > max:
+                        return
+                if node.next:
+                    node = self.load_node(node.next)
+                else:
+                    break
+        else:
+            idx = 0
+            while idx < len(node.keys) and node.keys[idx] < min:
+                idx += 1
+            self.range_search_aux(node.children[idx], min, max, vector)
+        
 #----------------------------------------------------------------------------------------
+
+if os.path.exists('heapfile.bin'):
+    os.remove('heapfile.bin')
+if os.path.exists('index.dat'):
+    os.remove('index.dat')
+
+tree = BPlusTree(order=4, filename='heapfile.bin', auxname='index.dat')
+
+records = [
+    Record(10, "Alice", 1),
+    Record(200, "Bob", 2),
+    Record(5, "Carol", 1),
+    Record(310, "David", 2),
+    Record(25, "Eve", 3),
+    Record(145, "Frank", 4),
+]
+
+for r in records:
+    tree.insert(r)
+
+print("Search Tests:")
+for test_id in [5, 10, 15, 25, 40, 310, 145]: 
+    result = tree.search(test_id)
+    if result:
+        print(f"Found {test_id}: {result.nombre}, ciclo {result.ciclo}")
+    else:
+        print(f"{test_id} not found")
+
+print("\nRange Search Tests:")
+ranges = [(0, 100), (10, 25), (20, 30), (31, 50), (150, 400)]
+
+for min_val, max_val in ranges:
+    results = tree.range_search(min_val, max_val)
+    print(f"Range {min_val} to {max_val}:")
+    if results:
+        for r in results:
+            print(f" - {r.id}: {r.nombre}, ciclo {r.ciclo}")
+    else:
+        print(" - No records found")
+
