@@ -288,19 +288,103 @@ class ISAM:
                 if r.values[key_idx] == key:
                     return r
         return None
+    
+    def print_all(self):
+        print("\n📁 ISAM – INDICE DE PRIMER NIVEL (.isam1.idx):")
+        self._print_index(f"{self.table}.isam1.idx")
+
+        print("\n📁 ISAM – INDICE DE SEGUNDO NIVEL (.isam2.idx):")
+        self._print_index(f"{self.table}.isam2.idx")
+
+        print("\n📁 ISAM – DATOS PRINCIPALES (.isam.dat):")
+        self._print_data_pages()
+
+        print("\n📁 ISAM – OVERFLOW (.isam.overflow.dat):")
+        self._print_overflow()
+
+    def _print_index(self, filepath):
+        ent_sz = self.meta['index_record_size']
+        fmt = self.meta['key_format']
+        with open(filepath, 'rb') as f:
+            page_num = 0
+            while True:
+                page = f.read(BLOCK_SIZE)
+                if not page:
+                    break
+                print(f"\nPágina de índice #{page_num}:")
+                for i in range(self.meta['index_entries_per_page']):
+                    buf = page[i*ent_sz:(i+1)*ent_sz]
+                    rec = IndexRecord.unpack(buf, fmt)
+                    print(f"  {i}: {rec}")
+                page_num += 1
+
+    def _print_data_pages(self):
+        rec_sz = self.meta['record_size']
+        schema = self.meta['schema']
+        with open(f"{self.table}.isam.dat", 'rb') as f:
+            page_num = 0
+            while True:
+                page = f.read(BLOCK_SIZE)
+                if not page:
+                    break
+                print(f"\nPágina de datos #{page_num}:")
+                for i in range(self.meta['records_per_page']):
+                    buf = page[i*rec_sz:(i+1)*rec_sz]
+                    rec = Record.unpack(buf, schema)
+                    print(f"  {i}: {rec}")
+                page_num += 1
+
+    def _print_overflow(self):
+        rec_sz = self.meta['record_size']
+        schema = self.meta['schema']
+        with open(f"{self.table}.isam.overflow.dat", 'rb') as f:
+            i = 0
+            while True:
+                buf = f.read(rec_sz)
+                if not buf:
+                    break
+                rec = Record.unpack(buf, schema)
+                print(f"  {i}: {rec}")
+                i += 1
 
 
-# ---------------------------------------------------------------------------
-# demo mínima
-# ---------------------------------------------------------------------------
+
 if __name__ == '__main__':
+    from faker import Faker
+    import os
+
+    fake = Faker()
+    table_name = "test_isam"
     schema = [("nombre", "10s"), ("precio", "f"), ("cantidad", "i")]
-    if not os.path.exists("demo.isam.meta.json"):
-        ISAM.build_isam("demo", schema, "nombre")
-    idx = ISAM("demo")
-    # insertar pruebas
-    idx.insert(Record(schema, ["arroz", 3.2, 11]))
-    idx.insert(Record(schema, ["atun", 6.1, 4]))
-    print(idx.search("arroz"))
-    print(idx.search("atun"))
-    print(idx.search("carne"))
+
+    # Eliminar archivos previos
+    for ext in [".isam.dat", ".isam1.idx", ".isam2.idx", ".isam.overflow.dat", ".isam.meta.json"]:
+        try:
+            os.remove(f"{table_name}{ext}")
+        except FileNotFoundError:
+            pass
+
+    # Crear estructura ISAM
+    ISAM.build_isam(table_name, schema, "nombre")
+    idx = ISAM(table_name)
+
+    # Insertar 500 registros aleatorios para llegar al overflow
+    print("Insertando registros con faker...")
+    for i in range(1000):
+        nombre = fake.first_name()[:10]  # limitar a 10 caracteres
+        precio = round(fake.random_number(digits=2) + fake.random.random(), 2)
+        cantidad = fake.random_int(min=1, max=100)
+        idx.insert(Record(schema, [nombre, precio, cantidad]))
+        if i % 100 == 0:
+            print(f"{i} registros insertados...")
+
+    # Buscar algunos registros aleatorios para comprobar que se insertaron correctamente
+    print("\nBuscando 10 registros aleatorios:")
+    for _ in range(10):
+        nombre = fake.first_name()[:10]
+        resultado = idx.search(nombre)
+        print(f"Buscar '{nombre}': {'✅ Encontrado' if resultado else '🆗 No encontrado'}")
+
+    print("\n✅ Test finalizado: se insertaron 500 registros aleatorios.")
+
+    idx.print_all()
