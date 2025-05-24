@@ -26,7 +26,7 @@ class RTreeIndex:
 
 
     @staticmethod
-    def build_index(heap_filename: str, extract_index_fn, key_field: str):
+    def build_index(heap_filename: str, extract_index_fn, key_field: str) -> bool:
         # Load schema
         schema = utils.load_schema(heap_filename)
         # Get key format
@@ -36,11 +36,37 @@ class RTreeIndex:
         base, _ = os.path.splitext(heap_filename)
         idx_filename = f"{base}.{key_field}.rtree.idx"
 
+        # Extract and validate entries
+        entries = extract_index_fn(key_field)
+        valid_entries = [(RTreeIndex.normalize_bounds(k), o) for k, o in entries]
+        
         # Create index using library
         props = index.Property()
         props.storage = index.RT_Disk
         idx = index.Index(idx_filename, properties = props)
 
-        # Extract and validate entries
-        entries = extract_index_fn(key_field)
+        # Write registers
+        for key, offset in entries:
+            if not isinstance(offset, int):
+                raise ValueError(f"Offset inválido: {offset}")
+            idx.insert(offset, key)
+
+        idx.close()
+        return True
+
+    @staticmethod
+    def normalize_bounds(value):
+        if not isinstance(value, tuple):
+            raise TypeError("Valor de índice RTree debe ser una tupla")
         
+        l = len(value)
+        if l == 2:
+            x, y = value
+            return (x, y, x, y)
+        if l == 3:
+            x, y, z = value
+            return (x, y, z, x, y, z)
+        if l == 4 or l == 6:
+            return value
+        
+        raise ValueError(f"Tupla inválida para índice espacial: {value}")
