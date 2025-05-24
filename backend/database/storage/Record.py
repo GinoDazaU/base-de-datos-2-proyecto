@@ -77,7 +77,7 @@ def main():
         registro4.pack()
     ]
 
-    registros = [Record.unpack(schema, bin_data) for bin_data in registros_bin]
+    registros = [Record.unpack(bin_data, schema) for bin_data in registros_bin]
 
     # Mostrar todos los registros
     for r in registros:

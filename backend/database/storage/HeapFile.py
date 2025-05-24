@@ -94,6 +94,9 @@ class HeapFile:
         """
         Inserta un registro al final y actualiza metadata en el mismo file handle.
         """
+        if self.search_record(record.id) != None:
+            print("El registro ya existe")
+            return False
         if record.schema != self.schema:
             raise ValueError("El esquema del registro no coincide con el esquema del archivo.")
         with open(self.filename, "r+b") as f:

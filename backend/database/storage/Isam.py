@@ -1,252 +1,306 @@
 import os
-import struct
 import json
+import struct
+from bisect import bisect_right
+from typing import List, Tuple, Union, Optional
 
-class Record:
-    def __init__(self, schema, values=None):
-        self.schema = schema
-        self.names = [name for name, _ in schema]
-        self.formats = [fmt for _, fmt in schema]
-        self.struct = struct.Struct(''.join(self.formats))
-        self.values = values if values is not None else [None] * len(self.names)
+# ---------------------------------------------------------------------------
+#  CONFIGURACIÓN GLOBAL
+# ---------------------------------------------------------------------------
+BLOCK_SIZE      = 4096            # tamaño de página fijo
+SENTINEL_INT    = -1              # clave vacía (enteros)
+SENTINEL_FLOAT  = -float('inf')   # clave vacía (floats)  
+SENTINEL_STR    = ''              # clave vacía (cadenas)
 
-    def pack(self):
-        packed = []
-        for (name, fmt), val in zip(self.schema, self.values):
-            if fmt.endswith('s'):
-                size = int(fmt[:-1])
-                raw = val.encode('utf-8') if isinstance(val, str) else val
-                raw = raw[:size].ljust(size, b'\x00')
-                packed.append(raw)
-            else:
-                packed.append(val)
-        return self.struct.pack(*packed)
+# ---------------------------------------------------------------------------
+#  INDEX RECORD – sin cambios
+# ---------------------------------------------------------------------------
+class IndexRecord:
+    TYPE_INT    = 0
+    TYPE_FLOAT  = 1
+    TYPE_STRING = 2
 
-    @classmethod
-    def unpack(cls, schema, data):
-        st = struct.Struct(''.join(fmt for _, fmt in schema))
-        unpacked = st.unpack(data)
-        values = []
-        for (name, fmt), val in zip(schema, unpacked):
-            if fmt.endswith('s'):
-                values.append(val.rstrip(b'\x00').decode('utf-8'))
-            else:
-                values.append(val)
-        return cls(schema, values)
+    def __init__(self, fmt: str, key: Union[int, float, str], offset: int):
+        self.fmt    = fmt
+        self.key    = key
+        self.offset = offset
+        self._validate()
+
+    # ---------- validación --------------------------------------------------
+    def _validate(self):
+        if self.fmt == 'i' and not isinstance(self.key, int):
+            raise TypeError("Clave debe ser int para formato 'i'")
+        if self.fmt == 'f' and not isinstance(self.key, float):
+            raise TypeError("Clave debe ser float para formato 'f'")
+        if 's' in self.fmt and not isinstance(self.key, str):
+            raise TypeError("Clave debe ser str para formato 'Ns'")
+
+    # ---------- serialización ----------------------------------------------
+    def pack(self) -> bytes:
+        if self.fmt == 'i':
+            return struct.pack('Bii', self.TYPE_INT,   self.key, self.offset)
+        if self.fmt == 'f':
+            return struct.pack('Bfi', self.TYPE_FLOAT, self.key, self.offset)
+        size    = int(self.fmt[:-1])
+        encoded = self.key.encode()[:size].ljust(size, b'\x00')
+        return struct.pack(f'B{size}si', self.TYPE_STRING, encoded, self.offset)
+
+    @staticmethod
+    def unpack(buf: bytes, fmt: str) -> 'IndexRecord':
+        tag = buf[0]
+        if tag == IndexRecord.TYPE_INT:
+            _, k, off = struct.unpack_from('Bii', buf)
+            return IndexRecord('i', k, off)
+        if tag == IndexRecord.TYPE_FLOAT:
+            _, k, off = struct.unpack_from('Bfi', buf)
+            return IndexRecord('f', k, off)
+        size      = int(fmt[:-1])
+        _, enc, off = struct.unpack_from(f'B{size}si', buf)
+        return IndexRecord(fmt, enc.rstrip(b'\x00').decode(), off)
+
+    # ---------- utilidades --------------------------------------------------
+    @property
+    def size(self) -> int:
+        if self.fmt == 'i': return struct.calcsize('Bii')
+        if self.fmt == 'f': return struct.calcsize('Bfi')
+        size = int(self.fmt[:-1])
+        return struct.calcsize(f'B{size}si')
+
+    def __lt__(self, other):
+        return self.key < other.key
 
     def __repr__(self):
-        pairs = [f"{n}={v!r}" for n, v in zip(self.names, self.values)]
-        return f"<Record {' '.join(pairs)}>"
+        return f"IndexRecord({self.key!r}, off={self.offset})"
+
+# ---------------------------------------------------------------------------
+#  RECORD – sin cambios
+# ---------------------------------------------------------------------------
+class Record:
+    def __init__(self, schema: List[Tuple[str, str]], values: List[Union[int, float, str]]):
+        self.schema = schema
+        self.values = values
+        self.fmt    = ''.join(fmt for _, fmt in schema)
+        self.size   = struct.calcsize(self.fmt)
+
+    # ---------- serialización ----------------------------------------------
+    def pack(self) -> bytes:
+        processed = []
+        for (_, fmt), val in zip(self.schema, self.values):
+            if 's' in fmt:
+                size = int(fmt[:-1])
+                val  = val.encode()[:size].ljust(size, b'\x00')
+            processed.append(val)
+        return struct.pack(self.fmt, *processed)
+
+    @staticmethod
+    def unpack(buf: bytes, schema):
+        fmt   = ''.join(f for _, f in schema)
+        vals  = list(struct.unpack(fmt, buf))
+        clean = []
+        for (_, f), v in zip(schema, vals):
+            if 's' in f:
+                v = v.rstrip(b'\x00').decode()
+            clean.append(v)
+        return Record(schema, clean)
+
+    @staticmethod
+    def get_size(schema):
+        return struct.calcsize(''.join(f for _, f in schema))
+
+    def __repr__(self):
+        return f"Record({self.values})"
+
+# ---------------------------------------------------------------------------
+#  FUNCIONES AUXILIARES
+# ---------------------------------------------------------------------------
+
+def get_sentinel(fmt: str):
+    if fmt == 'i':  return SENTINEL_INT
+    if fmt == 'f':  return SENTINEL_FLOAT
+    return SENTINEL_STR
 
 
-def build_table(table_name, schema, key_field, block_factor):
-    data_file = f"{table_name}.data.dat"
-    index1_file = f"{table_name}.index1.dat"
-    index2_file = f"{table_name}.index2.dat"
-    overflow_file = f"{table_name}.overflow.dat"
-    meta_file = f"{table_name}.isam.meta.json"
+def dummy_key(fmt: str):
+    if fmt == 'i':  return 0
+    if fmt == 'f':  return 0.0
+    return ''
 
-    for f in [data_file, index1_file, index2_file, overflow_file, meta_file]:
-        try:
-            os.remove(f)
-        except OSError:
-            pass
 
-    with open(data_file, 'wb') as df:
-        df.write(struct.pack('i', 0))
+def create_empty_record(schema, key_idx):
+    vals = []
+    for i, (_, fmt) in enumerate(schema):
+        if i == key_idx:
+            vals.append(get_sentinel(fmt))
+        elif fmt == 'i':
+            vals.append(0)
+        elif fmt == 'f':
+            vals.append(0.0)
+        else:
+            size = int(fmt[:-1])
+            vals.append('\x00' * size)
+    return Record(schema, vals)
 
-    open(index1_file, 'wb').close()
-    open(index2_file, 'wb').close()
-    open(overflow_file, 'wb').close()
-
-    meta = {
-        'schema': schema,
-        'key_field': key_field,
-        'block_factor': block_factor,
-        'record_count': 0,
-        'root': [{'max_key': None, 'leaf_id': 0}],
-        'leaves': {0: []},
-        'overflow_heads': {},
-        'overflow_list': []
-    }
-    with open(meta_file, 'w') as mf:
-        json.dump(meta, mf, indent=4)
-
+# ---------------------------------------------------------------------------
+#  CLASE ISAM
+# ---------------------------------------------------------------------------
 class ISAM:
-    def __init__(self, table_name, key_field, block_factor):
-        self.table_name = table_name
-        self.data_file = f"{table_name}.data.dat"
-        self.index1_file = f"{table_name}.index1.dat"
-        self.index2_file = f"{table_name}.index2.dat"
-        self.overflow_file = f"{table_name}.overflow.dat"
-        self.meta_file = f"{table_name}.isam.meta.json"
+    def __init__(self, table: str):
+        self.table = table
+        self._load_meta()
 
-        with open(self.meta_file, 'r') as mf:
-            self.meta = json.load(mf)
+    # ---------------- CONSTRUCCIÓN INICIAL ---------------------------------
+    @staticmethod
+    def build_isam(table: str, schema, key_field: str):
+        key_idx = next(i for i,(n,_) in enumerate(schema) if n == key_field)
+        key_fmt = schema[key_idx][1]
 
-        self.schema = self.meta['schema']
-        self.names = [n for n, _ in self.schema]
-        self.key_field = self.meta['key_field']
-        self.key_index = self.names.index(self.key_field)
-        self.block_factor = self.meta['block_factor']
-        self.record_struct = struct.Struct(''.join(fmt for _, fmt in self.schema))
-        self.record_size = self.record_struct.size
+        rec_size       = Record.get_size(schema)
+        recs_per_pg    = BLOCK_SIZE // rec_size
+        idx_rec_size   = IndexRecord(key_fmt, dummy_key(key_fmt), 0).size  # ← fix
+        idx_per_pg     = BLOCK_SIZE // idx_rec_size
 
-        self.record_count = self.meta['record_count']
-        self.leaves = {int(k): v for k, v in self.meta['leaves'].items()}
-        self.root = self.meta['root']
-        self.overflow_heads = {int(k): v for k, v in self.meta['overflow_heads'].items()}
-        self.overflow_list = self.meta['overflow_list']
+        # ---- datos vacíos --------------------------------------------------
+        empty_page = create_empty_record(schema, key_idx).pack() * recs_per_pg
+        with open(f"{table}.isam.dat", 'wb') as f:
+            f.write(empty_page)
 
-    def save_meta(self):
-        self.meta['record_count'] = self.record_count
-        self.meta['root'] = self.root
-        self.meta['leaves'] = self.leaves
-        self.meta['overflow_heads'] = self.overflow_heads
-        self.meta['overflow_list'] = self.overflow_list
-        with open(self.meta_file, 'w') as mf:
-            json.dump(self.meta, mf, indent=4)
+        # ---- segundo nivel -------------------------------------------------
+        leaf_entry = IndexRecord(key_fmt, get_sentinel(key_fmt), 0).pack()
+        with open(f"{table}.isam2.idx", 'wb') as f:
+            f.write(leaf_entry * idx_per_pg)
 
-    def build_index(self):
-        pairs = []
-        for rec_num in range(self.record_count):
-            rec = self.fetch(rec_num)
-            key = rec.values[self.key_index]
-            pairs.append((key, rec_num))
-        pairs.sort(key=lambda x: x[0])
+        # ---- primer nivel --------------------------------------------------
+        root_entry = IndexRecord(key_fmt, get_sentinel(key_fmt), 0).pack()
+        with open(f"{table}.isam1.idx", 'wb') as f:
+            f.write(root_entry * idx_per_pg)
 
-        if not pairs:
-            self.leaves = {0: []}
-            self.root = [{'max_key': None, 'leaf_id': 0}]
-        else:
-            self.leaves = {}
-            self.root = []
-            for i in range((len(pairs) + self.block_factor - 1) // self.block_factor):
-                chunk = pairs[i * self.block_factor:(i + 1) * self.block_factor]
-                self.leaves[i] = chunk
-                max_key = chunk[-1][0]
-                self.root.append({'max_key': max_key, 'leaf_id': i})
+        # ---- overflow vacío ------------------------------------------------
+        open(f"{table}.isam.overflow.dat", 'wb').close()
 
-        self.overflow_heads = {}
-        self.overflow_list = []
-        self.save_meta()
+        meta = {
+            "schema": schema,
+            "key_field": key_field,
+            "block_size": BLOCK_SIZE,
+            "record_size": rec_size,
+            "records_per_page": recs_per_pg,
+            "index_record_size": idx_rec_size,
+            "index_entries_per_page": idx_per_pg,
+            "key_format": key_fmt
+        }
+        with open(f"{table}.isam.meta.json", 'w', encoding='utf-8') as fm:
+            json.dump(meta, fm, indent=2)
 
-    def _find_leaf(self, key):
-        for entry in self.root:
-            if entry['max_key'] is None or key <= entry['max_key']:
-                return entry['leaf_id']
-        return self.root[-1]['leaf_id']
+    # ---------------- BÚSQUEDA ---------------------------------------------
+    def search(self, key) -> Optional[Record]:
+        root = self._seek_index(f"{self.table}.isam1.idx", key)
+        leaf = self._seek_index(f"{self.table}.isam2.idx", key, base_off=root.offset)
+        data_off = leaf.offset
+        # leer página de datos
+        with open(f"{self.table}.isam.dat", 'rb') as fd:
+            fd.seek(data_off)
+            page = fd.read(BLOCK_SIZE)
+        rec = self._linear_scan(page, key)
+        if rec: return rec
+        return self._scan_overflow(key)
 
-    def add(self, record):
-        with open(self.data_file, 'r+b') as df:
-            df.seek(0)
-            df.write(struct.pack('i', self.record_count + 1))
-            df.seek(0, 2)
-            df.write(record.pack())
-        rec_num = self.record_count
-        self.record_count += 1
+    # ---------------- INSERCIÓN --------------------------------------------
+    def insert(self, record: Record):
+        key_idx = next(i for i,(n,_) in enumerate(self.meta['schema']) if n==self.meta['key_field'])
+        key     = record.values[key_idx]
 
-        key = record.values[self.key_index]
-        leaf_id = self._find_leaf(key)
-        block = self.leaves.get(leaf_id, [])
-        if len(block) < self.block_factor:
-            block.append((key, rec_num))
-            block.sort(key=lambda x: x[0])
-            self.leaves[leaf_id] = block
-        else:
-            head = self.overflow_heads.get(leaf_id)
-            entry = {'leaf_id': leaf_id, 'key': key, 'rec_num': rec_num, 'next': head, 'removed': False}
-            idx = len(self.overflow_list)
-            self.overflow_list.append(entry)
-            self.overflow_heads[leaf_id] = idx
+        root = self._seek_index(f"{self.table}.isam1.idx", key)
+        leaf = self._seek_index(f"{self.table}.isam2.idx", key, base_off=root.offset)
+        data_off = leaf.offset
 
-        for entry in self.root:
-            if entry['leaf_id'] == leaf_id:
-                blk = self.leaves.get(leaf_id, [])
-                entry['max_key'] = blk[-1][0] if blk else None
-                break
+        rec_sz  = self.meta['record_size']
+        per_pg  = self.meta['records_per_page']
+        page_modified = False
 
-        self.save_meta()
+        with open(f"{self.table}.isam.dat", 'r+b') as fd:
+            fd.seek(data_off)
+            page = bytearray(fd.read(BLOCK_SIZE))
+            keys = []
+            for i in range(per_pg):
+                buf = page[i*rec_sz:(i+1)*rec_sz]
+                r   = Record.unpack(buf, self.meta['schema'])
+                keys.append(r.values[key_idx])
+            try:
+                first_empty = keys.index(get_sentinel(self.meta['key_format']))
+            except ValueError:  # página llena
+                with open(f"{self.table}.isam.overflow.dat", 'ab') as fo:
+                    fo.write(record.pack())
+                return
+            insert_pos = bisect_right(keys, key, hi=first_empty)
+            # shift
+            for i in range(first_empty, insert_pos, -1):
+                dst = i*rec_sz
+                src = (i-1)*rec_sz
+                page[dst:dst+rec_sz] = page[src:src+rec_sz]
+            page[insert_pos*rec_sz:(insert_pos+1)*rec_sz] = record.pack()
+            page_modified = True
 
-    def fetch(self, rec_num):
-        with open(self.data_file, 'rb') as df:
-            df.seek(4 + rec_num * self.record_size)
-            data = df.read(self.record_size)
-        return Record.unpack(self.schema, data)
+            if page_modified:
+                fd.seek(data_off)
+                fd.write(page)
 
-    def search(self, key):
-        results = []
-        leaf_id = self._find_leaf(key)
-        for k, rnum in self.leaves.get(leaf_id, []):
-            if k == key:
-                results.append(self.fetch(rnum))
-        idx = self.overflow_heads.get(leaf_id)
-        while idx is not None:
-            entry = self.overflow_list[idx]
-            if not entry['removed'] and entry['key'] == key:
-                results.append(self.fetch(entry['rec_num']))
-            idx = entry['next']
-        return results
+    # ---------------- UTILITARIOS PRIVADOS ---------------------------------
+    def _load_meta(self):
+        with open(f"{self.table}.isam.meta.json", 'r', encoding='utf-8') as fm:
+            self.meta = json.load(fm)
 
-    def rangeSearch(self, begin_key, end_key):
-        results = []
-        sorted_root = sorted(self.root, key=lambda e: (e['max_key'] is not None, e['max_key'] or 0))
-        for entry in sorted_root:
-            lid = entry['leaf_id']
-            for k, rnum in self.leaves.get(lid, []):
-                if begin_key <= k <= end_key:
-                    results.append(self.fetch(rnum))
-            idx = self.overflow_heads.get(lid)
-            while idx is not None:
-                e = self.overflow_list[idx]
-                if not e['removed'] and begin_key <= e['key'] <= end_key:
-                    results.append(self.fetch(e['rec_num']))
-                idx = e['next']
-        return results
+    def _seek_index(self, idx_file: str, key, base_off: int = 0) -> IndexRecord:
+        ent_sz  = self.meta['index_record_size']
+        per_pg  = self.meta['index_entries_per_page']
+        fmt     = self.meta['key_format']
+        with open(idx_file, 'rb') as fi:
+            fi.seek(base_off)
+            page = fi.read(BLOCK_SIZE)
+        entries, keys = [], []
+        for i in range(per_pg):
+            buf = page[i*ent_sz:(i+1)*ent_sz]
+            rec = IndexRecord.unpack(buf, fmt)
+            entries.append(rec)
+            keys.append(rec.key)
+        idx = max(bisect_right(keys, key) - 1, 0)
+        return entries[idx]
 
-    def remove(self, key):
-        leaf_id = self._find_leaf(key)
-        block = self.leaves.get(leaf_id, [])
-        self.leaves[leaf_id] = [(k, r) for k, r in block if k != key]
-        idx = self.overflow_heads.get(leaf_id)
-        while idx is not None:
-            entry = self.overflow_list[idx]
-            if not entry['removed'] and entry['key'] == key:
-                entry['removed'] = True
-            idx = entry['next']
-        for entry in self.root:
-            if entry['leaf_id'] == leaf_id:
-                blk = self.leaves.get(leaf_id, [])
-                entry['max_key'] = blk[-1][0] if blk else None
-                break
-        self.save_meta()
+    def _linear_scan(self, page: bytes, key):
+        rec_sz = self.meta['record_size']
+        schema = self.meta['schema']
+        key_idx = next(i for i,(n,_) in enumerate(schema) if n==self.meta['key_field'])
+        for i in range(self.meta['records_per_page']):
+            buf = page[i*rec_sz:(i+1)*rec_sz]
+            r   = Record.unpack(buf, schema)
+            if r.values[key_idx] == key:
+                return r
+        return None
 
-    def print_index(self):
-        print("Root:", self.root)
-        print("Leaves:", self.leaves)
-        print("Overflow Heads:", self.overflow_heads)
-        print("Overflow List:", [e for e in self.overflow_list if not e['removed']])
+    def _scan_overflow(self, key):
+        rec_sz = self.meta['record_size']
+        schema = self.meta['schema']
+        key_idx = next(i for i,(n,_) in enumerate(schema) if n==self.meta['key_field'])
+        with open(f"{self.table}.isam.overflow.dat", 'rb') as fo:
+            while True:
+                buf = fo.read(rec_sz)
+                if not buf:
+                    break
+                r = Record.unpack(buf, schema)
+                if r.values[key_idx] == key:
+                    return r
+        return None
 
 
-def test():
-    for f in ["test.data.dat", "test.index1.dat", "test.index2.dat", "test.overflow.dat", "test.isam.meta.json"]:
-        try: os.remove(f)
-        except: pass
-
-    schema = [("id", "i"), ("nombre", "20s"), ("precio", "f"), ("cantidad", "i")]
-    build_table("test", schema, "id", block_factor=2)
-    isam = ISAM("test", "id", 2)
-    isam.build_index()
-
-    # Inserciones para overflow
-    for vals in [(1, "Apple", 0.5, 10), (2, "Banana", 0.3, 20), (3, "Cherry", 0.2, 30)]:
-        isam.add(Record(schema, list(vals)))
-
-    print("Search id=3:", isam.search(3))
-    print("Range 1-3:", isam.rangeSearch(1, 3))
-    isam.remove(2)
-    print("After removal id=2:", isam.search(2))
-    isam.print_index()
-
-if __name__ == "__main__":
-    test()
+# ---------------------------------------------------------------------------
+# demo mínima
+# ---------------------------------------------------------------------------
+if __name__ == '__main__':
+    schema = [("nombre", "10s"), ("precio", "f"), ("cantidad", "i")]
+    if not os.path.exists("demo.isam.meta.json"):
+        ISAM.build_isam("demo", schema, "nombre")
+    idx = ISAM("demo")
+    # insertar pruebas
+    idx.insert(Record(schema, ["arroz", 3.2, 11]))
+    idx.insert(Record(schema, ["atun", 6.1, 4]))
+    print(idx.search("arroz"))
+    print(idx.search("atun"))
+    print(idx.search("carne"))

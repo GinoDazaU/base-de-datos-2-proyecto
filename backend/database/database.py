@@ -1,6 +1,7 @@
 import os
 import glob
 from storage.HeapFile import HeapFile
+from storage.Isam import ISAM
 from storage.Record import Record
 from indexing.SequentialIndex import SequentialIndex
 from indexing.ExtendibleHashIndex import ExtendibleHashIndex
@@ -17,6 +18,10 @@ def get_table_path(table_name):
 def create_table(table_name: str, schema: list[tuple[str:str]]):
     table_name = get_table_path(table_name)
     HeapFile.build_file(table_name, schema)
+
+def create_isam_table(table_name: str, schema: list[tuple[str:str]], key_field: str):
+    table_name = get_table_path(table_name)
+    ISAM.build_table(table_name, schema, key_field, 8)
 
 def insert_record(table_name: str, record: Record):
     table_path = get_table_path(table_name)
@@ -68,7 +73,7 @@ def print_all_seq_idx(table_name: str, field_name: str):
     seq_idx.print_all()
 
 # para probar las funciones
-def test():
+def test1():
     table_name = "Productos"
     schema = [("id", "i"), ("nombre", "20s"), ("precio", "f"), ("cantidad", "i")]
 
@@ -105,4 +110,3 @@ def test():
 
     print_all_seq_idx(table_name, "nombre")
 
-test()
