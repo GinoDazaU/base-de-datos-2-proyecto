@@ -1,161 +1,231 @@
 import struct
 import json
 import os
-from typing import Optional
+from typing import Optional, Tuple, List
 
 from .Record import Record
 
-class HeapFile:
+# --------------------------------------------------------
+#  Valores centinela para marcar registros eliminados
+# --------------------------------------------------------
+SENTINEL_INT: int = -1                 # Para campos int / long
+SENTINEL_FLOAT: float = float('-inf')  # Para campos float / double
+SENTINEL_STR: str = ''                 # Para campos string
 
-    METADATA_FORMAT = "i"
+class HeapFile:
+    """Almacenamiento en heap (archivo secuencial) con soporte
+    opcional de clave primaria única.
+    
+    Se garantiza la unicidad de la clave primaria *solo* mediante
+    búsqueda lineal.  Para un rendimiento O(log n) deberá usarse
+    posteriormente un índice externo (B+‑Tree, hash, etc.).
+    """
+
+    METADATA_FORMAT = "i"      # almacena heap_size al inicio del archivo
     METADATA_SIZE = struct.calcsize(METADATA_FORMAT)
 
-    def __init__(self, table_name: str) -> None:
-        # Inicializa el archivo heap cargando el esquema y el tamaño actual.
-        self.filename = table_name + ".dat"
-        self.schema = self._load_schema(self.filename)
-        self.record_size = Record.get_size(self.schema)
-        if os.path.exists(self.filename):
-            with open(self.filename, "rb") as f:
-                metadata_buffer = f.read(self.METADATA_SIZE)
-                self.heap_size = struct.unpack(self.METADATA_FORMAT, metadata_buffer)[0]
-        else:
-            raise FileNotFoundError(f"El archivo {self.filename} no existe. Crea la tabla primero.")
-
+    # ------------------------------------------------------------------
+    # Creación del archivo ------------------------------------------------
+    # ------------------------------------------------------------------
     @staticmethod
-    def build_file(table_name: str, schema: list[tuple[str, str]]) -> None:
-        # Crea un nuevo archivo heap vacío y guarda su esquema en un archivo .json.
+    def build_file(table_name: str,
+                   schema: List[Tuple[str, str]],
+                   primary_key: Optional[str] = None) -> None:
+        """Crea un nuevo archivo heap vacío y su archivo de esquema JSON.
+
+        Args:
+            table_name: nombre lógico de la tabla (sin extensión).
+            schema: lista (name, fmt) estilo struct.
+            primary_key: nombre del campo que actuará como PK o None.
+        """
+        # 1) Archivo binario
         filename = table_name + ".dat"
         with open(filename, "wb") as f:
-            heap_size = 0
-            metadata = struct.pack(HeapFile.METADATA_FORMAT, heap_size)
+            metadata = struct.pack(HeapFile.METADATA_FORMAT, 0)  # heap_size = 0
             f.write(metadata)
 
+        # 2) Archivo de esquema JSON
         schema_file = table_name + ".schema.json"
-        fields = [{"name": name, "type": fmt} for name, fmt in schema]
+        fields = [
+            {
+                "name": name,
+                "type": fmt,
+                "is_primary_key": (name == primary_key)
+            }
+            for name, fmt in schema
+        ]
         schema_json = {
             "table_name": os.path.splitext(os.path.basename(table_name))[0],
             "fields": fields
         }
-        with open(schema_file, "w") as f:
+        with open(schema_file, "w", encoding="utf‑8") as f:
             json.dump(schema_json, f, indent=4)
 
-    def _load_schema(self, filename: str) -> list[tuple[str, str]]:
-        # Carga el esquema desde un archivo .json asociado al archivo de datos.
+    # ------------------------------------------------------------------
+    # Inicialización -----------------------------------------------------
+    # ------------------------------------------------------------------
+    def __init__(self, table_name: str) -> None:
+        self.filename = table_name + ".dat"
+        self.schema, self.primary_key = self._load_schema(self.filename)
+        self.record_size = Record.get_size(self.schema)
+
+        if not os.path.exists(self.filename):
+            raise FileNotFoundError(
+                f"El archivo {self.filename} no existe. Crea la tabla primero.")
+
+        with open(self.filename, "rb") as f:
+            meta_buf = f.read(self.METADATA_SIZE)
+            self.heap_size = struct.unpack(self.METADATA_FORMAT, meta_buf)[0]
+
+    # ------------------------------------------------------------------
+    # Utilidades internas ------------------------------------------------
+    # ------------------------------------------------------------------
+    def _load_schema(self, filename: str) -> Tuple[List[Tuple[str, str]], Optional[str]]:
+        """Devuelve (schema, primary_key_name) leídos de <tabla>.schema.json."""
         schema_file = filename.replace(".dat", ".schema.json")
-        with open(schema_file, "r") as f:
+        with open(schema_file, "r", encoding="utf‑8") as f:
             schema_json = json.load(f)
-        return [(field["name"], field["type"]) for field in schema_json["fields"]]
+        schema: List[Tuple[str, str]] = [
+            (fld["name"], fld["type"]) for fld in schema_json["fields"]
+        ]
+        pk = next((fld["name"] for fld in schema_json["fields"]
+                   if fld.get("is_primary_key")), None)
+        return schema, pk
 
-    def update_metadata(self, file_handle: Optional[object] = None) -> None:
-        """
-        Actualiza el contador de registros en metadata.  
-        Si se pasa un file_handle abierto en modo r+b, lo utiliza, sino abre el archivo.
-        """
-        if file_handle:
-            file_handle.seek(0)
-            file_handle.write(struct.pack(self.METADATA_FORMAT, self.heap_size))
-        else:
-            with open(self.filename, "r+b") as f:
-                f.seek(0)
-                f.write(struct.pack(self.METADATA_FORMAT, self.heap_size))
+    def _pk_index_and_format(self) -> Tuple[int, str]:
+        if self.primary_key is None:
+            raise ValueError("La tabla no tiene clave primaria definida.")
+        for idx, (name, fmt) in enumerate(self.schema):
+            if name == self.primary_key:
+                return idx, fmt
+        raise RuntimeError("Clave primaria no encontrada en schema (inconsistente).")
 
-    def extract_index(self, key_field: str) -> list[tuple[object, int]]:
-        """
-        Devuelve una lista de tuplas (valor_clave, número_de_registro) del campo clave especificado,
-        ignorando registros eliminados si el campo 'id' es -1.
-        """
-        field_names = [name for name, _ in self.schema]
+    @staticmethod
+    def _sentinel_for_format(fmt: str):
+        if any(c in fmt for c in ("i", "q")):
+            return SENTINEL_INT
+        if any(c in fmt for c in ("f", "d")):
+            return SENTINEL_FLOAT
+        if "s" in fmt:
+            return SENTINEL_STR
+        raise ValueError(f"Formato no soportado en sentinel: {fmt}")
+
+    # ------------------------------------------------------------------
+    # Metadata -----------------------------------------------------------
+    # ------------------------------------------------------------------
+    def _update_heap_size(self, fh):
+        fh.seek(0)
+        fh.write(struct.pack(self.METADATA_FORMAT, self.heap_size))
+
+    # ------------------------------------------------------------------
+    # Inserción ----------------------------------------------------------
+    # ------------------------------------------------------------------
+    def insert_record(self, record: Record) -> int:
+        """Inserta un registro al final verificando unicidad de la PK.
+
+        Retorna el número lógico del registro (offset)."""
+        # 1) Validar esquema
+        if record.schema != self.schema:
+            raise ValueError("El esquema del registro no coincide con el archivo.")
+
+        # 2) Validar clave primaria (si existe)
+        if self.primary_key:
+            pk_idx, pk_fmt = self._pk_index_and_format()
+            pk_val = record.values[pk_idx]
+            sentinel = self._sentinel_for_format(pk_fmt)
+
+            if pk_val == sentinel:
+                raise ValueError("El valor de la clave primaria no puede ser el centinela de borrado.")
+
+            # Búsqueda lineal O(n)
+            for i in range(self.heap_size):
+                existing = self.fetch_record_by_offset(i)
+                existing_pk = existing.values[pk_idx]
+                if existing_pk == pk_val:
+                    raise ValueError(f"Clave primaria duplicada: {pk_val}")
+
+        # 3) Escribir al final y actualizar metadata
+        with open(self.filename, "r+b") as fh:
+            fh.seek(0, os.SEEK_END)
+            fh.write(record.pack())
+            self.heap_size += 1
+            self._update_heap_size(fh)
+            return self.heap_size - 1
+
+    # ------------------------------------------------------------------
+    # Búsqueda por clave primaria ---------------------------------------
+    # ------------------------------------------------------------------
+    def search_by_pk(self, key) -> Optional[Record]:
+        """Devuelve el registro cuya clave primaria == key, o None."""
+        if self.primary_key is None:
+            raise ValueError("La tabla no define clave primaria.")
+        pk_idx, _ = self._pk_index_and_format()
+        with open(self.filename, "rb") as fh:
+            fh.seek(self.METADATA_SIZE)
+            for _ in range(self.heap_size):
+                buf = fh.read(self.record_size)
+                if len(buf) < self.record_size:
+                    break
+                rec = Record.unpack(buf, self.schema)
+                if rec.values[pk_idx] == key:
+                    return rec
+        return None
+
+    # ------------------------------------------------------------------
+    # Extracción de índice ------------------------------------------------
+    # ------------------------------------------------------------------
+    def extract_index(self, key_field: str) -> List[Tuple[object, int]]:
+        """Devuelve [(valor, rec_num)] para *key_field* ignorando borrados."""
+        field_names = [n for n, _ in self.schema]
         if key_field not in field_names:
-            raise KeyError(f"Campo '{key_field}' no existe en esquema")
+            raise KeyError(f"Campo '{key_field}' no existe en el esquema")
         key_pos = field_names.index(key_field)
 
-        # Asumimos que el campo 'id' (el primero) se usa para detectar eliminados
-        id_pos = field_names.index("id") if "id" in field_names else None
+        deleted_sentinel = None
+        if key_field == self.primary_key:
+            _, fmt = self._pk_index_and_format()
+            deleted_sentinel = self._sentinel_for_format(fmt)
 
-        entries: list[tuple[object, int]] = []
-        with open(self.filename, "rb") as f:
-            f.seek(self.METADATA_SIZE)
+        entries = []
+        with open(self.filename, "rb") as fh:
+            fh.seek(self.METADATA_SIZE)
             rec_num = 0
             while True:
-                buffer = f.read(self.record_size)
-                if len(buffer) < self.record_size:
+                buf = fh.read(self.record_size)
+                if len(buf) < self.record_size:
                     break
-                rec = Record.unpack(buffer, self.schema)
-                if id_pos is not None and isinstance(rec.values[id_pos], int) and rec.values[id_pos] == -1:
-                    rec_num += 1
-                    continue
+                rec = Record.unpack(buf, self.schema)
                 key_val = rec.values[key_pos]
+                if deleted_sentinel is not None and key_val == deleted_sentinel:
+                    rec_num += 1
+                    continue  # registro eliminado
                 entries.append((key_val, rec_num))
                 rec_num += 1
         return entries
 
-    def insert_record(self, record: Record) -> int:
-        """
-        Inserta un registro al final y actualiza metadata en el mismo file handle.
-        """
-        if self.search_record(record.id) != None:
-            print("El registro ya existe")
-            return False
-        if record.schema != self.schema:
-            raise ValueError("El esquema del registro no coincide con el esquema del archivo.")
-        with open(self.filename, "r+b") as f:
-            f.seek(0, os.SEEK_END)
-            f.write(record.pack())
-            self.heap_size += 1
-            self.update_metadata(file_handle=f)
-            return self.heap_size - 1
-
-    def search_record(self, target_id: int) -> Optional[Record]:
-        # Busca un registro cuyo campo 'id' coincida con `target_id`. Muestra el resultado si se encuentra.
-        id_index = None
-        for i, (name, _) in enumerate(self.schema):
-            if name == "id":
-                id_index = i
-                break
-        if id_index is None:
-            print("El campo 'id' no está definido en el esquema.")
-            return None
-
-        with open(self.filename, "rb") as f:
-            f.seek(self.METADATA_SIZE)
-            for i in range(self.heap_size):
-                offset = self.METADATA_SIZE + i * self.record_size
-                f.seek(offset)
-                record_buffer = f.read(self.record_size)
-                record = Record.unpack(record_buffer, self.schema)
-                record_id = record.values[id_index]
-
-                if str(record_id).strip() == str(target_id).strip():
-                    print("Registro encontrado:")
-                    record.print()
-                    return record
-                
-        print(f"No se encontró un registro con id = {target_id}")
-        return None
-
+    # ------------------------------------------------------------------
+    # Acceso directo por offset -----------------------------------------
+    # ------------------------------------------------------------------
     def fetch_record_by_offset(self, rec_num: int) -> Record:
-        """
-        Devuelve el registro ubicado en el número de registro `rec_num` (offset lógico).  
-        Lanza IndexError si `rec_num` fuera de rango.
-        """
         if rec_num < 0 or rec_num >= self.heap_size:
-            raise IndexError(f"Offset {rec_num} fuera de rango (0..{self.heap_size-1})")
-        with open(self.filename, "rb") as f:
-            byte_offset = self.METADATA_SIZE + rec_num * self.record_size
-            f.seek(byte_offset)
-            buffer = f.read(self.record_size)
-            return Record.unpack(buffer, self.schema)
+            raise IndexError(f"Offset {rec_num} fuera de rango (0..{self.heap_size - 1})")
+        with open(self.filename, "rb") as fh:
+            byte_off = self.METADATA_SIZE + rec_num * self.record_size
+            fh.seek(byte_off)
+            buf = fh.read(self.record_size)
+            return Record.unpack(buf, self.schema)
 
+    # ------------------------------------------------------------------
+    # Impresión utilitaria ----------------------------------------------
+    # ------------------------------------------------------------------
     def print_all(self) -> None:
-        # Muestra todos los registros del archivo, incluyendo metadata (heap_size).
         print(f"Metadata (heap_size): {self.heap_size}")
-        with open(self.filename, "rb") as f:
-            f.seek(self.METADATA_SIZE)
-            headers = [name for name, _ in self.schema]
-            print(" | ".join(headers))
-            print("-" * (len(headers) * 10))
+        headers = [n for n, _ in self.schema]
+        print(" | ".join(headers))
+        print("-" * (len(headers) * 10))
+        with open(self.filename, "rb") as fh:
+            fh.seek(self.METADATA_SIZE)
             for _ in range(self.heap_size):
-                buf = f.read(self.record_size)
+                buf = fh.read(self.record_size)
                 rec = Record.unpack(buf, self.schema)
                 rec.print()
