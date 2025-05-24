@@ -1,4 +1,4 @@
-from .IndexRecord import IndexRecord
+from IndexRecord import IndexRecord
 import struct
 import os
 
@@ -41,13 +41,14 @@ class BPlusTreeNode:
    
 
 class BPlusTree:
-    def __init__(self, order, filename, auxname, index_format='i'):
+    def __init__(self, order, filename, auxname, index_format='i', is_unique=False):
         self.order = order
         self.max_keys = order
         self.node_size = 16 + 4 * self.max_keys + 8 * (self.max_keys + 1)
         self.filename = filename
         self.auxname = auxname
         self.index_format = index_format  # tipo de indice
+        self.is_unique = is_unique 
 
         try:
             with open(self.auxname, 'rb') as f:
@@ -131,12 +132,10 @@ class BPlusTree:
         header = struct.pack('iiQ', is_leaf, key_count, next_leaf)
 
         if node.is_leaf:
-            # Pack IndexRecord objects
             records_bytes = b''.join(record.pack() for record in node.records)
             padding = b'\x00' * (self.node_size - 16 - len(records_bytes))  # 16 = header size
             buffer = header + records_bytes + padding
         else:
-            # Pack keys and children as before
             keys = node.keys + [0] * (self.max_keys - len(node.keys))
             children = node.children + [0] * ((self.max_keys + 1) - len(node.children))
 
@@ -205,7 +204,6 @@ class BPlusTree:
             else:
                 return None
 
-
     def _split_leaf(self, node, node_offset):
         mid = len(node.records) // 2
 
@@ -238,57 +236,47 @@ class BPlusTree:
 
         return new_offset, separator_key
 
-    def search(self, id):
-        offset = self.search_aux(self.root_offset, id)
+    def search(self, key):
+        results = self.search_aux(self.root_offset, key)
 
-        if offset is None:
+        if not results:
             return None
 
-        with open(self.filename, 'rb') as file:
-            file.seek(offset)
-            binary_record = file.read(RECORD_SIZE)
-            return Record.from_bytes(binary_record)
+        return results[0] if self.is_unique else results
 
-    def search_aux(self, node_offset, id):
+    def search_aux(self, node_offset, key):
         node = self.load_node(node_offset)
 
         if node.is_leaf:
+            matches = []
             for record in node.records:
-                if record.key == id:
-                    return record.offset
-            return None
+                if record.key == key:
+                    matches.append(record.offset)
+                elif record.key > key:
+                    break
+            return matches
 
         else:
             idx = 0
-            while idx < len(node.keys) and node.keys[idx] < id:
+            while idx < len(node.keys) and key > node.keys[idx]:
                 idx += 1
-            return self.search_aux(node.children[idx], id)
-        
-    def range_search(self, min, max):
-        answers = []
-        self.range_search_aux(self.root_offset, min, max, answers)
+            return self.search_aux(node.children[idx], key)
 
-        if not answers:
-            return None
+    def range_search(self, min_key, max_key):
+        offsets = []
+        self.range_search_aux(self.root_offset, min_key, max_key, offsets)
 
-        final_answer = []
-        with open(self.filename, 'rb') as file:
-            for offset in answers:
-                file.seek(offset)
-                binary_record = file.read(RECORD_SIZE)
-                final_answer.append(Record.from_bytes(binary_record))
+        return offsets if offsets else None
 
-        return final_answer
-
-    def range_search_aux(self, node_offset, min, max, vector):
+    def range_search_aux(self, node_offset, min_key, max_key, result_list):
         node = self.load_node(node_offset)
 
         if node.is_leaf:
             while node is not None:
                 for record in node.records:
-                    if min <= record.key <= max:
-                        vector.append(record.offset)
-                    elif record.key > max:
+                    if min_key <= record.key <= max_key:
+                        result_list.append(record.offset)
+                    elif record.key > max_key:
                         return
                 if node.next:
                     node = self.load_node(node.next)
@@ -296,48 +284,8 @@ class BPlusTree:
                     break
         else:
             idx = 0
-            while idx < len(node.keys) and node.keys[idx] < min:
+            while idx < len(node.keys) and node.keys[idx] < min_key:
                 idx += 1
-            self.range_search_aux(node.children[idx], min, max, vector)
+            self.range_search_aux(node.children[idx], min_key, max_key, result_list)
         
 #----------------------------------------------------------------------------------------
-
-if os.path.exists('heapfile.bin'):
-    os.remove('heapfile.bin')
-if os.path.exists('index.dat'):
-    os.remove('index.dat')
-
-tree = BPlusTree(order=4, filename='heapfile.bin', auxname='index.dat')
-
-records = [
-    Record(10, "Alice", 1),
-    Record(200, "Bob", 2),
-    Record(5, "Carol", 1),
-    Record(310, "David", 2),
-    Record(25, "Eve", 3),
-    Record(145, "Frank", 4),
-]
-
-for r in records:
-    tree.insert(r)
-
-print("Search Tests:")
-for test_id in [5, 10, 15, 25, 40, 310, 145]: 
-    result = tree.search(test_id)
-    if result:
-        print(f"Found {test_id}: {result.nombre}, ciclo {result.ciclo}")
-    else:
-        print(f"{test_id} not found")
-
-print("\nRange Search Tests:")
-ranges = [(0, 100), (10, 25), (20, 30), (31, 50), (150, 400)]
-
-for min_val, max_val in ranges:
-    results = tree.range_search(min_val, max_val)
-    print(f"Range {min_val} to {max_val}:")
-    if results:
-        for r in results:
-            print(f" - {r.id}: {r.nombre}, ciclo {r.ciclo}")
-    else:
-        print(" - No records found")
-
