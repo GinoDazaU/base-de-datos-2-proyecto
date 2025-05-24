@@ -1,4 +1,4 @@
-from IndexRecord import IndexRecord
+from .IndexRecord import IndexRecord
 import struct
 import os
 
@@ -300,44 +300,3 @@ class BPlusTree:
                 idx += 1
             self.range_search_aux(node.children[idx], min, max, vector)
         
-#----------------------------------------------------------------------------------------
-
-if os.path.exists('heapfile.bin'):
-    os.remove('heapfile.bin')
-if os.path.exists('index.dat'):
-    os.remove('index.dat')
-
-tree = BPlusTree(order=4, filename='heapfile.bin', auxname='index.dat')
-
-records = [
-    Record(10, "Alice", 1),
-    Record(200, "Bob", 2),
-    Record(5, "Carol", 1),
-    Record(310, "David", 2),
-    Record(25, "Eve", 3),
-    Record(145, "Frank", 4),
-]
-
-for r in records:
-    tree.insert(r)
-
-print("Search Tests:")
-for test_id in [5, 10, 15, 25, 40, 310, 145]: 
-    result = tree.search(test_id)
-    if result:
-        print(f"Found {test_id}: {result.nombre}, ciclo {result.ciclo}")
-    else:
-        print(f"{test_id} not found")
-
-print("\nRange Search Tests:")
-ranges = [(0, 100), (10, 25), (20, 30), (31, 50), (150, 400)]
-
-for min_val, max_val in ranges:
-    results = tree.range_search(min_val, max_val)
-    print(f"Range {min_val} to {max_val}:")
-    if results:
-        for r in results:
-            print(f" - {r.id}: {r.nombre}, ciclo {r.ciclo}")
-    else:
-        print(" - No records found")
-

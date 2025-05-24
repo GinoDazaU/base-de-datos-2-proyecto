@@ -12,220 +12,206 @@ SENTINEL_INT: int = -1                 # Para campos int / long
 SENTINEL_FLOAT: float = float('-inf')  # Para campos float / double
 SENTINEL_STR: str = ''                 # Para campos string
 
+# --------------------------------------------------------
+#  Constantes internas
+# --------------------------------------------------------
+PTR_SIZE = 4                              # int32 para enlazar free‑list
+METADATA_FORMAT = "ii"                  # [heap_size, free_head]
+METADATA_SIZE   = struct.calcsize(METADATA_FORMAT)
+
 class HeapFile:
-    """Almacenamiento en heap (archivo secuencial) con soporte
-    opcional de clave primaria única.
-    
-    Se garantiza la unicidad de la clave primaria *solo* mediante
-    búsqueda lineal.  Para un rendimiento O(log n) deberá usarse
-    posteriormente un índice externo (B+‑Tree, hash, etc.).
+    """Archivo heap con clave primaria opcional y free‑list interna.
+
+    • Cada *slot* = datos de Record + 4 bytes (next_free).
+    • Cuando un slot está libre: PK = centinela y next_free apunta al
+      siguiente hueco (o -1 si es el último).
+    • Offsets lógicos nunca cambian, así los índices externos se mantienen.
     """
 
-    METADATA_FORMAT = "i"      # almacena heap_size al inicio del archivo
-    METADATA_SIZE = struct.calcsize(METADATA_FORMAT)
-
     # ------------------------------------------------------------------
-    # Creación del archivo ------------------------------------------------
+    # Creación del archivo ---------------------------------------------
     # ------------------------------------------------------------------
     @staticmethod
     def build_file(table_name: str,
                    schema: List[Tuple[str, str]],
                    primary_key: Optional[str] = None) -> None:
-        """Crea un nuevo archivo heap vacío y su archivo de esquema JSON.
-
-        Args:
-            table_name: nombre lógico de la tabla (sin extensión).
-            schema: lista (name, fmt) estilo struct.
-            primary_key: nombre del campo que actuará como PK o None.
-        """
-        # 1) Archivo binario
+        """Crea archivo <table_name>.dat y <table_name>.schema.json."""
         filename = table_name + ".dat"
         with open(filename, "wb") as f:
-            metadata = struct.pack(HeapFile.METADATA_FORMAT, 0)  # heap_size = 0
-            f.write(metadata)
+            f.write(struct.pack(METADATA_FORMAT, 0, -1))   # heap_size=0, free_head=-1
 
-        # 2) Archivo de esquema JSON
         schema_file = table_name + ".schema.json"
         fields = [
-            {
-                "name": name,
-                "type": fmt,
-                "is_primary_key": (name == primary_key)
-            }
-            for name, fmt in schema
+            {"name": n, "type": fmt, "is_primary_key": (n == primary_key)}
+            for n, fmt in schema
         ]
-        schema_json = {
-            "table_name": os.path.splitext(os.path.basename(table_name))[0],
-            "fields": fields
-        }
-        with open(schema_file, "w", encoding="utf‑8") as f:
-            json.dump(schema_json, f, indent=4)
+        with open(schema_file, "w", encoding="utf-8") as jf:
+            json.dump({"table_name": os.path.basename(table_name), "fields": fields},
+                      jf, indent=4)
 
     # ------------------------------------------------------------------
-    # Inicialización -----------------------------------------------------
+    # Inicialización ----------------------------------------------------
     # ------------------------------------------------------------------
-    def __init__(self, table_name: str) -> None:
+    def __init__(self, table_name: str):
         self.filename = table_name + ".dat"
         self.schema, self.primary_key = self._load_schema(self.filename)
-        self.record_size = Record.get_size(self.schema)
+        self.rec_data_size = Record.get_size(self.schema)
+        self.slot_size     = self.rec_data_size + PTR_SIZE
 
         if not os.path.exists(self.filename):
-            raise FileNotFoundError(
-                f"El archivo {self.filename} no existe. Crea la tabla primero.")
+            raise FileNotFoundError(f"{self.filename} no existe. Cree la tabla primero.")
 
         with open(self.filename, "rb") as f:
-            meta_buf = f.read(self.METADATA_SIZE)
-            self.heap_size = struct.unpack(self.METADATA_FORMAT, meta_buf)[0]
+            self.heap_size, self.free_head = struct.unpack(METADATA_FORMAT,
+                                                           f.read(METADATA_SIZE))
 
     # ------------------------------------------------------------------
-    # Utilidades internas ------------------------------------------------
+    # Utilidades internas ----------------------------------------------
     # ------------------------------------------------------------------
-    def _load_schema(self, filename: str) -> Tuple[List[Tuple[str, str]], Optional[str]]:
-        """Devuelve (schema, primary_key_name) leídos de <tabla>.schema.json."""
-        schema_file = filename.replace(".dat", ".schema.json")
-        with open(schema_file, "r", encoding="utf‑8") as f:
-            schema_json = json.load(f)
-        schema: List[Tuple[str, str]] = [
-            (fld["name"], fld["type"]) for fld in schema_json["fields"]
-        ]
-        pk = next((fld["name"] for fld in schema_json["fields"]
-                   if fld.get("is_primary_key")), None)
+    def _load_schema(self, fname) -> Tuple[List[Tuple[str, str]], Optional[str]]:
+        with open(fname.replace(".dat", ".schema.json"), encoding="utf-8") as jf:
+            js = json.load(jf)
+        schema = [(fld["name"], fld["type"]) for fld in js["fields"]]
+        pk = next((fld["name"] for fld in js["fields"] if fld.get("is_primary_key")), None)
         return schema, pk
 
-    def _pk_index_and_format(self) -> Tuple[int, str]:
+    def _pk_idx_fmt(self) -> Tuple[int, str]:
         if self.primary_key is None:
             raise ValueError("La tabla no tiene clave primaria definida.")
-        for idx, (name, fmt) in enumerate(self.schema):
-            if name == self.primary_key:
-                return idx, fmt
-        raise RuntimeError("Clave primaria no encontrada en schema (inconsistente).")
+        for i, (n, fmt) in enumerate(self.schema):
+            if n == self.primary_key:
+                return i, fmt
+        raise RuntimeError("Inconsistencia en schema: PK no encontrada.")
 
     @staticmethod
-    def _sentinel_for_format(fmt: str):
-        if any(c in fmt for c in ("i", "q")):
-            return SENTINEL_INT
-        if any(c in fmt for c in ("f", "d")):
-            return SENTINEL_FLOAT
+    def _sentinel(fmt: str):
         if "s" in fmt:
             return SENTINEL_STR
-        raise ValueError(f"Formato no soportado en sentinel: {fmt}")
+        if fmt[-1] in "fd":
+            return SENTINEL_FLOAT
+        return SENTINEL_INT
 
-    # ------------------------------------------------------------------
-    # Metadata -----------------------------------------------------------
-    # ------------------------------------------------------------------
-    def _update_heap_size(self, fh):
+    def _write_header(self, fh):
         fh.seek(0)
-        fh.write(struct.pack(self.METADATA_FORMAT, self.heap_size))
+        fh.write(struct.pack(METADATA_FORMAT, self.heap_size, self.free_head))
 
     # ------------------------------------------------------------------
-    # Inserción ----------------------------------------------------------
+    # Inserción ---------------------------------------------------------
     # ------------------------------------------------------------------
     def insert_record(self, record: Record) -> int:
-        """Inserta un registro al final verificando unicidad de la PK.
-
-        Retorna el número lógico del registro (offset)."""
-        # 1) Validar esquema
         if record.schema != self.schema:
-            raise ValueError("El esquema del registro no coincide con el archivo.")
+            raise ValueError("Esquema del registro no coincide.")
 
-        # 2) Validar clave primaria (si existe)
+        # Unicidad PK (opcional)
         if self.primary_key:
-            pk_idx, pk_fmt = self._pk_index_and_format()
+            pk_idx, pk_fmt = self._pk_idx_fmt()
             pk_val = record.values[pk_idx]
-            sentinel = self._sentinel_for_format(pk_fmt)
-
-            if pk_val == sentinel:
-                raise ValueError("El valor de la clave primaria no puede ser el centinela de borrado.")
-
-            # Búsqueda lineal O(n)
+            if pk_val == self._sentinel(pk_fmt):
+                raise ValueError("Valor centinela no permitido en PK.")
             for i in range(self.heap_size):
-                existing = self.fetch_record_by_offset(i)
-                existing_pk = existing.values[pk_idx]
-                if existing_pk == pk_val:
-                    raise ValueError(f"Clave primaria duplicada: {pk_val}")
+                if self.fetch_record_by_offset(i).values[pk_idx] == pk_val:
+                    raise ValueError(f"PK duplicada: {pk_val}")
 
-        # 3) Escribir al final y actualizar metadata
         with open(self.filename, "r+b") as fh:
-            fh.seek(0, os.SEEK_END)
-            fh.write(record.pack())
-            self.heap_size += 1
-            self._update_heap_size(fh)
-            return self.heap_size - 1
+            if self.free_head == -1:                # sin huecos → append
+                slot_off = self.heap_size
+                fh.seek(0, os.SEEK_END)
+                fh.write(record.pack())
+                fh.write(struct.pack("i", 0))     # next_free = 0 (no usado)
+                self.heap_size += 1
+            else:                                   # reciclar hueco
+                slot_off = self.free_head
+                byte_off = METADATA_SIZE + slot_off * self.slot_size
+                fh.seek(byte_off + self.rec_data_size)
+                self.free_head = struct.unpack("i", fh.read(4))[0]   # next_free
+                fh.seek(byte_off)
+                fh.write(record.pack())
+                fh.write(struct.pack("i", 0))
+            self._write_header(fh)
+            return slot_off
 
     # ------------------------------------------------------------------
-    # Búsqueda por clave primaria ---------------------------------------
+    # Borrado -----------------------------------------------------------
     # ------------------------------------------------------------------
-    def search_by_pk(self, key) -> Optional[Record]:
-        """Devuelve el registro cuya clave primaria == key, o None."""
+    def delete_by_pk(self, key) -> Tuple[bool, int, Optional[Record]]:
         if self.primary_key is None:
-            raise ValueError("La tabla no define clave primaria.")
-        pk_idx, _ = self._pk_index_and_format()
+            raise ValueError("Tabla sin clave primaria.")
+        pk_idx, pk_fmt = self._pk_idx_fmt()
+        sentinel = self._sentinel(pk_fmt)
+
+        with open(self.filename, "r+b") as fh:
+            for pos in range(self.heap_size):
+                byte_off = METADATA_SIZE + pos * self.slot_size
+                fh.seek(byte_off)
+                buf = fh.read(self.rec_data_size)
+                rec = Record.unpack(buf, self.schema)
+                if rec.values[pk_idx] != key:
+                    continue
+                # marcar hueco: set PK = sentinel y next_free = free_head
+                rec.values[pk_idx] = sentinel
+                fh.seek(byte_off)
+                fh.write(rec.pack())
+                fh.write(struct.pack("i", self.free_head))
+                self.free_head = pos
+                self._write_header(fh)
+                return True, pos, rec
+        return False, -1, None
+
+    # ------------------------------------------------------------------
+    # Extracción de índice (ignora huecos) -----------------------------
+    # ------------------------------------------------------------------
+    def extract_index(self, field):
+        names = [n for n, _ in self.schema]
+        if field not in names:
+            raise KeyError(f"Campo '{field}' no existe.")
+        fld_idx = names.index(field)
+
+        pk_idx, pk_sentinel = None, None
+        if self.primary_key is not None:
+            pk_idx, pk_fmt = self._pk_idx_fmt()
+            pk_sentinel = self._sentinel(pk_fmt)
+
+        out, pos = [], 0
         with open(self.filename, "rb") as fh:
-            fh.seek(self.METADATA_SIZE)
-            for _ in range(self.heap_size):
-                buf = fh.read(self.record_size)
-                if len(buf) < self.record_size:
+            fh.seek(METADATA_SIZE)
+            while pos < self.heap_size:
+                buf = fh.read(self.rec_data_size)
+                if len(buf) < self.rec_data_size:
                     break
                 rec = Record.unpack(buf, self.schema)
-                if rec.values[pk_idx] == key:
-                    return rec
-        return None
+                # saltar huecos
+                if pk_idx is not None and rec.values[pk_idx] == pk_sentinel:
+                    fh.seek(PTR_SIZE, os.SEEK_CUR)
+                    pos += 1
+                    continue
+                out.append((rec.values[fld_idx], pos))
+                fh.seek(PTR_SIZE, os.SEEK_CUR)
+                pos += 1
+        return out
 
     # ------------------------------------------------------------------
-    # Extracción de índice ------------------------------------------------
+    # Fetch por offset --------------------------------------------------
     # ------------------------------------------------------------------
-    def extract_index(self, key_field: str) -> List[Tuple[object, int]]:
-        """Devuelve [(valor, rec_num)] para *key_field* ignorando borrados."""
-        field_names = [n for n, _ in self.schema]
-        if key_field not in field_names:
-            raise KeyError(f"Campo '{key_field}' no existe en el esquema")
-        key_pos = field_names.index(key_field)
-
-        deleted_sentinel = None
-        if key_field == self.primary_key:
-            _, fmt = self._pk_index_and_format()
-            deleted_sentinel = self._sentinel_for_format(fmt)
-
-        entries = []
+    def fetch_record_by_offset(self, pos: int) -> Record:
+        if pos < 0 or pos >= self.heap_size:
+            raise IndexError("Offset fuera de rango")
         with open(self.filename, "rb") as fh:
-            fh.seek(self.METADATA_SIZE)
-            rec_num = 0
-            while True:
-                buf = fh.read(self.record_size)
-                if len(buf) < self.record_size:
-                    break
-                rec = Record.unpack(buf, self.schema)
-                key_val = rec.values[key_pos]
-                if deleted_sentinel is not None and key_val == deleted_sentinel:
-                    rec_num += 1
-                    continue  # registro eliminado
-                entries.append((key_val, rec_num))
-                rec_num += 1
-        return entries
-
-    # ------------------------------------------------------------------
-    # Acceso directo por offset -----------------------------------------
-    # ------------------------------------------------------------------
-    def fetch_record_by_offset(self, rec_num: int) -> Record:
-        if rec_num < 0 or rec_num >= self.heap_size:
-            raise IndexError(f"Offset {rec_num} fuera de rango (0..{self.heap_size - 1})")
-        with open(self.filename, "rb") as fh:
-            byte_off = self.METADATA_SIZE + rec_num * self.record_size
-            fh.seek(byte_off)
-            buf = fh.read(self.record_size)
+            fh.seek(METADATA_SIZE + pos * self.slot_size)
+            buf = fh.read(self.rec_data_size)
             return Record.unpack(buf, self.schema)
 
     # ------------------------------------------------------------------
-    # Impresión utilitaria ----------------------------------------------
+    # Utilidades de depuración -----------------------------------------
     # ------------------------------------------------------------------
-    def print_all(self) -> None:
-        print(f"Metadata (heap_size): {self.heap_size}")
-        headers = [n for n, _ in self.schema]
-        print(" | ".join(headers))
-        print("-" * (len(headers) * 10))
+    def print_all(self):
+        print(f"heap_size={self.heap_size}, free_head={self.free_head}")
+        names = [n for n, _ in self.schema]
+        print(" | ".join(names))
+        print("-" * 10 * len(names))
         with open(self.filename, "rb") as fh:
-            fh.seek(self.METADATA_SIZE)
-            for _ in range(self.heap_size):
-                buf = fh.read(self.record_size)
+            fh.seek(METADATA_SIZE)
+            for i in range(self.heap_size):
+                buf = fh.read(self.rec_data_size)
                 rec = Record.unpack(buf, self.schema)
                 rec.print()
+                fh.seek(PTR_SIZE, os.SEEK_CUR)
