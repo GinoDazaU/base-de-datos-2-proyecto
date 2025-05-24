@@ -1,4 +1,4 @@
-from IndexRecord import IndexRecord
+from .IndexRecord import IndexRecord
 import struct
 import os
 

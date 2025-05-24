@@ -102,34 +102,41 @@ class HeapFile:
         if record.schema != self.schema:
             raise ValueError("Esquema del registro no coincide.")
 
-        # Unicidad PK (opcional)
+        # ── 1. Verificar unicidad de PK en una SOLA pasada ─────────────
         if self.primary_key:
             pk_idx, pk_fmt = self._pk_idx_fmt()
             pk_val = record.values[pk_idx]
             if pk_val == self._sentinel(pk_fmt):
                 raise ValueError("Valor centinela no permitido en PK.")
-            for i in range(self.heap_size):
-                if self.fetch_record_by_offset(i).values[pk_idx] == pk_val:
-                    raise ValueError(f"PK duplicada: {pk_val}")
 
+            with open(self.filename, "rb") as fh:      # una sola apertura
+                fh.seek(METADATA_SIZE)
+                for _ in range(self.heap_size):
+                    buf = fh.read(self.rec_data_size)
+                    if len(buf) < self.rec_data_size:
+                        break
+                    if Record.unpack(buf, self.schema).values[pk_idx] == pk_val:
+                        raise ValueError(f"PK duplicada: {pk_val}")
+                    fh.seek(PTR_SIZE, os.SEEK_CUR)     # saltar next_free
+
+        # ── 2. Insertar (reciclar hueco o append) ─────────────────────
         with open(self.filename, "r+b") as fh:
-            if self.free_head == -1:                # sin huecos → append
+            if self.free_head == -1:                    # sin huecos → append
                 slot_off = self.heap_size
                 fh.seek(0, os.SEEK_END)
                 fh.write(record.pack())
-                fh.write(struct.pack("i", 0))     # next_free = 0 (no usado)
+                fh.write(struct.pack("i", 0))           # next_free = 0
                 self.heap_size += 1
-            else:                                   # reciclar hueco
+            else:                                      # reciclar hueco
                 slot_off = self.free_head
                 byte_off = METADATA_SIZE + slot_off * self.slot_size
                 fh.seek(byte_off + self.rec_data_size)
-                self.free_head = struct.unpack("i", fh.read(4))[0]   # next_free
+                self.free_head = struct.unpack("i", fh.read(4))[0]  # siguiente libre
                 fh.seek(byte_off)
                 fh.write(record.pack())
                 fh.write(struct.pack("i", 0))
-            self._write_header(fh)
+            self._write_header(fh)                      # actualizar cabecera
             return slot_off
-
     # ------------------------------------------------------------------
     # Borrado -----------------------------------------------------------
     # ------------------------------------------------------------------
