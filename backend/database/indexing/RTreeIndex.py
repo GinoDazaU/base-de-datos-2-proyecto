@@ -19,7 +19,7 @@ class RTreeIndex:
         
         self.key_format = utils.get_key_format_from_schema(self.schema, indexed_field)
 
-        # Create index using library
+        # Load index using library
         props = index.Property()
         props.storage = index.RT_Disk
         self.idx = index.Index(self.filename, properties = props)
@@ -27,4 +27,20 @@ class RTreeIndex:
 
     @staticmethod
     def build_index(heap_filename: str, extract_index_fn, key_field: str):
-        pass
+        # Load schema
+        schema = utils.load_schema(heap_filename)
+        # Get key format
+        key_format = utils.get_key_format_from_schema(schema, key_field)
+        
+        # Generate index filename
+        base, _ = os.path.splitext(heap_filename)
+        idx_filename = f"{base}.{key_field}.rtree.idx"
+
+        # Create index using library
+        props = index.Property()
+        props.storage = index.RT_Disk
+        idx = index.Index(idx_filename, properties = props)
+
+        # Extract and validate entries
+        entries = extract_index_fn(key_field)
+        
