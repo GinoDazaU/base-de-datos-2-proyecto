@@ -158,35 +158,40 @@ class BPlusTree:
     def insert(self, record):
         with open(self.filename, 'ab') as file:
             pos = file.tell()
-            file.write(Record.to_bytes(record))
-            result = self._insert_aux(self.root_offset, record.id, pos)
-            if result:
-                new_node_offset, separator_key = result
-                new_root = BPlusTreeNode(is_leaf=False)
-                new_root.keys = [separator_key]
-                new_root.children = [self.root_offset, new_node_offset]
-                new_root_offset = self.save_node(new_root)
-                self.update_root_offset(new_root_offset)
+            file.write(record.to_bytes())
 
-    def _insert_aux(self, node_offset, key, offset):
+        index_record = IndexRecord(self.index_format, record.id, pos)
+        result = self._insert_aux(self.root_offset, index_record)
+
+        if result:
+            new_node_offset, separator_key = result
+            new_root = BPlusTreeNode(is_leaf=False)
+            new_root.keys = [separator_key]
+            new_root.children = [self.root_offset, new_node_offset]
+            new_root_offset = self.save_node(new_root)
+            self.update_root_offset(new_root_offset)
+
+    def _insert_aux(self, node_offset, index_record):
         node = self.load_node(node_offset)
+
         if node.is_leaf:
             idx = 0
-            while idx < len(node.keys) and key > node.keys[idx]:
+            while idx < len(node.records) and index_record.key > node.records[idx].key:
                 idx += 1
-            node.keys.insert(idx, key)
-            node.children.insert(idx, offset)
+            node.records.insert(idx, index_record)
 
-            if len(node.keys) > self.order:
+            if len(node.records) > self.order:
                 return self._split_leaf(node, node_offset)
             else:
-                self.save_node_at(node_offset, node)  
+                self.save_node_at(node_offset, node)
                 return None
+
         else:
             idx = 0
-            while idx < len(node.keys) and key > node.keys[idx]:
+            while idx < len(node.keys) and index_record.key > node.keys[idx]:
                 idx += 1
-            result = self._insert_aux(node.children[idx], key, offset)
+            result = self._insert_aux(node.children[idx], index_record)
+
             if result:
                 new_node_offset, new_key = result
                 node.keys.insert(idx, new_key)
@@ -200,22 +205,21 @@ class BPlusTree:
             else:
                 return None
 
+
     def _split_leaf(self, node, node_offset):
-        mid = len(node.keys) // 2
+        mid = len(node.records) // 2
 
         new_leaf = BPlusTreeNode(is_leaf=True)
-        new_leaf.keys = node.keys[mid:]
-        new_leaf.children = node.children[mid:]
+        new_leaf.records = node.records[mid:]
         new_leaf.next = node.next
 
-        node.keys = node.keys[:mid]
-        node.children = node.children[:mid]
-        node.next = self.save_node(new_leaf) 
+        node.records = node.records[:mid]
+        node.next = self.save_node(new_leaf)
 
         new_leaf_offset = node.next
-        self.save_node_at(node_offset, node) 
+        self.save_node_at(node_offset, node)
 
-        return new_leaf_offset, new_leaf.keys[0] 
+        return new_leaf_offset, new_leaf.records[0].key
 
     def _split_internal(self, node, node_offset):
         mid = len(node.keys) // 2
