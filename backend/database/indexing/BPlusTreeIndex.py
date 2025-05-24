@@ -6,6 +6,7 @@ class BPlusTreeIndex:
         self.filename = table_name + "." + indexed_file + ".btree.idx"
 
 import struct
+import os
 
 FORMAT = 'i20si'
 RECORD_SIZE = struct.calcsize(FORMAT)
@@ -60,13 +61,22 @@ class BPlusTree:
             buffer = f.read(self.node_size)
 
         is_leaf, key_count, next_leaf = struct.unpack('iiQ', buffer[:16])
-        
-        keys = list(struct.unpack(f'{self.max_keys}i', buffer[16:16 + 4 * self.max_keys]))
 
+        keys_start = 16
+        keys_size = 4 * self.max_keys
+        keys = list(struct.unpack(f'{self.max_keys}i', buffer[keys_start:keys_start + keys_size]))
+
+        children_start = keys_start + keys_size
         if is_leaf:
-            children = list(struct.unpack(f'{self.max_keys}Q', buffer[64:64 + 8 * self.max_keys]))
+            children = list(struct.unpack(
+                f'{self.max_keys}Q',
+                buffer[children_start:children_start + 8 * self.max_keys]
+            ))
         else:
-            children = list(struct.unpack(f'{self.max_keys + 1}Q', buffer[64:64 + 8 * (self.max_keys + 1)]))
+            children = list(struct.unpack(
+                f'{self.max_keys + 1}Q',
+                buffer[children_start:children_start + 8 * (self.max_keys + 1)]
+            ))
 
         node = BPlusTreeNode(is_leaf=bool(is_leaf))
         node.keys = keys[:key_count]
@@ -75,10 +85,11 @@ class BPlusTree:
 
         return node
 
+
     def save_node(self, node):
         is_leaf = int(node.is_leaf)
         key_count = len(node.keys)
-        next_leaf = node.next if node.is_leaf else 0
+        next_leaf = node.next if (node.is_leaf and node.next is not None) else 0
 
         keys = node.keys + [0] * (self.max_keys - len(node.keys))
 
@@ -215,4 +226,108 @@ class BPlusTree:
 
         return new_offset, separator_key
 
+    def search(self, id):
+        offset = self.search_aux(self.root_offset, id)
+
+        if offset is None:
+            return None
+
+        with open(self.filename, 'r+b') as file:
+            file.seek(offset)
+            binary_record = file.read(RECORD_SIZE)
+            return Record.from_bytes(binary_record)
+
+    def search_aux(self, node_offset, id):
+        node = self.load_node(node_offset)
+
+        if node.is_leaf:
+            for i in range(len(node.keys)):
+                if (node.keys[i] == id):
+                    return node.children[i]
+            return None
+            
+        else:
+            idx = 0
+            while idx < len(node.keys) and node.keys[idx] < id:
+                idx += 1
+            return self.search_aux(node.children[idx], id)
+        
+    def range_search(self, min, max):
+        answers = []
+        self.range_search_aux(self.root_offset, min, max, answers)
+
+        if not answers:
+            return None
+
+        final_answer = []
+        with open(self.filename, 'rb') as file:
+            for offset in answers:
+                file.seek(offset)
+                binary_record = file.read(RECORD_SIZE)
+                final_answer.append(Record.from_bytes(binary_record))
+
+        return final_answer
+
+
+    def range_search_aux(self, node_offset, min, max, vector):
+        node = self.load_node(node_offset)
+
+        if node.is_leaf:
+            while node is not None:
+                for i in range(len(node.keys)):
+                    if min <= node.keys[i] <= max:
+                        vector.append(node.children[i])
+                    elif node.keys[i] > max:
+                        return
+                if node.next:
+                    node = self.load_node(node.next)
+                else:
+                    break
+        else:
+            idx = 0
+            while idx < len(node.keys) and node.keys[idx] < min:
+                idx += 1
+            return self.range_search_aux(node.children[idx], min, max, vector)
+
+        
 #----------------------------------------------------------------------------------------
+
+if os.path.exists('heapfile.bin'):
+    os.remove('heapfile.bin')
+if os.path.exists('index.dat'):
+    os.remove('index.dat')
+
+tree = BPlusTree(order=4, filename='heapfile.bin', auxname='index.dat')
+
+records = [
+    Record(10, "Alice", 1),
+    Record(200, "Bob", 2),
+    Record(5, "Carol", 1),
+    Record(310, "David", 2),
+    Record(25, "Eve", 3),
+    Record(145, "Frank", 4),
+]
+
+for r in records:
+    tree.insert(r)
+
+print("Search Tests:")
+for test_id in [5, 10, 15, 25, 40, 310, 145]: 
+    result = tree.search(test_id)
+    if result:
+        print(f"Found {test_id}: {result.nombre}, ciclo {result.ciclo}")
+    else:
+        print(f"{test_id} not found")
+
+print("\nRange Search Tests:")
+ranges = [(0, 100), (10, 25), (20, 30), (31, 50), (150, 400)]
+
+for min_val, max_val in ranges:
+    results = tree.range_search(min_val, max_val)
+    print(f"Range {min_val} to {max_val}:")
+    if results:
+        for r in results:
+            print(f" - {r.id}: {r.nombre}, ciclo {r.ciclo}")
+    else:
+        print(" - No records found")
+
