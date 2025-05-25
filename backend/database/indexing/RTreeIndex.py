@@ -55,6 +55,20 @@ class RTreeIndex:
         return True
 
     @staticmethod
+    def validate_type(value, format: str) -> bool:
+        if isinstance(value, tuple) and all(isinstance(x, float) for x in value):
+            size = len(value)
+            if format == "2f" or format == "2i" or format == "2d":
+                return size == 2
+            if format == "3f" or format == "3i" or format == "3d":
+                return size == 3
+            if format == "4f" or format == "4i" or format == "4d":
+                return size == 4
+            if format == "6f" or format == "6i" or format == "6d":
+                return size == 6
+        return False
+
+    @staticmethod
     def normalize_bounds(value):
         if not isinstance(value, tuple):
             raise TypeError("Valor de índice RTree debe ser una tupla")
