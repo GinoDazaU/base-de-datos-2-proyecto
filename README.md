@@ -12,44 +12,11 @@
 
 <h3>👨‍💻 Integrantes</h3>
 
-<div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-
-  <div style="display: flex; flex-direction: column; align-items: center; border: 1px solid #ccc; border-radius: 12px; width: 180px; padding: 1rem; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-    <img src="./images/02.png" alt="a" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 0.5rem;">
-    <div style="text-align: center;">
-      <strong>Casquino Paz, Daniel Ignacio</strong>
-    </div>    
-  </div>
-
-  <div style="display: flex; flex-direction: column; align-items: center; border: 1px solid #ccc; border-radius: 12px; width: 180px; padding: 1rem; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-    <img src="./images/02.png" alt="b" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 0.5rem;">
-      <div style="text-align: center;">
-        <strong>Daza Yalta, Gino Jesús</strong>
-      </div>  
-  </div>
-
-  <div style="display: flex; flex-direction: column; align-items: center; border: 1px solid #ccc; border-radius: 12px; width: 180px; padding: 1rem; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-    <img src="./images/02.png" alt="c" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 0.5rem;">
-    <div style="text-align: center;">
-      <strong>Garcia Calle, Renato</strong>
-    </div>    
-  </div>
-
-  <div style="display: flex; flex-direction: column; align-items: center; border: 1px solid #ccc; border-radius: 12px; width: 180px; padding: 1rem; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-    <img src="./images/02.png" alt="d" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 0.5rem;">
-    <div style="text-align: center;">
-      <strong>Huaylla Huillca, Jean Piero</strong>
-    </div>    
-  </div>
-
-  <div style="display: flex; flex-direction: column; align-items: center; border: 1px solid #ccc; border-radius: 12px; width: 180px; padding: 1rem; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-    <img src="./images/02.png" alt="e" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 0.5rem;">
-    <div style="text-align: center;">
-      <strong>Niño Castañeda, Jesús Valentín</strong>
-    </div>
-  </div>
-
+<div align="center">
+    <img src="./images/03.png" alt="Proveedores Cloud" style="width: 100%;">
 </div>
+
+
 
 # Pasos de implementación del proyecto
 
