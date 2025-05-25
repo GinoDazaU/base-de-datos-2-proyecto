@@ -1,109 +1,129 @@
 from mo_sql_parsing import parse
 import json
-from database import get_table_path, create_table
+from database import get_table_path, create_table, check_table_exists
 from storage.HeapFile import HeapFile
 import pandas as pd
+from enum import Enum
+from future.schema import SchemaType
 
-class QueryReturnType:
-    def __init__(self, success, dataframe: pd.DataFrame = None, error = None):
-        self.success = success
-        self.data = dataframe
-        self.error = error
+class DEBUG_ENABLE(Enum):
+    NO = 0
+    YES = 1
 
-class Query:
-    def __init__(self, query_tree: dict):
-        self.query_tree = query_tree
+DEBUG_ENABLE = DEBUG_ENABLE.YES
+DEFAULT_VARCHAR_LENGTH = 255
 
-    # select should return the actual data
-    # from should return the data from the fetched table
-
-    def evaluate(self):
-        root_query_type = next(iter(self.query_tree)) # gets root type of query
-        if root_query_type == "select":
-            return self.handle_root_select()
-        elif root_query_type == "create table":
-            return self.handle_root_create_table()
-
-    def handle_root_create_table(self):
-        create_clause = self.query_tree["create table"]
-        name = create_clause["name"]
-        columns_clause = create_clause["columns"] # list of id, type
-        schema = []
-        for c in columns_clause:
-            # column has name and type(has more types)
-            col_name = c["name"]
-            col_type: dict = c["type"] # pretty type, must convert to fmt for schema
-            key = next(iter(col_type))
-            if key == "int":
-                fmt = "i"
-            elif key == "float":
-                fmt = "f"
-            elif key == "varchar":
-                fmt = f"{col_type[key] if len(col_type[key]) > 0 else 255}s" # if just varchar, default to 255
-            else:
-                raise ValueError(f"Unknown type {key}")
-            schema.append((col_name, fmt))
-
-        # create table expects name and schema list[tuple[str, str]]
-        try:
-            create_table(name, schema)
-            return QueryReturnType(True, f"Table {name} created successfully")
-        except Exception as e:
-            return QueryReturnType(False, pd.DataFrame(), e)
-
-    def handle_root_select(self):
-        select_clause = self.query_tree["select"]
-        columns_to_select = []
-        for item in select_clause:
-            if isinstance(item, dict):
-                columns_to_select.append(item.get("value"))
-            else:
-                columns_to_select.append(item)
-
-        from_clause = self.query_tree["from"]
-        from_return: QueryReturnType = self.handle_from(from_clause)
-        return from_return
-
-    def handle_from(self, from_clause):
-        if isinstance(from_clause, str):
-            table_path = get_table_path(from_clause)
-            heap = HeapFile(table_path)
-            HeapFile.to_dataframe(heap)
-            return QueryReturnType(True, HeapFile.to_dataframe(heap))
-        elif isinstance(from_clause, list):
-            # handle recursive from or multiple tables
-            pass
-
+def print_debug(message):
+    if DEBUG_ENABLE == DEBUG_ENABLE.YES:
+        print(message)
 
     
-    def handle_root_create(self):
-        return QueryReturnType(True)
+TableAbstraction = str | pd.DataFrame | None
+Level = dict[str, TableAbstraction]
+
+class Environment:
+    def __init__(self, other:"Environment"= None):
+        if other is not None:
+            self.levels = other.levels.copy()
+            self.current_level = other.current_level
+        else:
+            self.levels = {}
+            self.levels[0] = Level()
+            self.current_level = 0
+    
+    def descend(self):
+        self.current_level += 1
+        self.levels[self.current_level] = Level()
+    
+    def ascend(self):
+        if self.current_level == 0:
+            raise Exception("Cannot ascend from the root level")
+        self.current_level -= 1
+        self.levels.pop(self.current_level + 1)
+
+environment = Environment()
+
+class QueryResult:
+    def __init__(self, success: bool, data: TableAbstraction, message:str = None):
+        self.success = success
+        self.data = data
+        self.message = message
+    
+    def __repr__(self):
+        return f"QueryReturnType(success={self.success}, data={self.data}, message={self.message})"
+
+class Query:
+    def __init__(self, tree, level: int = 0):
+        self.tree = tree
+        self.level = level
+
+    def evaluate(self):
+        first_clause_type = next(iter(self.tree))
+        print_debug(f"Root clause type is {first_clause_type}")
+
+        match first_clause_type:
+            case "create table":
+                return self.evaluate_create_table(self.tree["create table"])
+            case _:
+                raise Exception(f"Unknown root clause type: {first_clause_type}")
+
+        return QueryResult(success=True, message="Query evaluated successfully")
+    
+    def evaluate_create_table(self, clause):
+        name = clause["name"]
+        if check_table_exists(name):
+            raise Exception(f"Table {name} already exists")
+        
+        columns = clause["columns"]
+        schema = SchemaType()
+
+        for column in columns:
+
+            column_name: str = column["name"]
+            column_type_left: dict = next(iter(column["type"]))
+            column_type:str = ""
+
+            match column_type_left:
+                case "int":
+                    column_type = "i"
+                case "float":
+                    column_type = "f"
+                case "varchar":
+                    column_type_right: dict | int = column["type"][column_type_left]
+                    length = column_type_right if isinstance(column_type_right, int) else DEFAULT_VARCHAR_LENGTH
+                    column_type = f"{length}s"
+            schema.append((column_name, column_type))
+        return self.handle_create_table(name, schema)
+    
+    def handle_create_table(self, name: str, schema: SchemaType):
+        try:
+            create_table(name, schema)
+            return QueryResult(success=True, data=None, message=f"Table {name} created successfully")
+        except Exception as e:
+            raise Exception(f"Failed to create table {name}: {e}")
 
 
 class Parser:
-    def print_debug(self, message):
-        if self.debug:
-            print(message)
-
-    def __init__(self, debug = True):
-        self.debug = debug
+    def __init__(self):
+        pass
 
     def parse(self, query: str):
         try:
-            parse_tree = parse(query)
-            self.print_debug("Parse tree:\n" + json.dumps(parse_tree, indent=2))
-            root = Query(parse_tree)
-            return root.evaluate()
+            tree = parse(query)
+            print_debug("Parse tree:\n" + json.dumps(tree, indent=2))
+            root = Query(tree, 0)
+            return root.evaluate() # should return a QueryResult object
         except Exception as e:
-            self.print_debug(f"Error parsing query: {e}")
+            print_debug(f"Exception at parse(): {e}")
             return None
         
     
 def main():
     parser = Parser()
-    query = "select id, edad from alumno"
-    query = "create table test (id int, name varchar)"
-    result = parser.parse(query)
+    query_create_table = "create table student (id int, name varchar(20), age int);"
+    insert_query = "insert into student (id, name, age) values (1, 'John Doe', 20);"
+    result = parser.parse(query_create_table)
+    print(result.message)
 
 if __name__ == "__main__":
     main()

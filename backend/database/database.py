@@ -5,7 +5,7 @@ from storage.Isam import ISAM
 from storage.Record import Record
 from indexing.SequentialIndex import SequentialIndex
 from indexing.ExtendibleHashIndex import ExtendibleHashIndex
-from indexing.BPlusTreeIndex import BPlusTreeIndex
+# from indexing.BPlusTreeIndex import BPlusTreeIndex
 from indexing.IndexRecord import IndexRecord
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -14,6 +14,14 @@ os.makedirs(tables_dir, exist_ok=True)
 
 def get_table_path(table_name):
     return os.path.join(tables_dir, table_name)
+
+def check_table_exists(table_name: str):
+    return os.path.exists(get_table_path(table_name) + ".dat")
+
+def check_index_exists(table_name: str, field_name: str, index_type: str):
+    table_path = get_table_path(table_name)
+    index_file = f"{table_path}.{field_name}.{index_type}.idx"
+    return os.path.exists(index_file) # gptaso
 
 def create_table(table_name: str, schema: list[tuple[str:str]]):
     table_name = get_table_path(table_name)
