@@ -102,34 +102,41 @@ class HeapFile:
         if record.schema != self.schema:
             raise ValueError("Esquema del registro no coincide.")
 
-        # Unicidad PK (opcional)
+        # ── 1. Verificar unicidad de PK en una SOLA pasada ─────────────
         if self.primary_key:
             pk_idx, pk_fmt = self._pk_idx_fmt()
             pk_val = record.values[pk_idx]
             if pk_val == self._sentinel(pk_fmt):
                 raise ValueError("Valor centinela no permitido en PK.")
-            for i in range(self.heap_size):
-                if self.fetch_record_by_offset(i).values[pk_idx] == pk_val:
-                    raise ValueError(f"PK duplicada: {pk_val}")
 
+            with open(self.filename, "rb") as fh:      # una sola apertura
+                fh.seek(METADATA_SIZE)
+                for _ in range(self.heap_size):
+                    buf = fh.read(self.rec_data_size)
+                    if len(buf) < self.rec_data_size:
+                        break
+                    if Record.unpack(buf, self.schema).values[pk_idx] == pk_val:
+                        raise ValueError(f"PK duplicada: {pk_val}")
+                    fh.seek(PTR_SIZE, os.SEEK_CUR)     # saltar next_free
+
+        # ── 2. Insertar (reciclar hueco o append) ─────────────────────
         with open(self.filename, "r+b") as fh:
-            if self.free_head == -1:                # sin huecos → append
+            if self.free_head == -1:                    # sin huecos → append
                 slot_off = self.heap_size
                 fh.seek(0, os.SEEK_END)
                 fh.write(record.pack())
-                fh.write(struct.pack("i", 0))     # next_free = 0 (no usado)
+                fh.write(struct.pack("i", 0))           # next_free = 0
                 self.heap_size += 1
-            else:                                   # reciclar hueco
+            else:                                      # reciclar hueco
                 slot_off = self.free_head
                 byte_off = METADATA_SIZE + slot_off * self.slot_size
                 fh.seek(byte_off + self.rec_data_size)
-                self.free_head = struct.unpack("i", fh.read(4))[0]   # next_free
+                self.free_head = struct.unpack("i", fh.read(4))[0]  # siguiente libre
                 fh.seek(byte_off)
                 fh.write(record.pack())
                 fh.write(struct.pack("i", 0))
-            self._write_header(fh)
+            self._write_header(fh)                      # actualizar cabecera
             return slot_off
-
     # ------------------------------------------------------------------
     # Borrado -----------------------------------------------------------
     # ------------------------------------------------------------------
@@ -156,6 +163,58 @@ class HeapFile:
                 self._write_header(fh)
                 return True, pos, rec
         return False, -1, None
+    
+    # ------------------------------------------------------------------
+    #  Búsqueda secuencial por cualquier campo --------------------------
+    # ------------------------------------------------------------------
+    def search_by_field(self, field: str, value):
+        """
+        Busca secuencialmente en el heap y devuelve:
+          • Una lista de Record con todas las coincidencias.
+          • Si el campo es la clave primaria, la búsqueda se detiene
+            tras la primera coincidencia.
+
+        Si el campo no existe, lanza KeyError.
+        """
+        # --- validar campo -------------------------------------------------
+        names = [n for n, _ in self.schema]
+        if field not in names:
+            raise KeyError(f"Campo '{field}' no existe en el esquema.")
+        fld_idx = names.index(field)
+
+        # --- info de PK/tombstone -----------------------------------------
+        pk_idx, pk_sentinel = None, None
+        stop_early = False
+        if self.primary_key is not None:
+            pk_idx, pk_fmt = self._pk_idx_fmt()
+            pk_sentinel = self._sentinel(pk_fmt)
+            stop_early = (field == self.primary_key)
+
+        resultados = []
+
+        with open(self.filename, "rb") as fh:
+            fh.seek(METADATA_SIZE)
+            for _ in range(self.heap_size):
+                buf = fh.read(self.rec_data_size)
+                if len(buf) < self.rec_data_size:
+                    break
+                rec = Record.unpack(buf, self.schema)
+
+                # ignorar huecos
+                if pk_idx is not None and rec.values[pk_idx] == pk_sentinel:
+                    fh.seek(PTR_SIZE, os.SEEK_CUR)
+                    continue
+
+                if rec.values[fld_idx] == value:
+                    resultados.append(rec)
+                    if stop_early:           # campo = PK → salir
+                        break
+
+                fh.seek(PTR_SIZE, os.SEEK_CUR)
+
+        # devolver un solo registro si sólo hay uno, si prefieres:
+        # return resultados[0] if len(resultados) == 1 else resultados
+        return resultados
 
     # ------------------------------------------------------------------
     # Extracción de índice (ignora huecos) -----------------------------

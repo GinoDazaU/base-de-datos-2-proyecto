@@ -180,23 +180,34 @@ def print_all_seq_idx(table_name: str, field_name: str):
 #  Prueba rápida -------------------------------------------------------------
 # ---------------------------------------------------------------------------
 
-def _demo():
-    tbl = "Productos"
-    schema = [("id", "i"), ("nombre", "20s"), ("precio", "f"), ("cantidad", "i")]
-    create_table(tbl, schema, primary_key="id")
+def _demo_heap_insert_1000():
+    """Demo: crea un HeapFile e inserta 1000 registros (sin índices)."""
+    import random
+    import string
+    import glob
+    import os
 
-    r1 = Record(schema, [1, "Galletas", 3.5, 10])
-    r2 = Record(schema, [2, "Chocolate", 5.0, 8])
-    insert_record(tbl, r1)
-    insert_record(tbl, r2)
+    table_name = "Heap1000"
+    schema = [("id", "i"), ("nombre", "20s"), ("precio", "f")]
 
-    print("-- tabla tras inserciones —")
-    print_table(tbl)
+    # Eliminar archivos anteriores
+    if os.path.exists(_table_path(table_name) + ".dat"):
+        for f in glob.glob(_table_path(table_name) + ".*"):
+            os.remove(f)
 
-    delete_record(tbl, 1)
-    delete_record(tbl, 2)
-    print("-- tabla tras delete(pk=1) —")
-    print_table(tbl)
+    # Crear tabla
+    create_table(table_name, schema, primary_key="id")
+
+    # Generar e insertar 1000 registros
+    for i in range(1000):
+        nombre = "P" + ''.join(random.choices(string.ascii_uppercase, k=5))
+        precio = round(random.uniform(1.0, 100.0), 2)
+        rec = Record(schema, [i + 1, nombre, precio])
+        insert_record(table_name, rec)
+
+    print("\n Se insertaron 1000 registros en HeapFile 'Heap1000'.")
+
+    print_table(table_name)
 
 if __name__ == "__main__":
-    _demo()
+    _demo_heap_insert_1000()
