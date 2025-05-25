@@ -111,7 +111,7 @@ class IndexRecord:
             return struct.calcsize("Bii")
         if self.format == 'f':
             return struct.calcsize("Bfi")
-        if 's' in self.format:
+        if re.fullmatch(r"\d+s", self.format):
             size = int(self.format[:-1])
             return struct.calcsize(f"B{size}si")
         if re.fullmatch(r'\d+[fdi]', self.format):
