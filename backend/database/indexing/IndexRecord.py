@@ -3,6 +3,10 @@ from typing import Union, Tuple, Any
 import math
 import re
 
+# Regex for string and tuple
+re_string = re.compile(r"^(\d+)s$")
+re_tuple = re.compile(r"^(\d+)([fdi])$")
+
 class IndexRecord:
     """Registro de índice que soporta claves de tipo int, float o string."""
     
@@ -34,18 +38,25 @@ class IndexRecord:
         elif self.format == 'f' and not isinstance(self.key, float):
             raise TypeError(f"Clave debe ser float para formato 'f', se recibió {type(self.key)}")
         
-        elif re.fullmatch(r"\d+s", self.format) and not isinstance(self.key, str):
-            raise TypeError(f"Clave debe ser str para formato string, se recibió {type(self.key)}")
+        elif re_string.fullmatch(self.format):
+            n = int(self.format[:-1])
+            if not isinstance(self.key, str):
+               raise TypeError(f"Clave debe ser str para formato string, se recibió {type(self.key)}")
+            raw = self.key.encode("utf-8")
+            if len(raw) > n:
+                raise ValueError(f"Cadena demasiado larga: {len(raw)} bytes, máximo {n}")
         
-        elif re.fullmatch(r'\d+[fdi]', self.format):
+        elif re_tuple.fullmatch(self.format):
             n = int(self.format[:-1])
             type_char = self.format[-1]
             if not isinstance(self.key, tuple) or len(self.key) != n:
                 raise TypeError(f"Clave debe ser tupla de tamaño {n} para el formato {self.format}")
+            
             if type_char == 'i' and not all(isinstance(x, int) for x in self.key):
-                raise TypeError(f"Clave debe ser tupla de tamaño {n} de solo ints para el formato {self.format}")
-            elif (type_char == 'f' or type_char == 'd') and not all(isinstance(x, float) for x in self.key):
-                raise TypeError(f"Clave debe ser tupla de tamaño {n} de solo floats para el formato {self.format}")
+                raise TypeError(f"Todos los elementos de la tupla deben ser int para formato {self.format}")
+            
+            elif type_char in ('f', 'd') and not all(isinstance(x, float) for x in self.key):
+                raise TypeError(f"Todos los elementos de la tupla deben ser float para formato {self.format}")
         
         else:
             raise TypeError(f"Formato no soportado: {self.format}")
@@ -53,23 +64,23 @@ class IndexRecord:
     def pack(self) -> bytes:
         """Serializa el registro a bytes."""
         if self.format == 'i':
-            return struct.pack("Bii", self.TYPE_INT, self.key, self.offset)
+            return struct.pack("<Bii", self.TYPE_INT, self.key, self.offset)
         
         if self.format == 'f':
-            return struct.pack("Bfi", self.TYPE_FLOAT, self.key, self.offset)
+            return struct.pack("<Bfi", self.TYPE_FLOAT, self.key, self.offset)
         
-        if re.fullmatch(r"\d+s", self.format) and isinstance(self.key, str):
+        if re_string.fullmatch(self.format) and isinstance(self.key, str):
             n = int(self.format[:-1])
             raw = self.key.encode("utf-8")[:n].ljust(n, b'\x00')
             return struct.pack(f"<B{n}si", self.TYPE_STRING, raw, self.offset)
         
-        if re.fullmatch(r'\d+[fdi]', self.format) and isinstance(self.key, tuple):
+        if re_tuple.fullmatch(self.format) and isinstance(self.key, tuple):
             n = int(self.format[:-1])
             type_char = self.format[-1]
             return struct.pack(f"<B{n}{type_char}i", self.TYPE_TUPLE, *self.key, self.offset)
         
         else:
-            raise ValueError(f"Formato no soportado: '{self.format}', con tipo: {type(self.key)}")
+            raise ValueError(f"Formato no soportado: '{self.format}', con tipo: '{type(self.key)}'")
 
     @staticmethod
     def unpack(data: bytes, format: str) -> 'IndexRecord':
@@ -77,25 +88,17 @@ class IndexRecord:
         type_byte = data[0]
         
         if type_byte == IndexRecord.TYPE_INT:
-            if len(data) < struct.calcsize(fmt):
-                raise ValueError(f"Buffer demasiado pequeño para el formato {fmt}. Necesario: {struct.calcsize(fmt)} bytes, recibido: {len(data)}.")
-            _, key, offset = struct.unpack_from("Bii", data)
+            _, key, offset = struct.unpack_from("<Bii", data)
             return IndexRecord('i', key, offset)
-        elif type_byte == IndexRecord.TYPE_FLOAT:
-            if len(data) < struct.calcsize(fmt):
-                raise ValueError(f"Buffer demasiado pequeño para el formato {fmt}. Necesario: {struct.calcsize(fmt)} bytes, recibido: {len(data)}.")
-            _, key, offset = struct.unpack_from("Bfi", data)
+        
+        if type_byte == IndexRecord.TYPE_FLOAT:
+            _, key, offset = struct.unpack_from("<Bfi", data)
             return IndexRecord('f', key, offset)
         
         if type_byte == IndexRecord.TYPE_STRING:
-            if re.fullmatch(r'\d+s', format):
-                raise ValueError("Se esperaba formato string para deserialización")
-            size = int(format[:-1])
-            fmt = f"B{size}si"
-            if len(data) < struct.calcsize(fmt):
-                raise ValueError(f"Buffer demasiado pequeño para el formato {fmt}. Necesario: {struct.calcsize(fmt)} bytes, recibido: {len(data)}.")
-            _, encoded, offset = struct.unpack_from(fmt, data)
-            key = encoded.decode('utf-8').rstrip('\x00')
+            n = int(format[:-1])
+            _, raw, offset = struct.unpack_from(f"<B{n}si", data)
+            key = raw.decode('utf-8').rstrip('\x00')
             return IndexRecord(format, key, offset)
         
         if type_byte == IndexRecord.TYPE_TUPLE:
@@ -113,16 +116,20 @@ class IndexRecord:
     def size(self) -> int:
         """Tamaño en bytes del registro serializado."""
         if self.format == 'i':
-            return struct.calcsize("Bii")
+            return struct.calcsize("<Bii")
+        
         if self.format == 'f':
-            return struct.calcsize("Bfi")
-        if re.fullmatch(r"\d+s", self.format):
-            size = int(self.format[:-1])
-            return struct.calcsize(f"B{size}si")
-        if re.fullmatch(r'\d+[fdi]', self.format):
+            return struct.calcsize("<Bfi")
+        
+        if re_string.fullmatch(self.format):
+            n = int(self.format[:-1])
+            return struct.calcsize(f"<B{n}si")
+        
+        if re_tuple.fullmatch(self.format):
             n = int(self.format[:-1])
             type_char = self.format[-1]
             return struct.calcsize(f"<B{n}{type_char}i")
+        
         else:
             raise ValueError(f"Formato no soportado para size(): {self.format}")
     
@@ -139,8 +146,7 @@ class IndexRecord:
             raise TypeError("Comparación solo válida entre IndexRecords")
         
         if self.format != other.format:
-            raise TypeError(f"No se puede comparar registros con campos de formatos distintos: "
-                            f"'{self.format}' vs '{other.format}'")
+            raise TypeError(f"No se puede comparar registros con campos de formatos distintos: '{self.format}' vs '{other.format}'")
         
         try:
             return self.key < other.key  # type: ignore

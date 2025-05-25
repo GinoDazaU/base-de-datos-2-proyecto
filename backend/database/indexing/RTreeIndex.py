@@ -1,7 +1,8 @@
 import os
 from rtree import index
 import json
-from .IndexRecord import IndexRecord
+from typing import Union, List
+from .IndexRecord import IndexRecord, re_tuple
 from . import utils
 
 class RTreeIndex:
@@ -38,7 +39,7 @@ class RTreeIndex:
 
         # Extract and validate entries
         entries = extract_index_fn(key_field)
-        valid_entries = [(RTreeIndex.normalize_bounds(k, key_format), o) for k, o in entries]
+        valid_entries = [(RTreeIndex.normalize_bounds(k, key_format), o) for k, o in entries if RTreeIndex.validate_type(k, key_format)]
         
         # Create index using library
         props = index.Property()
@@ -56,31 +57,35 @@ class RTreeIndex:
 
     @staticmethod
     def validate_type(value, format: str) -> bool:
-        if isinstance(value, tuple) and all(isinstance(x, float) for x in value):
-            size = len(value)
-            if format.startswith('2'):
-                return size == 2
-            if format.startswith('3'):
-                return size == 3
-            if format.startswith('4'):
-                return size == 4
-            if format.startswith('6'):
-                return size == 6
-        return False
+        m = re_tuple.fullmatch(format)
+        if not m:
+            return False
+        
+        n, type_char = int(m.group(1)), m.group(2)
+        if n not in (2, 3, 4, 6) or not isinstance(value, tuple) or len(value) != n:
+            return False
+        
+        if type_char == 'i':
+            return all(isinstance(x, int) for x in value)
+        
+        return  all(isinstance(x, float) for x in value)
 
     @staticmethod
-    def normalize_bounds(value, format: str) -> tuple:
-        if format.startswith('2'):
+    def normalize_bounds(value: tuple, format: str) -> tuple:
+        if len(value) == 2:
             x, y = value
             return (x, y, x, y)
-        if format.startswith('3'):
+        if len(value) == 3:
             x, y, z = value
             return (x, y, z, x, y, z)
         else:
             return value
         
-    def insert_record(self, bounds: tuple):
-        pass
+    def insert_record(self, records: IndexRecord):
+        return NotImplemented
+    
+    def search_range(self, key: tuple, radius: float) -> List[IndexRecord]:
+        return NotImplemented
 
-    def delete_record(self, offset: int, bounds: tuple):
-        pass
+    def delete_record(self, key, offset) -> bool:
+        return NotImplemented
