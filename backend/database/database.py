@@ -45,14 +45,13 @@ def create_isam_table(table_name: str,
 def create_btree_table(table_name: str,
                        schema: List[Tuple[str, str]],
                        key_field: str,
-                       is_primary_key: bool = True,
                        order: int = 4) -> None:
     
-    HeapFile.build_file(_table_path(table_name), schema, key_field if is_primary_key else None)
+    HeapFile.build_file(_table_path(table_name), schema, key_field)
 
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
-    BPlusTreeIndex.build_index(table_path, heap.extract_index, key_field, is_unique=is_primary_key, order=order)
+    BPlusTreeIndex.build_index(table_path, heap.extract_index, key_field, order=order)
 
 # ---------------------------------------------------------------------------
 #  Índices secundarios -------------------------------------------------------
