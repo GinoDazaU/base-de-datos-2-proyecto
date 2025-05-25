@@ -1,6 +1,7 @@
 import os
 from rtree import index
 import json
+from typing import Union, List
 from .IndexRecord import IndexRecord, re_tuple
 from . import utils
 
@@ -77,8 +78,11 @@ class RTreeIndex:
         else:
             return value
         
-    def insert_record(self, bounds: tuple):
-        pass
+    def insert_record(self, records: IndexRecord):
+        return NotImplemented
+    
+    def search_record(self, key: tuple) -> List[IndexRecord]:
+        return NotImplemented
 
-    def delete_record(self, offset: int, bounds: tuple):
-        pass
+    def delete_record(self, key, offset) -> bool:
+        return NotImplemented
