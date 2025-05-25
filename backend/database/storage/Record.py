@@ -44,7 +44,10 @@ class Record:
             if 's' in fmt:
                 size = int(fmt[:-1])
                 raw = vals.pop(0)
-                out.append(raw.rstrip(b'\x00').decode())
+                if isinstance(raw, bytes):
+                    out.append(raw.rstrip(b'\x00').decode('utf-8', errors='replace'))
+                else:
+                    out.append(str(raw))  
             elif fmt[:-1].isdigit():
                 n = int(fmt[:-1])
                 out.append(tuple(vals[:n]))

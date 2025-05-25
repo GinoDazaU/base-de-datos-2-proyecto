@@ -4,6 +4,8 @@ import string
 import glob
 import os
 import time
+import indexing.BPlusTreeIndex
+import database
 
 def _table_path(table_name: str) -> str:
     """Devuelve la ruta absoluta (sin extensión) de la tabla."""
@@ -143,5 +145,51 @@ def _test_heapfile_hashidx():
         print(r)
     print(f"Búsqueda con índice hash tomó {end - start:.6f} segundos")
 
+def _test_heapfile_btree_idx():
+    from faker import Faker
+    fake = Faker()
+
+    table_name = "AlumnoBTree"
+    schema = [("codigo", "10s"), ("nombre", "20s"), ("precio", "f")]
+    pk = "codigo"
+    target_codigo = "A00666"
+
+    for path in glob.glob(f"{_table_path(table_name)}*"):
+        os.remove(path)
+
+    create_table(table_name, schema, pk)
+    create_btree_idx(table_name, pk)
+
+    print("== INSERTANDO 2000 ==")
+    for i in range(2000):
+        codigo = f"A{i:05d}"
+        nombre = fake.first_name()
+        precio = round(random.uniform(1.0, 100.0), 2)
+        rec = Record(schema, [codigo, nombre, precio])
+        insert_record(table_name, rec)
+
+    print(f"== BUSCANDO {target_codigo} ==")
+        
+    t1 = time.time()
+    results = search_by_field(table_name, pk, target_codigo)
+    t2 = time.time()
+    print(f"Sin índice: {'ENCONTRADO' if results else 'NO ENCONTRADO'} en {t2 - t1:.6f} segundos")
+
+    t3 = time.time()
+    results = search_btree_idx(table_name, pk, target_codigo)
+    t4 = time.time()
+    print(f"Con índice B+Tree: {'ENCONTRADO' if results else 'NO ENCONTRADO'} en {t4 - t3:.6f} segundos")
+    for r in results:
+        print(r)
+
+    print("== BORRANDO ==")
+    delete_record(table_name, target_codigo)
+
+    print("== BUSCANDO POST-BORRADO ==")
+    results = search_btree_idx(table_name, pk, target_codigo)
+    print(f"Buscar {target_codigo} después de borrar: {'ENCONTRADO' if results else 'NO ENCONTRADO'}")
+
+
 if __name__ == "__main__":
-    _test_heapfile()
+    #_test_heapfile()
+    _test_heapfile_btree_idx()
