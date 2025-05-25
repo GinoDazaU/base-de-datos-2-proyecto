@@ -1,7 +1,7 @@
 import os
 from rtree import index
 import json
-from .IndexRecord import IndexRecord
+from .IndexRecord import IndexRecord, re_tuple
 from . import utils
 
 class RTreeIndex:
@@ -56,16 +56,14 @@ class RTreeIndex:
 
     @staticmethod
     def validate_type(value, format: str) -> bool:
-        if isinstance(value, tuple) and all(isinstance(x, float) for x in value):
-            size = len(value)
-            if format.startswith('2'):
-                return size == 2
-            if format.startswith('3'):
-                return size == 3
-            if format.startswith('4'):
-                return size == 4
-            if format.startswith('6'):
-                return size == 6
+        if re_tuple.fullmatch(format):
+            n = int(format[:-1])
+            type_char = format[-1]
+            if n not in (2, 3, 4, 6) or not isinstance(value, tuple) or len(value) != n:
+                return False
+            if type_char == 'i':
+                return all(isinstance(x, int) for x in value)
+            return all(isinstance(x, float) for x in value)
         return False
 
     @staticmethod

@@ -55,7 +55,7 @@ class IndexRecord:
             if type_char == 'i' and not all(isinstance(x, int) for x in self.key):
                 raise TypeError(f"Todos los elementos de la tupla deben ser int para formato {self.format}")
             
-            elif (type_char == 'f' or type_char == 'd') and not all(isinstance(x, float) for x in self.key):
+            elif type_char in ('f', 'd') and not all(isinstance(x, float) for x in self.key):
                 raise TypeError(f"Todos los elementos de la tupla deben ser float para formato {self.format}")
         
         else:
