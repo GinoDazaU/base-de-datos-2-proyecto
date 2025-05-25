@@ -2,13 +2,12 @@ from .IndexRecord import IndexRecord
 import struct
 import os
 
+"""
 class BPlusTreeIndexx:
     
     def __init__(self, table_name: str, indexed_file: str):
         self.filename = table_name + "." + indexed_file + ".btree.idx"
-
-FORMAT = 'i20si'
-RECORD_SIZE = struct.calcsize(FORMAT)
+"""
 NODE_HEADER_FORMAT = 'iiQ'  # is_leaf, key_count, next_leaf_offset
 
 class BPlusTreeNode:
@@ -43,6 +42,52 @@ class BPlusTreeIndex:
             self.root_offset = self.save_node(root)
 
             self.update_root_offset(self.root_offset)
+
+    @staticmethod
+    def build_index(table_path: str, extract_index_fn, key_field: str, order: int = 4):
+        """
+        Crea un archivo de índice B+ Tree desde una tabla existente.
+
+        Args:
+            table_path: Ruta base de la tabla (sin extensión)
+            extract_index_fn: Función que devuelve [(key, offset)]
+            key_field: Campo sobre el cual se indexará
+            order: Orden del árbol B+ (máx claves por nodo)
+        """
+        import json
+
+        # Obtener formato del campo desde el esquema
+        schema_path = f"{table_path}.schema.json"
+        with open(schema_path, "r") as f:
+            schema = json.load(f)
+
+        field_format = None
+        for field in schema["fields"]:
+            if field["name"] == key_field:
+                field_format = field["type"]
+                break
+        if field_format is None:
+            raise ValueError(f"Campo '{key_field}' no encontrado en el esquema.")
+
+        # Crear instancia del árbol B+
+        btree = BPlusTreeIndex(
+            order=order,
+            filename=table_path + ".dat",
+            auxname=f"{table_path}.{key_field}.btree.idx",
+            index_format=field_format
+        )
+
+        # Obtener entradas desde el heap
+        entries = extract_index_fn(key_field)
+        entries.sort(key=lambda x: x[0])  # ordenar por clave
+
+        # Insertar todas las entradas en el índice
+        for key, offset in entries:
+            index_record = IndexRecord(field_format, key, offset)
+            btree.insert(index_record)
+
+        return True
+
 
     def load_node(self, node_offset):
         with open(self.auxname, 'rb') as f:
@@ -262,5 +307,3 @@ class BPlusTreeIndex:
             while idx < len(node.keys) and node.keys[idx] < min_key:
                 idx += 1
             self.range_search_aux(node.children[idx], min_key, max_key, result_list)
-        
-#----------------------------------------------------------------------------------------
