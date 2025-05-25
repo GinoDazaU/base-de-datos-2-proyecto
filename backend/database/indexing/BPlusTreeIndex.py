@@ -2,12 +2,10 @@ from .IndexRecord import IndexRecord
 import struct
 import os
 
-class BPlusTreeIndex:
+class BPlusTreeIndexx:
     
     def __init__(self, table_name: str, indexed_file: str):
         self.filename = table_name + "." + indexed_file + ".btree.idx"
-
-
 
 FORMAT = 'i20si'
 RECORD_SIZE = struct.calcsize(FORMAT)
@@ -23,17 +21,15 @@ class BPlusTreeNode:
         else:
             self.keys = []         
             self.children = []     
-   
 
-class BPlusTree:
-    def __init__(self, order, filename, auxname, index_format='i', is_unique=False):
+class BPlusTreeIndex:
+    def __init__(self, order, filename, auxname, index_format='i'):
         self.order = order
         self.max_keys = order
         self.node_size = 16 + 4 * self.max_keys + 8 * (self.max_keys + 1)
         self.filename = filename
         self.auxname = auxname
         self.index_format = index_format  # tipo de indice
-        self.is_unique = is_unique 
 
         try:
             with open(self.auxname, 'rb') as f:
@@ -108,7 +104,6 @@ class BPlusTree:
             f.write(buffer)
             return pos
 
-        
     def save_node_at(self, offset, node):
         is_leaf = int(node.is_leaf)
         key_count = len(node.records if node.is_leaf else node.keys)
@@ -144,7 +139,7 @@ class BPlusTree:
             pos = file.tell()
             file.write(record.to_bytes())
 
-        index_record = IndexRecord(self.index_format, record.id, pos)
+        index_record = IndexRecord(self.index_format, record.key, pos)
         result = self._insert_aux(self.root_offset, index_record)
 
         if result:
@@ -222,12 +217,7 @@ class BPlusTree:
         return new_offset, separator_key
 
     def search(self, key):
-        results = self.search_aux(self.root_offset, key)
-
-        if not results:
-            return None
-
-        return results[0] if self.is_unique else results
+        return self.search_aux(self.root_offset, key)
 
     def search_aux(self, node_offset, key):
         node = self.load_node(node_offset)

@@ -42,6 +42,18 @@ def create_isam_table(table_name: str,
                       block_factor: int = 8) -> None:
     ISAM.build_isam(_table_path(table_name), schema, key_field, block_factor)
 
+def create_btree_table(table_name: str,
+                       schema: List[Tuple[str, str]],
+                       key_field: str,
+                       is_primary_key: bool = True,
+                       order: int = 4) -> None:
+    
+    HeapFile.build_file(_table_path(table_name), schema, key_field if is_primary_key else None)
+
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    BPlusTreeIndex.build_index(table_path, heap.extract_index, key_field, is_unique=is_primary_key, order=order)
+
 # ---------------------------------------------------------------------------
 #  Índices secundarios -------------------------------------------------------
 # ---------------------------------------------------------------------------
@@ -146,6 +158,25 @@ def search_seq_idx(table_name: str, field_name: str, field_value):
     seq_idx = SequentialIndex(table_path, field_name)
     for idx_rec in seq_idx.search_record(field_value):
         heap.fetch_record_by_offset(idx_rec.offset).print()
+
+def create_btree_idx(table_name: str, field_name: str):
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    BPlusTreeIndex.build_index(table_path, heap.extract_index, field_name)
+
+def search_btree_idx(table_name: str, field_name: str, field_value):
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    btree = BPlusTreeIndex(table_path, field_name)
+
+    offsets = btree.search(field_value)
+    if not offsets:
+        print("No results found.")
+        return
+
+    for offset in offsets:
+        heap.fetch_record_by_offset(offset).print()
+
 
 def print_all_seq_idx(table_name: str, field_name: str):
     SequentialIndex(_table_path(table_name), field_name).print_all()
