@@ -226,16 +226,17 @@ Durante las pruebas de uso, la aplicación hace **evidente el aporte de los índ
 
 ## 4.3. Video Demostrativo de Funcionalidad
 
-Hemos preparado un **video demostrativo** que muestra la funcionalidad completa de la aplicación, incluyendo:
+Hemos preparado un **video demostrativo** que muestra la funcionalidad completa de la aplicación.
 
-* El proceso de carga de datos.
-* La ejecución de operaciones de inserción, búsqueda y eliminación.
-* La visualización en tiempo real de las métricas de desempeño.
-* La interfaz gráfica interactiva.
-* **[Cualquier característica destacada que quieras mostrar]**.
 
-Puedes ver el video demo aquí: **[ENLACE A TU VIDEO DE DEMOSTRACIÓN (Youtube, Google Drive, etc.)]**
-</details>
+<video src="./images/video.mp4" controls muted autoplay loop style="max-width: 100%;">
+  Tu navegador no soporta el elemento de video.
+</video>
+
+https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=sharing 
+
+[Ver video](./images/video.mp4)
+
 
 ---
 
