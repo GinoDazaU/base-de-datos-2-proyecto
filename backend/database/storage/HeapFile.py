@@ -1,6 +1,7 @@
 import struct
 import json
 import os
+import pandas as pd
 from typing import Optional
 
 from .Record import Record
@@ -94,9 +95,9 @@ class HeapFile:
         """
         Inserta un registro al final y actualiza metadata en el mismo file handle.
         """
-        if self.search_record(record.id) != None:
-            print("El registro ya existe")
-            return False
+        # if self.search_record(record.id) != None:
+        #     print("El registro ya existe")
+        #     return False
         if record.schema != self.schema:
             raise ValueError("El esquema del registro no coincide con el esquema del archivo.")
         with open(self.filename, "r+b") as f:
@@ -159,3 +160,17 @@ class HeapFile:
                 buf = f.read(self.record_size)
                 rec = Record.unpack(buf, self.schema)
                 rec.print()
+
+    @staticmethod
+    def to_dataframe(heapfile: "HeapFile") -> pd.DataFrame:
+        with open(heapfile.filename, "rb") as f:
+            f.seek(heapfile.METADATA_SIZE)
+            headers = [name for name, _ in heapfile.schema]
+            df = pd.DataFrame(columns=headers)
+            for _ in range(heapfile.heap_size):
+                buf = f.read(heapfile.record_size)
+                rec = Record.unpack(buf, heapfile.schema)
+                row = {name: value for name, value in zip(headers, rec.values)}
+                df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        return df
+
