@@ -433,8 +433,6 @@ Durante las pruebas de uso en la aplicación, se hará **evidentemente el aporte
     * Se realizarán series de inserciones y eliminaciones en diferentes tipos de índices. La GUI permitirá observar cómo las técnicas dinámicas como **B+ Tree** y **Extendible Hashing** mantienen un rendimiento aceptable (logarítmico o constante en promedio) incluso con un alto volumen de datos y operaciones frecuentes, debido a sus mecanismos de auto-organización y reequilibrio.
     * Por el contrario, la misma carga de inserciones en un **Sequential File** mostrará picos recurrentes en I/O y tiempo cuando se active la reconstrucción, resaltando la desventaja de las estructuras estáticas en entornos de actualización intensiva.
 
-En síntesis, la aplicación no solo es una herramienta de prueba, sino una **plataforma visual y educativa** que hace palpable la importancia y el impacto directo de la elección y el diseño de las técnicas de indexación en el rendimiento de cualquier sistema de gestión de bases de datos. Las pruebas de uso en la interfaz gráfica ofrecerán una evidencia irrefutable del valor que aportan los índices.
-
 Este proyecto ha logrado sus objetivos de manera integral. Hemos diseñado e implementado con éxito un sistema robusto que demuestra la eficacia y las diferencias fundamentales de cinco técnicas esenciales de indexación de archivos en memoria secundaria: Sequential File/AVL File, ISAM-Sparse Index, Extendible Hashing, B+ Tree y RTree. La integración de un **Parser SQL** personalizado y una **Interfaz Gráfica de Usuario (GUI) intuitiva** ha permitido crear una aplicación interactiva que no solo ejecuta comandos SQL básicos, sino que también visualiza y cuantifica el impacto directo de cada técnica en operaciones críticas como la inserción, búsqueda (exacta y por rango) y eliminación de datos.
 
 Los **resultados experimentales** han validado nuestras hipótesis teóricas, mostrando claramente los trade-offs de cada índice en términos de **accesos a disco (I/O)** y **tiempo de ejecución**. La implementación de optimizaciones en el **manejo de memoria secundaria**, como el gestor de bloques y el buffer pool LRU, ha demostrado ser crucial para minimizar la latencia del disco y mejorar significativamente el rendimiento general.
@@ -465,51 +463,5 @@ https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=shari
 # Oveview - Pasos de implementación del proyecto
 <details>
 <summary><strong>Ver más</strong></summary>
-
-<h2>1. Estructuras de almacenamiento e índices</h2> 
-- Implementar las siguientes estructuras:
-  - Sequential File (o AVL File)
-  - ISAM (índice estático de 2 niveles con páginas overflow)
-  - Extendible Hashing
-  - B+ Tree
-  - R-Tree (para vectores o datos espaciales)
-
-<h2>2. Operaciones básicas por estructura</h2> 
-
-- Implementar en cada estructura:
-  - `add(registro)` – Inserción
-  - `search(key)` – Búsqueda exacta (puede haber varias coincidencias)
-  - `rangeSearch(start, end)` – Búsqueda por rango (no aplica a hashing)
-  - `remove(key)` – Eliminación (definir algoritmo por estructura)
-
-<h2>3. Parser SQL personalizado</h2> 
-
-- Traducir sentencias SQL personalizadas a llamadas a funciones:
-  - `CREATE TABLE` con índice especificado por columna
-  - `INSERT INTO ... VALUES (...)`
-  - `SELECT * FROM ... WHERE ...`
-  - `DELETE FROM ... WHERE ...`
-  - `CREATE TABLE ... FROM FILE ... USING INDEX ...`
-
-<h2>4. Backend en Python</h2> 
-
-- Usar Flask o FastAPI para:
-  - Recibir y ejecutar sentencias del ParserSQL
-  - Gestionar archivos, índices y datos
-  - Responder con resultados (JSON o estructura clara)
-
-<h2>5. Soporte a datos multidimensionales</h2> 
-
-- Usar R-Tree para:
-  - Indexar vectores, ubicaciones espaciales, etc.
-  - Soportar búsquedas por proximidad o rango espacial
-
-<h2>6. Interfaz gráfica (opcional pero recomendada)</h2> 
-
-- Implementar una GUI simple (Python con Tkinter, PyQt, etc.) para:
-  - Mostrar resultados de consultas
-  - Crear/editar tablas
-  - Ejecutar sentencias SQL visualmente
-</details>
 
 ![](https://media1.tenor.com/m/jRaSFSY9f78AAAAC/postgresql-heart-locket.gif)
