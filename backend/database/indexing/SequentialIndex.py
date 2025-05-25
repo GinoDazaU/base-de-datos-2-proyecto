@@ -118,9 +118,11 @@ class SequentialIndex:
             f.write(record.pack())
             self.aux_size += 1
             self.update_metadata(file_handle=f)
+            print("Indice Secuencial: Registro añadido correctamente")
 
         # Reconstruir si el área auxiliar es demasiado grande
         if self.aux_size > self.max_aux_size:
+            print("Indice Secuencial: Area Auxiliar llena, reconstruyendo...")
             self.rebuild_file()
 
     def rebuild_file(self):

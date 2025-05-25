@@ -155,8 +155,10 @@ def search_seq_idx(table_name: str, field_name: str, field_value):
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
     seq_idx = SequentialIndex(table_path, field_name)
+    results = []
     for idx_rec in seq_idx.search_record(field_value):
-        heap.fetch_record_by_offset(idx_rec.offset).print()
+        results.append(heap.fetch_record_by_offset(idx_rec.offset))
+    return results
 
 def create_btree_idx(table_name: str, field_name: str):
     table_path = _table_path(table_name)
@@ -173,45 +175,37 @@ def search_btree_idx(table_name: str, field_name: str, field_value):
         print("No results found.")
         return
 
+    results = []
     for offset in offsets:
-        heap.fetch_record_by_offset(offset).print()
+        results.append(heap.fetch_record_by_offset(offset))
+    return results
 
 
 def print_seq_idx(table_name: str, field_name: str):
     SequentialIndex(_table_path(table_name), field_name).print_all()
 
-
 # ---------------------------------------------------------------------------
 #  Índice hash (helpers) -----------------------------------------------------
 # ---------------------------------------------------------------------------
 
-
-def create_hash_idx(table_name: str,
-                    field_name: str,
-                    fb: int = 4,
-                    max_depth: int = 16) -> None:
+def create_hash_idx(table_name: str, field_name: str,) -> None:
     """
     Construye un índice hash extensible (bucket fb, profundidad máxima max_depth)
     para `field_name` usando los valores actuales del HeapFile.
     """
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
-    ExtendibleHashIndex.build_index(
-        heap_path=table_path,
-        extract_fn=heap.extract_index,
-        field=field_name,
-        fb=fb,
-        max_depth=max_depth
-    )
-
+    ExtendibleHashIndex.build_index(table_path, heap.extract_index, field_name)
 
 def search_hash_idx(table_name: str, field_name: str, field_value):
     """Imprime los registros cuyo campo == field_value usando el índice hash."""
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
     hidx = ExtendibleHashIndex(table_path, field_name)
+    results = []
     for idx_rec in hidx.search_record(field_value):
-        heap.fetch_record_by_offset(idx_rec.offset).print()
+        results.append(heap.fetch_record_by_offset(idx_rec.offset))
+    return results
 
 def print_hash_idx(table_name: str, field_name: str):
     ExtendibleHashIndex(_table_path(table_name), field_name).print_all()

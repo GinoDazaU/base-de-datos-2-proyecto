@@ -136,6 +136,7 @@ class HeapFile:
                 fh.write(record.pack())
                 fh.write(struct.pack("i", 0))
             self._write_header(fh)                      # actualizar cabecera
+            print("Registro:", record, " insertado correctamente")
             return slot_off
     # ------------------------------------------------------------------
     # Borrado -----------------------------------------------------------
@@ -155,6 +156,7 @@ class HeapFile:
                 if rec.values[pk_idx] != key:
                     continue
                 # marcar hueco: set PK = sentinel y next_free = free_head
+                print("Registro con PK:", key, "con contenido:", rec, "borrado correctamente")
                 rec.values[pk_idx] = sentinel
                 fh.seek(byte_off)
                 fh.write(rec.pack())
