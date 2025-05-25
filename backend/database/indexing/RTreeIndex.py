@@ -57,15 +57,18 @@ class RTreeIndex:
 
     @staticmethod
     def validate_type(value, format: str) -> bool:
-        if re_tuple.fullmatch(format):
-            n = int(format[:-1])
-            type_char = format[-1]
-            if n not in (2, 3, 4, 6) or not isinstance(value, tuple) or len(value) != n:
-                return False
-            if type_char == 'i':
-                return all(isinstance(x, int) for x in value)
-            return all(isinstance(x, float) for x in value)
-        return False
+        m = re_tuple.fullmatch(format)
+        if not m:
+            return False
+        
+        n, type_char = int(m.group(1)), m.group(2)
+        if n not in (2, 3, 4, 6) or not isinstance(value, tuple) or len(value) != n:
+            return False
+        
+        if type_char == 'i':
+            return all(isinstance(x, int) for x in value)
+        
+        return  all(isinstance(x, float) for x in value)
 
     @staticmethod
     def normalize_bounds(value: tuple, format: str) -> tuple:
@@ -81,7 +84,7 @@ class RTreeIndex:
     def insert_record(self, records: IndexRecord):
         return NotImplemented
     
-    def search_record(self, key: tuple) -> List[IndexRecord]:
+    def search_range(self, key: tuple, radius: float) -> List[IndexRecord]:
         return NotImplemented
 
     def delete_record(self, key, offset) -> bool:
