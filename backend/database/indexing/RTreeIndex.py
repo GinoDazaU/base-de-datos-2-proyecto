@@ -38,7 +38,7 @@ class RTreeIndex:
 
         # Extract and validate entries
         entries = extract_index_fn(key_field)
-        valid_entries = [(RTreeIndex.normalize_bounds(k), o) for k, o in entries]
+        valid_entries = [(RTreeIndex.normalize_bounds(k, format), o) for k, o in entries]
         
         # Create index using library
         props = index.Property()
@@ -69,18 +69,12 @@ class RTreeIndex:
         return False
 
     @staticmethod
-    def normalize_bounds(value):
-        if not isinstance(value, tuple):
-            raise TypeError("Valor de índice RTree debe ser una tupla")
-        
-        l = len(value)
-        if l == 2:
+    def normalize_bounds(value, format) -> tuple:
+        if format == "2f" or format == "2i" or format == "2d":
             x, y = value
             return (x, y, x, y)
-        if l == 3:
+        if format == "3f" or format == "3i" or format == "3d":
             x, y, z = value
             return (x, y, z, x, y, z)
-        if l == 4 or l == 6:
+        else:
             return value
-        
-        raise ValueError(f"Tupla inválida para índice espacial: {value}")
