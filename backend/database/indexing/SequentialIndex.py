@@ -190,87 +190,97 @@ class SequentialIndex:
         return False
 
     def search_record(self, key: Union[int, float, str]) -> List[IndexRecord]:
-        """Busca todos los registros con la clave especificada."""
+        """Devuelve todos los (key, offset) – tanto en área principal como auxiliar."""
         if not self._validate_type(key, self.key_format):
-            raise TypeError(f"Clave {key} no es del tipo {self.key_format}")
+            raise TypeError(f"Clave {key!r} no es del tipo {self.key_format}")
 
-        results = []
+        results: List[IndexRecord] = []
+
         with open(self.filename, "rb") as f:
-            # Búsqueda binaria en área principal
-            low, high = 0, self.main_size - 1
-            found_pos = -1
-            
-            while low <= high:
-                mid = (low + high) // 2
+            # ---------- 1) bin-search en área principal ----------
+            lo, hi = 0, self.main_size - 1
+            pos = -1
+            while lo <= hi:
+                mid = (lo + hi) // 2
                 f.seek(self.METADATA_SIZE + mid * self.record_size)
                 rec = IndexRecord.unpack(f.read(self.record_size), self.key_format)
-                
+
                 cmp = self._compare_keys(rec.key, key)
                 if cmp == 0:
-                    found_pos = mid
-                    high = mid - 1  # Buscar primera ocurrencia
+                    pos = mid
+                    break
                 elif cmp < 0:
-                    low = mid + 1
+                    lo = mid + 1
                 else:
-                    high = mid - 1
+                    hi = mid - 1
 
-            if found_pos != -1:
-                # Leer todos los registros con la misma clave
-                f.seek(self.METADATA_SIZE + found_pos * self.record_size)
-                while True:
-                    pos = f.tell()
-                    data = f.read(self.record_size)
-                    if not data or pos >= self.METADATA_SIZE + (self.main_size * self.record_size):
-                        break
-                    
-                    rec = IndexRecord.unpack(data, self.key_format)
+            if pos != -1:
+                # --- 1a) retroceder hasta el primer duplicado ---
+                i = pos
+                while i >= 0:
+                    f.seek(self.METADATA_SIZE + i * self.record_size)
+                    rec = IndexRecord.unpack(f.read(self.record_size), self.key_format)
                     if self._compare_keys(rec.key, key) != 0:
                         break
                     if not self._is_deleted(rec):
                         results.append(rec)
+                    i -= 1
 
-            # Buscar en área auxiliar
+                # --- 1b) avanzar hacia la derecha ---
+                i = pos + 1
+                while i < self.main_size:
+                    f.seek(self.METADATA_SIZE + i * self.record_size)
+                    rec = IndexRecord.unpack(f.read(self.record_size), self.key_format)
+                    if self._compare_keys(rec.key, key) != 0:
+                        break
+                    if not self._is_deleted(rec):
+                        results.append(rec)
+                    i += 1
+
+            # ---------- 2) barrer área auxiliar ----------
             f.seek(self.METADATA_SIZE + self.main_size * self.record_size)
             for _ in range(self.aux_size):
                 data = f.read(self.record_size)
                 if not data:
                     break
                 rec = IndexRecord.unpack(data, self.key_format)
-                if self._compare_keys(rec.key, key) == 0 and not self._is_deleted(rec):
+                if rec.key == key and not self._is_deleted(rec):
                     results.append(rec)
 
         return results
 
-    def delete_record(self, key: Union[int, float, str]) -> bool:
-        """Elimina lógicamente todos los registros con la clave especificada."""
+    def delete_record(self, key, offset) -> bool:
+        """Marca como eliminado el (key, offset) que coincida; devuelve True si lo encontró."""
         if not self._validate_type(key, self.key_format):
             raise TypeError(f"Clave {key} no es del tipo {self.key_format}")
 
-        deleted = False
-        empty_rec = utils.get_empty_record(self.key_format)
+        empty = utils.get_empty_record(self.key_format)
+        found = False
 
         with open(self.filename, "r+b") as f:
-            # Buscar en área principal
+            # --- área principal ---
             f.seek(self.METADATA_SIZE)
-            for i in range(self.main_size):
+            for _ in range(self.main_size):
                 pos = f.tell()
                 rec = IndexRecord.unpack(f.read(self.record_size), self.key_format)
-                if self._compare_keys(rec.key, key) == 0 and not self._is_deleted(rec):
+                if rec.key == key and rec.offset == offset:
                     f.seek(pos)
-                    f.write(empty_rec.pack())
-                    deleted = True
+                    f.write(empty.pack())
+                    found = True
+                    break
 
-            # Buscar en área auxiliar
-            f.seek(self.METADATA_SIZE + self.main_size * self.record_size)
-            for i in range(self.aux_size):
-                pos = f.tell()
-                rec = IndexRecord.unpack(f.read(self.record_size), self.key_format)
-                if self._compare_keys(rec.key, key) == 0 and not self._is_deleted(rec):
-                    f.seek(pos)
-                    f.write(empty_rec.pack())
-                    deleted = True
-
-        return deleted
+            # --- área auxiliar ---
+            if not found:
+                f.seek(self.METADATA_SIZE + self.main_size * self.record_size)
+                for _ in range(self.aux_size):
+                    pos = f.tell()
+                    rec = IndexRecord.unpack(f.read(self.record_size), self.key_format)
+                    if rec.key == key and rec.offset == offset:
+                        f.seek(pos)
+                        f.write(empty.pack())
+                        found = True
+                        break
+        return found
 
     def search_range(self, start_key: Union[int, float, str], end_key: Union[int, float, str]) -> List[IndexRecord]:
         """Busca registros cuyo key esté en el rango [start_key, end_key]."""

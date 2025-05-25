@@ -107,6 +107,11 @@ def insert_record(table_name: str, record: Record) -> int:
     _update_secondary_indexes(table_path, record, offset)
     return offset
 
+def search_by_field(table_name: str, field_name: str, value):
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    results = heap.search_by_field(field_name, value)
+    return results
 
 def delete_record(table_name: str, pk_value):
     """Elimina por clave primaria y actualiza índices secundarios."""
@@ -142,7 +147,6 @@ def search_seq_idx(table_name: str, field_name: str, field_value):
     for idx_rec in seq_idx.search_record(field_value):
         heap.fetch_record_by_offset(idx_rec.offset).print()
 
-
 def print_all_seq_idx(table_name: str, field_name: str):
     SequentialIndex(_table_path(table_name), field_name).print_all()
 
@@ -156,6 +160,7 @@ def _demo_heap_insert_1000():
     import string
     import glob
     import os
+    import time
 
     table_name = "Heap1000"
     schema = [("id", "i"), ("nombre", "20s"), ("precio", "f")]
@@ -167,6 +172,7 @@ def _demo_heap_insert_1000():
 
     # Crear tabla
     create_table(table_name, schema, primary_key="id")
+    create_seq_idx(table_name, schema[1][0])
 
     # Generar e insertar 1000 registros
     for i in range(1000):
@@ -176,8 +182,22 @@ def _demo_heap_insert_1000():
         insert_record(table_name, rec)
 
     print("\n Se insertaron 1000 registros en HeapFile 'Heap1000'.")
+    print("\n Se insertaron 1000 registros en el indice secuencial a 'Heap1000'.")
 
     print_table(table_name)
+    print_all_seq_idx(table_name, schema[1][0])
+
+    start = time.time()
+    results: list[Record] = search_by_field(table_name, schema[1][0], "PUZQHG")
+    for r in results:
+        r.print()
+    end = time.time()
+    print(f"Búsqueda sin índice tomó {end - start:.6f} segundos")
+    
+    start = time.time()
+    search_seq_idx(table_name, schema[1][0], "PUZQHG")
+    end = time.time()
+    print(f"Búsqueda con índice secuencial tomó {end - start:.6f} segundos")
 
 if __name__ == "__main__":
     _demo_heap_insert_1000()

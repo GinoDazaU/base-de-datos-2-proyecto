@@ -13,21 +13,6 @@ FORMAT = 'i20si'
 RECORD_SIZE = struct.calcsize(FORMAT)
 NODE_HEADER_FORMAT = 'iiQ'  # is_leaf, key_count, next_leaf_offset
 
-class Record:
-    def __init__(self, id, nombre, ciclo):
-        self.id = id
-        self.nombre = nombre
-        self.ciclo = ciclo
-
-    def to_bytes(self):
-        nombre_bytes = self.nombre.encode('utf-8')[:20].ljust(20, b'\x00')
-        return struct.pack(FORMAT, self.id, nombre_bytes, self.ciclo)
-
-    @staticmethod
-    def from_bytes(data):
-        id, nombre_bytes, ciclo = struct.unpack(FORMAT, data)
-        return Record(id, nombre_bytes.decode('utf-8').strip('\x00'), ciclo)
-
 class BPlusTreeNode:
     def __init__(self, is_leaf=False):
         self.is_leaf = is_leaf

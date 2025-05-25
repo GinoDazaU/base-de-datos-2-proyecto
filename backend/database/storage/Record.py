@@ -21,24 +21,38 @@ class Record:
         self.size = struct.calcsize(self.format)
 
     def pack(self) -> bytes:
-        processed_values = []
-        for (_, fmt), value in zip(self.schema, self.values):
-            if 's' in fmt:
+        processed = []
+        for (_, fmt), val in zip(self.schema, self.values):
+            if 's' in fmt:                         # cadena fija
                 size = int(fmt[:-1])
-                value = value.encode('utf-8')[:size].ljust(size, b'\x00')
-            processed_values.append(value)
-        return struct.pack(self.format, *processed_values)
+                processed.append(val.encode()[:size].ljust(size, b'\x00'))
+            elif fmt[:-1].isdigit():               # 3i, 4f, etc.
+                if not (isinstance(val, (list, tuple)) and len(val) == int(fmt[:-1])):
+                    raise ValueError(f"Se esperaban {fmt[:-1]} elementos para '{fmt}'")
+                processed.extend(val)              # aplanar
+            else:
+                processed.append(val)
+        return struct.pack(self.format, *processed)
+
 
     @staticmethod
-    def unpack(record_buffer, schema):
-        format_str = ''.join(fmt for _, fmt in schema)
-        values = struct.unpack(format_str, record_buffer)
-        processed_values = []
-        for (_, fmt), value in zip(schema, values):
+    def unpack(buf, schema):
+        fmt_str = ''.join(f for _, f in schema)
+        vals = list(struct.unpack(fmt_str, buf))
+        out = []
+        for (_, fmt) in schema:
             if 's' in fmt:
-                value = value.rstrip(b'\x00').decode('utf-8')
-            processed_values.append(value)
-        return Record(schema, processed_values)
+                size = int(fmt[:-1])
+                raw = vals.pop(0)
+                out.append(raw.rstrip(b'\x00').decode())
+            elif fmt[:-1].isdigit():
+                n = int(fmt[:-1])
+                out.append(tuple(vals[:n]))
+                del vals[:n]
+            else:
+                out.append(vals.pop(0))
+        return Record(schema, out)
+
     
     @staticmethod
     def get_size(schema) -> int:
@@ -46,22 +60,34 @@ class Record:
         return struct.calcsize(format_str)
 
     def print(self) -> None:
+        out_parts = []
         for (_, fmt), value in zip(self.schema, self.values):
-            if 'f' in fmt:
-                print(f"{value:.2f}", end=" | ")
-            else:
-                print(value, end=" | ")
-        print()
+            if 's' in fmt:                         # cadena fija
+                out_parts.append(value)
+            elif fmt[:-1].isdigit():               # '4f', '3i', etc.
+                # Formatear cada componente según su tipo base
+                base = fmt[-1]
+                if base == 'f':
+                    comp = ", ".join(f"{v:.2f}" for v in value)
+                else:
+                    comp = ", ".join(str(v) for v in value)
+                out_parts.append(f"({comp})")
+            elif fmt[-1] == 'f':                   # float suelto
+                out_parts.append(f"{value:.2f}")
+            else:                                  # int, etc.
+                out_parts.append(str(value))
+        print(" | ".join(out_parts))
+
 
 def main():
 
     # Crear varios registros
-    schema = [("id", "i"), ("nombre", "20s"), ("precio", "f"), ("cantidad", "i")]
+    schema = [("id", "i"), ("nombre", "20s"), ("precio", "f"), ("cantidad", "i"), ("dbox", "4f")]
 
-    values1 = [1, "Galletas", 3.5, 10]
-    values2 = [2, "Chocolate", 5.2, 8]
-    values3 = [3, "Caramelos", 1.75, 25]
-    values4 = [4, "Cereal", 4.0, 12]
+    values1 = [1, "Galletas", 3.5, 10, (2,3,4,1)]
+    values2 = [2, "Chocolate", 5.2, 8, (2,1,2,3)]
+    values3 = [3, "Caramelos", 1.75, 25, (1,2,3,4)]
+    values4 = [4, "Cereal", 4.0, 12, (3,4,5,6)]
 
     # Crear los objetos Record
     registro1 = Record(schema, values1)
