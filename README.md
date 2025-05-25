@@ -16,6 +16,7 @@
     <img src="./images/03.png" alt="Proveedores Cloud" style="width: 100%;">
 </div>
 
+¡Bienvenido al proyecto **DataQuill!** Este repositorio alberga **DataQuill**, un sistema avanzado diseñado para explorar, analizar y optimizar la gestión de datos mediante técnicas de indexación y recuperación eficiente. Nuestro objetivo es mejorar el rendimiento y la escalabilidad en el manejo de grandes volúmenes de información, facilitando consultas rápidas y precisas en entornos variados.
 
 ## Tabla de Contenidos
 - [1. Introducción](#1-introducción)
@@ -40,7 +41,7 @@
 - [Oveview - Pasos de implementación del proyecto](#oveview---pasos-de-implementación-del-proyecto)
 
   
-¡Bienvenido al proyecto **[DataQuill]**! Este repositorio alberga **[descripción breve del proyecto]**, un sistema que explora y optimiza el manejo de datos a través de diversas técnicas de indexación.
+
 
 ---
 
@@ -67,11 +68,11 @@ Al finalizar este proyecto, esperamos obtener los siguientes resultados:
 
 
 # 2. Técnicas de Indexación Utilizadas
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 
 ## 2.1. Descripción Breve de Técnicas
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 
 En este proyecto, hemos implementado y evaluado las siguientes técnicas de indexación de archivos:
@@ -84,7 +85,7 @@ En este proyecto, hemos implementado y evaluado las siguientes técnicas de inde
 
 ## 2.2. Algoritmos de Inserción, Eliminación y Búsqueda
 
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 
 Para cada técnica de indexación implementada, hemos desarrollado y optimizado los algoritmos fundamentales:
@@ -99,7 +100,7 @@ Para cada técnica de indexación implementada, hemos desarrollado y optimizado 
 </details>
 
 ## 2.3. Análisis Comparativo Teórico de Técnicas
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 
 Hemos realizado un **análisis comparativo teórico** de las técnicas implementadas, centrándonos en los **accesos a memoria secundaria** (operaciones de I/O a disco duro) para las operaciones clave. Este análisis busca predecir el comportamiento de cada técnica en diferentes escenarios de datos:
@@ -111,7 +112,7 @@ Hemos realizado un **análisis comparativo teórico** de las técnicas implement
 </details>
 
 ## 2.4. Optimización del Manejo de Memoria Secundaria
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 
 El código del proyecto ha sido **cuidadosamente optimizado** para el manejo de memoria secundaria. Esto incluye:
@@ -122,7 +123,7 @@ El código del proyecto ha sido **cuidadosamente optimizado** para el manejo de 
 </details>
 
 ## 2.5. Explicación del Parser SQL
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 Para permitir la interacción con las estructuras de datos indexadas, hemos desarrollado un **Parser SQL** personalizado. Este parser es responsable de:
 
@@ -140,11 +141,11 @@ Para permitir la interacción con las estructuras de datos indexadas, hemos desa
 
 
 # 3. Resultados Experimentales y Análisis
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 
 ## 3.1. Cuadro/Gráfico Comparativo de Desempeño
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 
 Hemos realizado pruebas exhaustivas para evaluar el desempeño de cada técnica de indexación bajo diferentes escenarios y volúmenes de datos. Los resultados se presentan en los siguientes **cuadros y gráficos comparativos**:
@@ -169,7 +170,7 @@ Hemos realizado pruebas exhaustivas para evaluar el desempeño de cada técnica 
 </details>
 
 ## 3.2. Métricas de Desempeño (Accesos a Disco y Tiempo)
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 
 Para cada prueba, se monitorearon y registraron dos métricas clave:
@@ -180,7 +181,7 @@ Para cada prueba, se monitorearon y registraron dos métricas clave:
 </details>
 
 ## 3.3. Discusión y Análisis de Resultados
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 
 Los resultados experimentales validan **[confirmar o refutar las hipótesis iniciales / análisis teórico]**. Observamos que:
@@ -194,11 +195,11 @@ Los resultados experimentales validan **[confirmar o refutar las hipótesis inic
 </details>
 
 # 4. Pruebas de Uso y Presentación de la Aplicación
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 
 ## 4.1. Presentación de Pruebas en Interfaz Gráfica
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 
 La aplicación cuenta con una **interfaz gráfica de usuario (GUI) amigable e intuitiva**, diseñada para facilitar la interacción y la visualización del funcionamiento de las técnicas de indexación. Las pruebas de uso incluyen:
@@ -212,7 +213,7 @@ La aplicación cuenta con una **interfaz gráfica de usuario (GUI) amigable e in
 
 ## 4.2. Evidencia del Aporte de Índices
 
-<details>
+<details open>
 <summary><strong>Ver más</strong></summary>
 
 Durante las pruebas de uso, la aplicación hace **evidente el aporte de los índices** al comparar el desempeño con y sin su uso (o entre diferentes tipos de índices). Se mostrarán escenarios donde:
@@ -250,7 +251,7 @@ Puedes ver el video demo aquí: **[ENLACE A TU VIDEO DE DEMOSTRACIÓN (Youtube, 
 <details>
 <summary><strong>Ver más</strong></summary>
 
-</h2>1. Estructuras de almacenamiento e índices</h2> 
+<h2>1. Estructuras de almacenamiento e índices</h2> 
 - Implementar las siguientes estructuras:
   - Sequential File (o AVL File)
   - ISAM (índice estático de 2 niveles con páginas overflow)
@@ -258,7 +259,7 @@ Puedes ver el video demo aquí: **[ENLACE A TU VIDEO DE DEMOSTRACIÓN (Youtube, 
   - B+ Tree
   - R-Tree (para vectores o datos espaciales)
 
-</h2>2. Operaciones básicas por estructura</h2> 
+<h2>2. Operaciones básicas por estructura</h2> 
 
 - Implementar en cada estructura:
   - `add(registro)` – Inserción
@@ -266,7 +267,7 @@ Puedes ver el video demo aquí: **[ENLACE A TU VIDEO DE DEMOSTRACIÓN (Youtube, 
   - `rangeSearch(start, end)` – Búsqueda por rango (no aplica a hashing)
   - `remove(key)` – Eliminación (definir algoritmo por estructura)
 
-</h2>3. Parser SQL personalizado</h2> 
+<h2>3. Parser SQL personalizado</h2> 
 
 - Traducir sentencias SQL personalizadas a llamadas a funciones:
   - `CREATE TABLE` con índice especificado por columna
@@ -275,20 +276,20 @@ Puedes ver el video demo aquí: **[ENLACE A TU VIDEO DE DEMOSTRACIÓN (Youtube, 
   - `DELETE FROM ... WHERE ...`
   - `CREATE TABLE ... FROM FILE ... USING INDEX ...`
 
-</h2>4. Backend en Python</h2> 
+<h2>4. Backend en Python</h2> 
 
 - Usar Flask o FastAPI para:
   - Recibir y ejecutar sentencias del ParserSQL
   - Gestionar archivos, índices y datos
   - Responder con resultados (JSON o estructura clara)
 
-</h2>5. Soporte a datos multidimensionales</h2> 
+<h2>5. Soporte a datos multidimensionales</h2> 
 
 - Usar R-Tree para:
   - Indexar vectores, ubicaciones espaciales, etc.
   - Soportar búsquedas por proximidad o rango espacial
 
-</h2>6. Interfaz gráfica (opcional pero recomendada)</h2> 
+<h2>6. Interfaz gráfica (opcional pero recomendada)</h2> 
 
 - Implementar una GUI simple (Python con Tkinter, PyQt, etc.) para:
   - Mostrar resultados de consultas
