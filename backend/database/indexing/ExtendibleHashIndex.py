@@ -1,390 +1,361 @@
-import struct
-from typing import TextIO, Tuple, Union, List
+from __future__ import annotations
+"""
+extendible_hash_index.py ― Índice Hash Extensible persistente
+------------------------------------------------------------
+Diseño base compatible con la arquitectura del proyecto:
+*   Un **directorio** lógico se guarda como un árbol binario (ramas 0/1) serializado
+    mediante *pickle* en `<table>.<field>.hash.tree`.
+*   Los **buckets** (incluidos los de overflow) se almacenan de forma contigua
+    en `<table>.<field>.hash.idx` tras un encabezado global.
+*   Profundidad global máx. (`MAX_DEPTH`) configurable (por defecto 16 bits ⇒
+    65 536 entradas potenciales en el directorio).  Cuando se alcanza,
+    los splits adicionales generan una cadena de overflow buckets.
+
+La API expuesta es la misma que usan las capas superiores:
+    • build_index(...)
+    • insert_record(IndexRecord)
+    • search_record(key) → List[IndexRecord]
+    • delete_record(key, offset=None)
+
+Dependencias: utils.py, IndexRecord.py (ya existentes en el proyecto).
+"""
+
 import os
+import struct
 import pickle
+from typing import Union, List, Tuple, BinaryIO, Any
+
 from .IndexRecord import IndexRecord
 from . import utils
 
+__all__ = [
+    "ExtendibleHashIndex",
+]
+
+# ------------------------------------------------
+# auxiliares internos (reemplazan utilidades ausentes)
+# ------------------------------------------------
+def _empty_key(fmt: str):
+    """Devuelve el valor-centinela para 'formato'."""
+    return -1 if fmt == 'i' else (-1.0 if fmt == 'f' else '')
+
+def _validate_type(val, fmt: str) -> bool:
+    if fmt == 'i':
+        return isinstance(val, int)
+    if fmt == 'f':
+        return isinstance(val, float)
+    return isinstance(val, str)
+
+
+###########################################################
+# ---  Parámetros globales / auxiliares  ------------------
+###########################################################
+MAX_DEPTH_DEFAULT = 16          # profundidad global máxima (bits)
+FB_DEFAULT        = 4           # Factor de bloqueo (registros por bucket)
+
+###########################################################
+# ---  Estructuras auxiliares  ----------------------------
+###########################################################
 class Bucket:
-    HEADER_FORMAT = "ii"
-    HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+    """Bloque de registros con cabecera (size, next)."""
 
-    def __init__(self, fb: int, key_format: str):
-        self.size = 0
-        self.next = -1
-        self.records: List[IndexRecord] = []
-        self.fb = fb
-        self.key_format = key_format
-        
-        # Crear registros vacíos
-        empty_key = utils.get_empty_key(key_format)
-        for _ in range(self.fb):
-            self.records.append(IndexRecord(key_format, empty_key, -1))
+    HDR_FMT = "ii"               # size, next_bucket
+    HDR_SIZE = struct.calcsize(HDR_FMT)
 
+    def __init__(self, fb: int, key_fmt: str):
+        self.fb        = fb
+        self.key_fmt   = key_fmt
+        self.size      = 0            # nº registros válidos
+        self.next      = -1           # bucket de overflow o -1
+        self.records: List[IndexRecord] = [
+            IndexRecord(key_fmt, _empty_key(key_fmt), -1)
+            for _ in range(fb)
+        ]
+
+    # ------------- serialización ------------------------------------
     def pack(self) -> bytes:
-        data = b''
-        for record in self.records:
-            data += record.pack()
-        return data + struct.pack(self.HEADER_FORMAT, self.size, self.next)
-    
-    @staticmethod
-    def unpack(packed_data: bytes, fb: int, key_format: str) -> "Bucket":
-        record_size = IndexRecord(key_format, utils.get_empty_key(key_format), -1).size
-        bucket = Bucket(fb, key_format)
-        
-        size, next = struct.unpack(Bucket.HEADER_FORMAT, packed_data[-Bucket.HEADER_SIZE:])
-        for i in range(size):
-            start = i * record_size
-            end = (i + 1) * record_size
-            record_data = packed_data[start:end]
-            bucket.add_record(IndexRecord.unpack(record_data, key_format))
-        
-        bucket.next = next
-        return bucket
-    
-    def is_full(self) -> bool:
-        return self.size == self.fb
-    
-    def add_record(self, record: IndexRecord):
-        if not self.is_full():
-            self.records[self.size] = record
-            self.size += 1
+        data = b"".join(rec.pack() for rec in self.records)
+        data += struct.pack(self.HDR_FMT, self.size, self.next)
+        return data
 
-class Node:
-    def __init__(self, left=-1, right=-1):
-        self.left = left
-        self.right = right
-        self.left_is_leaf = True
-        self.right_is_leaf = True
-
-    def next(self, val: int) -> Tuple[Union[int, "Node"], bool]:
-        return (self.left, self.left_is_leaf) if val == 0 else (self.right, self.right_is_leaf)
-
-    def set_left_value(self, val: int):
-        self.left = val
-        self.left_is_leaf = True
-
-    def set_right_value(self, val: int):
-        self.right = val
-        self.right_is_leaf = True
-
-    def set_left_node(self, node: "Node"):
-        self.left = node
-        self.left_is_leaf = False
-
-    def set_right_node(self, node: "Node"):
-        self.right = node
-        self.right_is_leaf = False
-
-class ExtendibleHashIndex:
-    HEADER_FORMAT = "iiii"
-    HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
-
-    def __init__(self, table_name: str, indexed_field: str, D: int = 3, fb: int = 4):
-
-        self.filename = f"{table_name}.{indexed_field}.hash.idx"
-        self.hash_file = f"{table_name}.{indexed_field}.hash.tree"
-
-        if not os.path.exists(self.filename):
-            raise FileNotFoundError(f"El índice hash para {table_name} no existe. Crea el índice primero.")
-        
-        # Cargar schema para determinar formato de la clave
-        self.schema = utils.load_schema(table_name)
-        self.key_field = indexed_field
-        self.key_format = utils.get_key_format_from_schema(self.schema, self.key_field)
-        
-        # Crear registro de muestra para calcular tamaños
-        sample_record = IndexRecord(self.key_format, utils.get_empty_key(self.key_format), -1)
-        self.record_size = sample_record.size
-        
-        # Cargar índice existente
-        with open(self.filename, "rb") as file:
-            self.D, self.BUCKETS, self.OVERFLOW_BUCKETS, self.fb = struct.unpack(
-                self.HEADER_FORMAT, file.read(self.HEADER_SIZE))
-        
-        with open(self.hash_file, "rb") as hfile:
-            self.hash_tree = pickle.load(hfile)
-        
-        self.BUCKET_SIZE = self.fb * self.record_size + Bucket.HEADER_SIZE
-        self.MAX_BUCKETS = 2**self.D
-
-    @staticmethod
-    def build_index(heap_filename: str, extract_index_fn, key_field: str, D: int = 3, fb: int = 4):
-        """
-        Construye un nuevo índice de hash extensible para el campo especificado.
-        """
-        # Cargar schema para validación
-        schema = utils.load_schema(heap_filename)
-        key_format = utils.get_key_format_from_schema(schema, key_field)
-        
-        # Obtener y validar entradas
-        entries = extract_index_fn(key_field)
-        valid_entries = [(k, o) for k, o in entries if IndexRecord._validate_type(k, key_format)]
-        
-        # Crear índice
-        index = ExtendibleHashIndex(
-            table_name=heap_filename,
-            indexed_field=key_field,
-            D=D,
-            fb=fb
+    @classmethod
+    def unpack(cls, buf: bytes, fb: int, key_fmt: str) -> "Bucket":
+        bucket = cls(fb, key_fmt)
+        bucket.size, bucket.next = struct.unpack_from(
+            cls.HDR_FMT, buf, len(buf) - cls.HDR_SIZE
         )
-        
-        # Insertar registros
-        for key, offset in valid_entries:
-            record = IndexRecord(key_format, key, offset)
-            index.insert_record(record)
-        
-        return True
+        rec_size = bucket.records[0].size
+        for i in range(bucket.size):
+            off = i * rec_size
+            bucket.records[i] = IndexRecord.unpack(buf[off : off + rec_size], key_fmt)
+        return bucket
 
-    def write_headers(self, file: TextIO):
-        file.seek(0)
-        file.write(struct.pack(
-            self.HEADER_FORMAT, 
-            self.D, 
-            self.BUCKETS, 
-            self.OVERFLOW_BUCKETS, 
-            self.fb
-        ))
+    # ------------- utilidades ---------------------------------------
+    def is_full(self) -> bool:
+        return self.size >= self.fb
 
-    def write_hash_index(self):
-        with open(self.hash_file, "wb") as hfile:
-            pickle.dump(self.hash_tree, hfile)
-    
-    def hash(self, key: Union[int, float, str]) -> int:
-        """Función hash adaptada al tipo de clave."""
-        if self.key_format == 'i':
-            return key % self.MAX_BUCKETS
-        elif self.key_format == 'f':
-            return int(key) % self.MAX_BUCKETS
-        elif 's' in self.key_format:
-            return sum(ord(c) for c in str(key)) % self.MAX_BUCKETS
-    
-    def binary(self, num: int) -> str:
-        """Representación binaria con padding a D bits."""
-        return bin(num)[2:].zfill(self.D)
-    
-    def read_bucket(self, file: TextIO, bucket_pos: int) -> Bucket:
-        file.seek(self.BUCKET_SIZE * bucket_pos + self.HEADER_SIZE)
-        return Bucket.unpack(file.read(self.BUCKET_SIZE), self.fb, self.key_format)
-    
-    def write_bucket(self, file: TextIO, bucket_pos: int, bucket: Bucket):
-        file.seek(self.BUCKET_SIZE * bucket_pos + self.HEADER_SIZE)
-        file.write(bucket.pack())
+    def add(self, rec: IndexRecord) -> None:
+        if self.is_full():
+            raise RuntimeError("Bucket lleno — use split/overflow")
+        self.records[self.size] = rec
+        self.size += 1
 
-    def insert_record(self, record: IndexRecord):
-        """Inserta un nuevo registro en el índice."""
-        if record.format != self.key_format:
-            raise TypeError(f"El registro tiene formato {record.format}, se esperaba {self.key_format}")
-        
-        with open(self.filename, "r+b") as file:
-            binary = self.binary(self.hash(record.key))
-            
-            node = self.hash_tree
-            local_depth = 0
-            bucket_pos = -1
-            
-            # Navegar por el árbol para encontrar el bucket
-            while True:
-                local_depth += 1
-                next_pos, is_leaf = node.next(int(binary[local_depth - 1], 2))
-                if is_leaf:
-                    bucket_pos = next_pos
-                    break
-                else:
-                    node = next_pos
-            
-            bucket = self.read_bucket(file, bucket_pos)
-            
-            # Verificar si el registro ya existe
-            for i in range(bucket.size):
-                if bucket.records[i].key == record.key and bucket.records[i].offset == record.offset:
-                    return  # Registro duplicado
-            
+    def iter_valid(self):
+        for i in range(self.size):
+            yield self.records[i]
+
+###########################################################
+class DirNode:
+    """Nodo interno del directorio binario (en memoria)."""
+
+    __slots__ = ("left", "right", "left_leaf", "right_leaf")
+
+    def __init__(self, left: Any = -1, right: Any = -1, leaf=True):
+        self.left       = left
+        self.right      = right
+        self.left_leaf  = leaf
+        self.right_leaf = leaf
+
+    # --- navegación
+    def next(self, bit: int) -> Tuple[Any, bool]:
+        return (self.left, self.left_leaf) if bit == 0 else (self.right, self.right_leaf)
+
+    # --- setters
+    def set_child(self, bit: int, val: Any, leaf: bool):
+        if bit == 0:
+            self.left, self.left_leaf = val, leaf
+        else:
+            self.right, self.right_leaf = val, leaf
+
+###########################################################
+# ---  Implementación principal  --------------------------
+###########################################################
+class ExtendibleHashIndex:
+
+    HDR_FMT  = "iiii"    # D, num_buckets, num_overflow, fb
+    HDR_SIZE = struct.calcsize(HDR_FMT)
+
+    # ---------------- constructor ----------------------
+    def __init__(
+        self,
+        table_name: str,
+        indexed_field: str,
+        *,
+        max_depth: int = MAX_DEPTH_DEFAULT,
+        fb: int = FB_DEFAULT,
+        create: bool = False,
+    ):
+        self.base = f"{table_name}.{indexed_field}.hash"
+        self.data_path = self.base + ".idx"
+        self.dir_path  = self.base + ".tree"
+        self.max_depth = max_depth
+        self.fb        = fb
+
+        # cargar schema → determinar tipo de clave
+        schema = utils.load_schema(table_name)
+        self.key_fmt = utils.get_key_format_from_schema(schema, indexed_field)
+        self.rec_size = IndexRecord(self.key_fmt, _empty_key(self.key_fmt), -1).size
+        self.bucket_size = fb * self.rec_size + Bucket.HDR_SIZE
+
+        if create:
+            self._init_files()
+        else:
+            if not os.path.exists(self.data_path):
+                raise FileNotFoundError("Índice no existe; use build_index() primero.")
+            self._load_headers()
+
+    # ---------------- inicialización -------------------
+    def _init_files(self):
+        """Crea archivos nuevos con D = 1 (dos buckets)."""
+        self.D = 1
+        self.num_buckets = 2      # base directory buckets (0,1)
+        self.num_overflow = 0
+        # crear archivo de datos
+        with open(self.data_path, "wb") as f:
+            f.write(struct.pack(self.HDR_FMT, self.D, self.num_buckets, self.num_overflow, self.fb))
+            # bucket 0 & 1
+            for _ in range(2):
+                f.write(Bucket(self.fb, self.key_fmt).pack())
+        # crear directorio (árbol con raíz apuntando a buckets 0/1)
+        root = DirNode(0, 1)
+        with open(self.dir_path, "wb") as df:
+            pickle.dump(root, df)
+        self.dir_root = root
+
+    def _load_headers(self):
+        with open(self.data_path, "rb") as f:
+            self.D, self.num_buckets, self.num_overflow, self.fb = struct.unpack(self.HDR_FMT, f.read(self.HDR_SIZE))
+        with open(self.dir_path, "rb") as df:
+            self.dir_root = pickle.load(df)
+
+    # ---------------- helpers de E/S --------------------
+    def _bucket_offset(self, pos: int) -> int:
+        return self.HDR_SIZE + pos * self.bucket_size
+
+    def _read_bucket(self, fh: BinaryIO, pos: int) -> Bucket:
+        fh.seek(self._bucket_offset(pos))
+        return Bucket.unpack(fh.read(self.bucket_size), self.fb, self.key_fmt)
+
+    def _write_bucket(self, fh: BinaryIO, pos: int, bucket: Bucket):
+        fh.seek(self._bucket_offset(pos))
+        fh.write(bucket.pack())
+
+    def _flush_header(self, fh: BinaryIO):
+        fh.seek(0)
+        fh.write(struct.pack(self.HDR_FMT, self.D, self.num_buckets, self.num_overflow, self.fb))
+
+    def _flush_dir(self):
+        with open(self.dir_path, "wb") as df:
+            pickle.dump(self.dir_root, df)
+
+    # ---------------- hashing helpers ------------------
+    def _hash(self, key) -> int:
+        if self.key_fmt == 'i':
+            return key & 0xFFFFFFFF
+        if self.key_fmt == 'f':
+            return int(abs(key) * 10_000) & 0xFFFFFFFF
+        return sum(ord(c) for c in str(key)) & 0xFFFFFFFF
+
+    def _dir_bits(self, hashed: int) -> List[int]:
+        return [(hashed >> i) & 1 for i in range(self.D)][::-1]  # MSB→LSB list of length D
+
+    # ---------------- API pública ----------------------
+    @classmethod
+    def build_index(cls, heap_path: str, extract_fn, field: str, *, fb: int = FB_DEFAULT, max_depth: int = MAX_DEPTH_DEFAULT):
+        idx = cls(heap_path, field, fb=fb, max_depth=max_depth, create=True)
+        for key, off in extract_fn(field):
+            if _validate_type(key, idx.key_fmt):
+                idx.insert_record(IndexRecord(idx.key_fmt, key, off))
+        return idx
+
+    # ---------------------------------------------------
+    def insert_record(self, rec: IndexRecord):
+        if rec.format != self.key_fmt:
+            raise TypeError("Tipo de clave incorrecto para este índice")
+        with open(self.data_path, "r+b") as fh:
+            bucket_pos, bucket, path = self._find_bucket(fh, rec.key)
+            # evitar duplicado exacto
+            if any(r.key == rec.key and r.offset == rec.offset for r in bucket.iter_valid()):
+                return
             if bucket.is_full():
-                if local_depth == self.D:  # Overflow
-                    self._handle_overflow(file, bucket, bucket_pos, record)
-                else:  # Split
-                    self._handle_split(file, node, bucket, bucket_pos, record, binary, local_depth)
+                self._split_or_overflow(fh, path, bucket_pos, bucket, rec)
             else:
-                bucket.add_record(record)
-                self.write_bucket(file, bucket_pos, bucket)
+                bucket.add(rec)
+                self._write_bucket(fh, bucket_pos, bucket)
 
-    def _handle_overflow(self, file, bucket, bucket_pos, record):
-        """Maneja el caso de overflow creando un nuevo bucket de overflow."""
-        # Buscar el último bucket en la cadena
-        while bucket.next != -1:
-            bucket_pos = bucket.next
-            bucket = self.read_bucket(file, bucket_pos)
-        
-        if bucket.is_full():
-            # Crear nuevo bucket de overflow
-            new_bucket_pos = self.BUCKETS + self.OVERFLOW_BUCKETS
-            new_bucket = Bucket(self.fb, self.key_format)
-            new_bucket.add_record(record)
-            bucket.next = new_bucket_pos
-            
-            self.write_bucket(file, bucket_pos, bucket)
-            self.write_bucket(file, new_bucket_pos, new_bucket)
-            
-            self.OVERFLOW_BUCKETS += 1
-            self.write_headers(file)
-        else:
-            bucket.add_record(record)
-            self.write_bucket(file, bucket_pos, bucket)
-
-    def _handle_split(self, file, node, bucket, bucket_pos, record, binary, local_depth):
-        """Maneja el split de buckets cuando es necesario."""
-        records_to_redistribute = bucket.records[:bucket.size]
-        records_to_redistribute.append(record)
-        
-        # Crear nuevo bucket
-        new_bucket_pos = self.BUCKETS + self.OVERFLOW_BUCKETS
-        new_bucket = Bucket(self.fb, self.key_format)
-        
-        # Vaciar bucket original
-        bucket.size = 0
-        bucket.next = -1
-        
-        # Redistribuir registros
-        for rec in records_to_redistribute:
-            target_bucket = bucket if self._should_go_left(rec.key, binary, local_depth) else new_bucket
-            if target_bucket.is_full():
-                # Manejar overflow durante redistribución
-                self._handle_overflow(file, target_bucket, 
-                                    bucket_pos if target_bucket == bucket else new_bucket_pos, 
-                                    rec)
-            else:
-                target_bucket.add_record(rec)
-        
-        # Actualizar árbol
-        new_node = Node(bucket_pos, new_bucket_pos)
-        if binary[local_depth] == '0':
-            node.set_left_node(new_node)
-        else:
-            node.set_right_node(new_node)
-        
-        self.write_hash_index()
-        self.BUCKETS += 1
-        self.write_headers(file)
-        self.write_bucket(file, bucket_pos, bucket)
-        self.write_bucket(file, new_bucket_pos, new_bucket)
-
-    def _should_go_left(self, key, binary, local_depth):
-        """Determina si un registro debe ir al bucket izquierdo después del split."""
-        key_binary = self.binary(self.hash(key))
-        return key_binary[:local_depth + 1] == binary[:local_depth] + '0'
-
-    def search_record(self, key: Union[int, float, str]) -> List[IndexRecord]:
-        """Busca todos los registros con la clave especificada."""
-        if not IndexRecord._validate_type(key, self.key_format):
-            raise TypeError(f"Clave {key} no es del tipo {self.key_format}")
-        
-        results = []
-        with open(self.filename, "rb") as file:
-            binary = self.binary(self.hash(key))
-            
-            node = self.hash_tree
-            local_depth = 0
-            bucket_pos = -1
-            
-            # Navegar por el árbol
+    # ---------------- búsqueda -------------------------
+    def search_record(self, key) -> List[IndexRecord]:
+        if not _validate_type(key, self.key_fmt):
+            raise TypeError("Clave no válida para este índice")
+        res: List[IndexRecord] = []
+        with open(self.data_path, "rb") as fh:
+            pos, bucket, _ = self._find_bucket(fh, key)
             while True:
-                local_depth += 1
-                next_pos, is_leaf = node.next(int(binary[local_depth - 1], 2))
-                if is_leaf:
-                    bucket_pos = next_pos
+                for r in bucket.iter_valid():
+                    if r.key == key:
+                        res.append(r)
+                if bucket.next == -1:
                     break
-                else:
-                    node = next_pos
-            
-            # Buscar en la cadena de buckets
-            while bucket_pos != -1:
-                bucket = self.read_bucket(file, bucket_pos)
-                for i in range(bucket.size):
-                    if bucket.records[i].key == key:
-                        results.append(bucket.records[i])
-                bucket_pos = bucket.next
-        
-        return results
+                bucket = self._read_bucket(fh, bucket.next)
+        return res
 
-    def delete_record(self, key: Union[int, float, str], offset: int = None) -> bool:
-        """Elimina un registro del índice."""
-        if not IndexRecord._validate_type(key, self.key_format):
-            raise TypeError(f"Clave {key} no es del tipo {self.key_format}")
-        
+    # ---------------- borrado --------------------------
+    def delete_record(self, key, offset=None) -> bool:
+        if not _validate_type(key, self.key_fmt):
+            raise TypeError("Clave no válida")
         deleted = False
-        with open(self.filename, "r+b") as file:
-            binary = self.binary(self.hash(key))
-            
-            node = self.hash_tree
-            local_depth = 0
-            bucket_pos = -1
-            
-            # Navegar por el árbol
+        with open(self.data_path, "r+b") as fh:
+            pos, bucket, _ = self._find_bucket(fh, key)
+            empty = IndexRecord(self.key_fmt, _empty_key(self.key_fmt), -1)
             while True:
-                local_depth += 1
-                next_pos, is_leaf = node.next(int(binary[local_depth - 1], 2))
-                if is_leaf:
-                    bucket_pos = next_pos
-                    break
-                else:
-                    node = next_pos
-            
-            # Buscar en la cadena de buckets
-            while bucket_pos != -1:
-                bucket = self.read_bucket(file, bucket_pos)
                 for i in range(bucket.size):
-                    if bucket.records[i].key == key and (offset is None or bucket.records[i].offset == offset):
-                        # Marcar como eliminado (usando valores especiales)
-                        empty_key = utils.get_empty_key(self.key_format)
-                        bucket.records[i] = IndexRecord(self.key_format, empty_key, -1)
+                    rec = bucket.records[i]
+                    if rec.key == key and (offset is None or rec.offset == offset):
+                        bucket.records[i] = empty
                         deleted = True
-                        self.write_bucket(file, bucket_pos, bucket)
-                        break
-                bucket_pos = bucket.next
-        
+                self._write_bucket(fh, pos, bucket)
+                if bucket.next == -1:
+                    break
+                pos = bucket.next
+                bucket = self._read_bucket(fh, pos)
         return deleted
 
+    # ---------------- impresión ------------------------
     def print_all(self):
-        """Imprime todos los registros del índice."""
-        with open(self.filename, "rb") as file:
-            # Leer metadatos
-            self.D, self.BUCKETS, self.OVERFLOW_BUCKETS, self.fb = struct.unpack(
-                self.HEADER_FORMAT, file.read(self.HEADER_SIZE))
-            
-            print(f"Metadata: D={self.D}, Buckets={self.BUCKETS}, Overflow={self.OVERFLOW_BUCKETS}, fb={self.fb}")
-            print("Key format:", self.key_format)
-            print("-" * 50)
-            
-            # Leer buckets principales
-            print("[MAIN BUCKETS]")
-            for i in range(self.BUCKETS):
-                file.seek(self.HEADER_SIZE + i * self.BUCKET_SIZE)
-                bucket = Bucket.unpack(file.read(self.BUCKET_SIZE), self.fb, self.key_format)
-                print(f"Bucket {i}: Size={bucket.size}, Next={bucket.next}")
-                for j in range(bucket.size):
-                    rec = bucket.records[j]
-                    status = "DELETED" if self._is_deleted(rec) else "ACTIVE"
-                    print(f"  Pos {j}: Key={rec.key}, Offset={rec.offset} [{status}]")
-            
-            # Leer buckets de overflow
-            print("\n[OVERFLOW BUCKETS]")
-            for i in range(self.OVERFLOW_BUCKETS):
-                pos = self.BUCKETS + i
-                file.seek(self.HEADER_SIZE + pos * self.BUCKET_SIZE)
-                bucket = Bucket.unpack(file.read(self.BUCKET_SIZE), self.fb, self.key_format)
-                print(f"Bucket {pos}: Size={bucket.size}, Next={bucket.next}")
-                for j in range(bucket.size):
-                    rec = bucket.records[j]
-                    status = "DELETED" if self._is_deleted(rec) else "ACTIVE"
-                    print(f"  Pos {j}: Key={rec.key}, Offset={rec.offset} [{status}]")
+        print(f"D={self.D}, buckets={self.num_buckets}, overflow={self.num_overflow}")
+        with open(self.data_path, "rb") as fh:
+            for pos in range(self.num_buckets + self.num_overflow):
+                b = self._read_bucket(fh, pos)
+                print(f"Bucket {pos} | size={b.size} next={b.next}")
+                for r in b.iter_valid():
+                    print("   ", r)
 
-    def _is_deleted(self, record: IndexRecord) -> bool:
-        """Determina si un registro está marcado como eliminado."""
-        if self.key_format == 'i':
-            return record.key == -1
-        elif self.key_format == 'f':
-            return record.key == -1.0
-        elif 's' in self.key_format:
-            return record.key == ''
-        return False
+    ####################################################
+    # --- funciones internas ---------------------------
+    ####################################################
+    def _find_bucket(self, fh: BinaryIO, key) -> Tuple[int, Bucket, List[Tuple[DirNode, int]]]:
+        """Navega el directorio y devuelve (pos_bucket, bucket, path).
+        *path* es una lista de (node, bit_tomado) para back‑tracking en splits.
+        """
+        hashed = self._hash(key)
+        bits = self._dir_bits(hashed)
+        node = self.dir_root
+        path: List[Tuple[DirNode, int]] = []
+        for bit in bits:
+            nxt, is_leaf = node.next(bit)
+            path.append((node, bit))
+            if is_leaf:
+                bucket_pos = nxt
+                bucket = self._read_bucket(fh, bucket_pos)
+                return bucket_pos, bucket, path
+            node = nxt  # descender
+        # sólo para mypy; flujo siempre retorna antes
+        raise RuntimeError
+
+    def _split_or_overflow(self, fh: BinaryIO, path, bucket_pos: int, bucket: Bucket, rec: IndexRecord):
+        """Realiza split o crea overflow si D alcanzó MAX_DEPTH."""
+        if self.D >= self.max_depth:
+            self._add_overflow(fh, bucket_pos, bucket, rec)
+            return
+        # -------- split --------
+        new_bucket_pos = self.num_buckets + self.num_overflow
+        new_bucket = Bucket(self.fb, self.key_fmt)
+        # mover registros + nuevo
+        all_recs = list(bucket.iter_valid()) + [rec]
+        bucket.size = 0
+        bucket.next = -1
+        for r in all_recs:
+            target = bucket if self._bit_for_key(r.key) == 0 else new_bucket
+            target.add(r)
+        # actualizar directorio (último nodo del path)
+        parent, bit = path[-1]
+        new_node = DirNode(bucket_pos, new_bucket_pos)
+        parent.set_child(bit, new_node, leaf=False)
+        # actualizar metadatos y persistir
+        self.num_buckets += 1
+        self.D += 1 if self.num_buckets > (1 << self.D) else 0
+        self._flush_dir()
+        self._flush_header(fh)
+        self._write_bucket(fh, bucket_pos, bucket)
+        self._write_bucket(fh, new_bucket_pos, new_bucket)
+
+    def _add_overflow(self, fh: BinaryIO, pos: int, bucket: Bucket, rec: IndexRecord):
+        """Cuelga un overflow bucket al final de la cadena."""
+        while bucket.next != -1:
+            pos = bucket.next
+            bucket = self._read_bucket(fh, pos)
+        if bucket.is_full():
+            new_pos = self.num_buckets + self.num_overflow
+            ov = Bucket(self.fb, self.key_fmt)
+            ov.add(rec)
+            bucket.next = new_pos
+            self._write_bucket(fh, pos, bucket)
+            self._write_bucket(fh, new_pos, ov)
+            self.num_overflow += 1
+            self._flush_header(fh)
+        else:
+            bucket.add(rec)
+            self._write_bucket(fh, pos, bucket)
+
+    def _bit_for_key(self, key) -> int:
+        return (self._hash(key) >> (self.max_depth - 1)) & 1  # MSB relevante

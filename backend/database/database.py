@@ -99,10 +99,10 @@ def _remove_from_secondary_indexes(table_path: str, record: Record, offset: int)
         value = record.values[[n for n, _ in schema].index(field_name)]
 
         if idx_type == "seq":
-            # SequentialIndex(table_path, field_name).delete_record(value, offset)
+            SequentialIndex(table_path, field_name).delete_record(value, offset)
             pass
         elif idx_type == "hash":
-            # ExtendibleHashIndex(table_path, field_name).delete_record(value, offset)
+            ExtendibleHashIndex(table_path, field_name).delete_record(value, offset)
             pass
         elif idx_type == "btree":
             # BPlusTreeIndex(table_path, field_name).delete_record(value, offset)
@@ -178,57 +178,41 @@ def search_btree_idx(table_name: str, field_name: str, field_value):
         heap.fetch_record_by_offset(offset).print()
 
 
-def print_all_seq_idx(table_name: str, field_name: str):
+def print_seq_idx(table_name: str, field_name: str):
     SequentialIndex(_table_path(table_name), field_name).print_all()
 
+
 # ---------------------------------------------------------------------------
-#  Prueba rápida -------------------------------------------------------------
+#  Índice hash (helpers) -----------------------------------------------------
 # ---------------------------------------------------------------------------
 
-def _demo_heap_insert_1000():
-    """Demo: crea un HeapFile e inserta 1000 registros (sin índices)."""
-    import random
-    import string
-    import glob
-    import os
-    import time
 
-    table_name = "Heap1000"
-    schema = [("id", "i"), ("nombre", "20s"), ("precio", "f")]
+def create_hash_idx(table_name: str,
+                    field_name: str,
+                    fb: int = 4,
+                    max_depth: int = 16) -> None:
+    """
+    Construye un índice hash extensible (bucket fb, profundidad máxima max_depth)
+    para `field_name` usando los valores actuales del HeapFile.
+    """
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    ExtendibleHashIndex.build_index(
+        heap_path=table_path,
+        extract_fn=heap.extract_index,
+        field=field_name,
+        fb=fb,
+        max_depth=max_depth
+    )
 
-    # Eliminar archivos anteriores
-    if os.path.exists(_table_path(table_name) + ".dat"):
-        for f in glob.glob(_table_path(table_name) + ".*"):
-            os.remove(f)
 
-    # Crear tabla
-    create_table(table_name, schema, primary_key="id")
-    create_seq_idx(table_name, schema[1][0])
+def search_hash_idx(table_name: str, field_name: str, field_value):
+    """Imprime los registros cuyo campo == field_value usando el índice hash."""
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    hidx = ExtendibleHashIndex(table_path, field_name)
+    for idx_rec in hidx.search_record(field_value):
+        heap.fetch_record_by_offset(idx_rec.offset).print()
 
-    # Generar e insertar 1000 registros
-    for i in range(1000):
-        nombre = "P" + ''.join(random.choices(string.ascii_uppercase, k=5))
-        precio = round(random.uniform(1.0, 100.0), 2)
-        rec = Record(schema, [i + 1, nombre, precio])
-        insert_record(table_name, rec)
-
-    print("\n Se insertaron 1000 registros en HeapFile 'Heap1000'.")
-    print("\n Se insertaron 1000 registros en el indice secuencial a 'Heap1000'.")
-
-    print_table(table_name)
-    print_all_seq_idx(table_name, schema[1][0])
-
-    start = time.time()
-    results: list[Record] = search_by_field(table_name, schema[1][0], "PUZQHG")
-    for r in results:
-        r.print()
-    end = time.time()
-    print(f"Búsqueda sin índice tomó {end - start:.6f} segundos")
-    
-    start = time.time()
-    search_seq_idx(table_name, schema[1][0], "PUZQHG")
-    end = time.time()
-    print(f"Búsqueda con índice secuencial tomó {end - start:.6f} segundos")
-
-if __name__ == "__main__":
-    _demo_heap_insert_1000()
+def print_hash_idx(table_name: str, field_name: str):
+    ExtendibleHashIndex(_table_path(table_name), field_name).print_all()

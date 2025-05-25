@@ -4,5 +4,6 @@
 *__pycache__
 *venv
 *.schema.json
-*.seq.idx
 *.json
+*.idx
+*.tree
