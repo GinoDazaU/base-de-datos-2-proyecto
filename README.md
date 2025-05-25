@@ -228,8 +228,9 @@ Durante las pruebas de uso, la aplicación hace **evidente el aporte de los índ
 
 Hemos preparado un **video demostrativo** que muestra la funcionalidad completa de la aplicación.
 
-https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=sharing 
-
+**Pulsar en la imagen**
+[![Ver video](./images/04.png)](https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=sharing)
+https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=sharing
 
 ---
 
