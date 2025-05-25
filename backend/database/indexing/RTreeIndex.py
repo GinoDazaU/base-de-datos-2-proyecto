@@ -69,7 +69,7 @@ class RTreeIndex:
         return False
 
     @staticmethod
-    def normalize_bounds(value, format: str) -> tuple:
+    def normalize_bounds(value: tuple, format: str) -> tuple:
         if format.startswith('2'):
             x, y = value
             return (x, y, x, y)
