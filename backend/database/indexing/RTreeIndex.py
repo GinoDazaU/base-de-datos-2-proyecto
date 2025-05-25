@@ -38,7 +38,7 @@ class RTreeIndex:
 
         # Extract and validate entries
         entries = extract_index_fn(key_field)
-        valid_entries = [(RTreeIndex.normalize_bounds(k, key_format), o) for k, o in entries]
+        valid_entries = [(RTreeIndex.normalize_bounds(k, key_format), o) for k, o in entries if RTreeIndex.validate_type(k, key_format)]
         
         # Create index using library
         props = index.Property()
@@ -68,10 +68,10 @@ class RTreeIndex:
 
     @staticmethod
     def normalize_bounds(value: tuple, format: str) -> tuple:
-        if format.startswith('2'):
+        if len(value) == 2:
             x, y = value
             return (x, y, x, y)
-        if format.startswith('3'):
+        if len(value) == 3:
             x, y, z = value
             return (x, y, z, x, y, z)
         else:
