@@ -95,7 +95,7 @@ def _test_heapfile_seqidx():
     resultados = search_by_field(table_name, "codigo", target_codigo)
     print(f"Buscar {target_codigo} después de borrar: {'ENCONTRADO' if resultados else 'NO ENCONTRADO'}")
 
-def _demo_heap_hashidx_insert_1000():
+def _test_heapfile_hashidx():
     """Demo: crea un HeapFile e inserta 1000 registros (sin índices)."""
 
     table_name = "Heap1000"
@@ -112,9 +112,9 @@ def _demo_heap_hashidx_insert_1000():
 
     # Insertar 1000 registros y guardar un nombre para búsqueda
     nombre_objetivo = None
-    for i in range(1000):
+    for i in range(10000):
         nombre = "P" + ''.join(random.choices(string.ascii_uppercase, k=5))
-        if i == 523:  # Elegimos un nombre arbitrario
+        if i == 5223:  # Elegimos un nombre arbitrario
             nombre_objetivo = nombre
         precio = round(random.uniform(1.0, 100.0), 2)
         rec = Record(schema, [i + 1, nombre, precio])
@@ -124,7 +124,6 @@ def _demo_heap_hashidx_insert_1000():
     print("Se insertaron 1000 registros en el índice hash.")
 
     print_table(table_name)
-    print_hash_idx(table_name, schema[1][0])
 
     print(f"\nBuscando el nombre objetivo: {nombre_objetivo}")
 
@@ -132,15 +131,17 @@ def _demo_heap_hashidx_insert_1000():
     start = time.time()
     results: list[Record] = search_by_field(table_name, schema[1][0], nombre_objetivo)
     for r in results:
-        r.print()
+        print(r)
     end = time.time()
     print(f"Búsqueda sin índice tomó {end - start:.6f} segundos")
 
     # Cronometrar búsqueda con índice
     start = time.time()
-    search_hash_idx(table_name, schema[1][0], nombre_objetivo)
+    results = search_hash_idx(table_name, schema[1][0], nombre_objetivo)
     end = time.time()
+    for r in results:
+        print(r)
     print(f"Búsqueda con índice hash tomó {end - start:.6f} segundos")
 
 if __name__ == "__main__":
-    _test_heapfile_seqidx()
+    _test_heapfile()

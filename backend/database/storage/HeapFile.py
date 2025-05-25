@@ -274,5 +274,5 @@ class HeapFile:
             for i in range(self.heap_size):
                 buf = fh.read(self.rec_data_size)
                 rec = Record.unpack(buf, self.schema)
-                rec.print()
+                print(rec)
                 fh.seek(PTR_SIZE, os.SEEK_CUR)
