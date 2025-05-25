@@ -36,7 +36,6 @@
   - [4.1. Presentación de Pruebas en Interfaz Gráfica](#41-presentación-de-pruebas-en-interfaz-gráfica)
   - [4.2. Evidencia del Aporte de Índices](#42-evidencia-del-aporte-de-índices)
   - [4.3. Video Demostrativo de Funcionalidad](#43-video-demostrativo-de-funcionalidad)
-  - [](#)
 - [🔗 Referencias](#-referencias)
 - [Oveview - Pasos de implementación del proyecto](#oveview---pasos-de-implementación-del-proyecto)
 
@@ -236,6 +235,7 @@ Hemos preparado un **video demostrativo** que muestra la funcionalidad completa 
 
 Puedes ver el video demo aquí: **[ENLACE A TU VIDEO DE DEMOSTRACIÓN (Youtube, Google Drive, etc.)]**
 </details>
+
 ---
 
 # 🔗 Referencias
