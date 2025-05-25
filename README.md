@@ -229,7 +229,7 @@ Durante las pruebas de uso, la aplicación hace **evidente el aporte de los índ
 Hemos preparado un **video demostrativo** que muestra la funcionalidad completa de la aplicación.
 
 
-<video src="./images/video.mp4" controls muted autoplay loop style="max-width: 100%;">
+<video src="https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=sharing " controls muted autoplay loop style="max-width: 100%;">
   Tu navegador no soporta el elemento de video.
 </video>
 
