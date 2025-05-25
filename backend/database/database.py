@@ -23,6 +23,13 @@ def check_index_exists(table_name: str, field_name: str, index_type: str):
     index_file = f"{table_path}.{field_name}.{index_type}.idx"
     return os.path.exists(index_file) # gptaso
 
+def get_table_schema(table_name: str):
+    if not check_table_exists(table_name):
+        raise Exception(f"Table {table_name} does not exist")
+    table_path = get_table_path(table_name)
+    heap = HeapFile(table_path)
+    return heap.schema
+
 def create_table(table_name: str, schema: list[tuple[str:str]]):
     table_name = get_table_path(table_name)
     HeapFile.build_file(table_name, schema)

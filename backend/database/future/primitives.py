@@ -7,7 +7,7 @@ class Varchar:
 
     def __init__(self, value: str, length: int = 255):
         if len(value) > length:
-            raise ValueError(f"Value exceeds maximum length of {length}")
+            raise ValueError(f"Varchar value exceeds maximum length of {length}")
         self.__value = value
         self.__length = length
 
@@ -16,7 +16,7 @@ class Varchar:
     
     def set_value(self, value: str) -> None:
         if len(value) > self.__length:
-            raise ValueError(f"Value exceeds maximum length of {self.__length}")
+            raise ValueError(f"Varchar value exceeds maximum length of {self.__length}")
         self.__value = value
 
     def get_length(self) -> int:
@@ -29,7 +29,7 @@ class Varchar:
         return self.__value.ljust(self.__length)[:self.__length]
 
     def __repr__(self):
-        return f"Varchar({self.value}, {self.__length})"
+        return f"Varchar({self.__value}, {self.__length})"
     
     def __len__(self):
         return len(self.__value)
