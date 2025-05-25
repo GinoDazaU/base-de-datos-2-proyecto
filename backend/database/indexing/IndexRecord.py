@@ -57,9 +57,13 @@ class IndexRecord:
         type_byte = data[0]
         
         if type_byte == IndexRecord.TYPE_INT:
+            if len(data) < struct.calcsize(fmt):
+                raise ValueError(f"Buffer demasiado pequeño para el formato {fmt}. Necesario: {struct.calcsize(fmt)} bytes, recibido: {len(data)}.")
             _, key, offset = struct.unpack_from("Bii", data)
             return IndexRecord('i', key, offset)
         elif type_byte == IndexRecord.TYPE_FLOAT:
+            if len(data) < struct.calcsize(fmt):
+                raise ValueError(f"Buffer demasiado pequeño para el formato {fmt}. Necesario: {struct.calcsize(fmt)} bytes, recibido: {len(data)}.")
             _, key, offset = struct.unpack_from("Bfi", data)
             return IndexRecord('f', key, offset)
         elif type_byte == IndexRecord.TYPE_STRING:
@@ -67,6 +71,8 @@ class IndexRecord:
                 raise ValueError("Se esperaba formato string para deserialización")
             size = int(format[:-1])
             fmt = f"B{size}si"
+            if len(data) < struct.calcsize(fmt):
+                raise ValueError(f"Buffer demasiado pequeño para el formato {fmt}. Necesario: {struct.calcsize(fmt)} bytes, recibido: {len(data)}.")
             _, encoded, offset = struct.unpack_from(fmt, data)
             key = encoded.decode('utf-8').rstrip('\x00')
             return IndexRecord(format, key, offset)

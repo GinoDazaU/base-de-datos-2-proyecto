@@ -7,7 +7,7 @@ from storage.Isam import ISAM
 from storage.Record import Record
 from indexing.SequentialIndex import SequentialIndex
 from indexing.ExtendibleHashIndex import ExtendibleHashIndex
-from indexing.BPlusTreeIndex import BPlusTreeIndex
+from indexing.BPlusTreeIndex import BPlusTreeIndex, BPlusTreeIndexWrapper
 from indexing.IndexRecord import IndexRecord
 
 # ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ def _update_secondary_indexes(table_path: str, record: Record, offset: int) -> N
         elif idx_type == "hash":
             ExtendibleHashIndex(table_path, field_name).insert_record(idx_rec)
         elif idx_type == "btree":
-            BPlusTreeIndex(table_path, field_name).insert_record(idx_rec)
+            BPlusTreeIndexWrapper(table_path, field_name).insert_record(idx_rec)
 
 
 def _remove_from_secondary_indexes(table_path: str, record: Record, offset: int) -> None:
@@ -104,7 +104,7 @@ def _remove_from_secondary_indexes(table_path: str, record: Record, offset: int)
             ExtendibleHashIndex(table_path, field_name).delete_record(value, offset)
             pass
         elif idx_type == "btree":
-            # BPlusTreeIndex(table_path, field_name).delete_record(value, offset)
+            BPlusTreeIndexWrapper(table_path, field_name).delete_record(value, offset)
             pass
 
 # ---------------------------------------------------------------------------

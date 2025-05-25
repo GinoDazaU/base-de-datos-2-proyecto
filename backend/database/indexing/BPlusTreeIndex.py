@@ -1,6 +1,8 @@
 from .IndexRecord import IndexRecord
+from . import utils
 import struct
 import os
+import json
 
 """
 class BPlusTreeIndexx:
@@ -29,6 +31,13 @@ class BPlusTreeIndex:
         self.filename = filename
         self.auxname = auxname
         self.index_format = index_format  # tipo de indice
+
+        default_key = utils.get_default_key(index_format)
+        sample_record = IndexRecord(index_format, default_key, 0)
+        self.leaf_record_size = sample_record.size
+
+        self.node_size_leaf = 16 + self.order * self.leaf_record_size
+        self.node_size_internal = 16 + 4 * self.order + 8 * (self.order + 1)
 
         try:
             with open(self.auxname, 'rb') as f:
@@ -88,36 +97,66 @@ class BPlusTreeIndex:
 
         return True
 
-
     def load_node(self, node_offset):
         with open(self.auxname, 'rb') as f:
             f.seek(node_offset)
-            buffer = f.read(self.node_size)
+            header = f.read(16)
+            if len(header) < 16:
+                raise ValueError("No se pudo leer el encabezado del nodo.")
+            is_leaf, key_count, next_leaf = struct.unpack('iiQ', header)
+
+            node_size = self.node_size_leaf if is_leaf else self.node_size_internal
+            f.seek(node_offset)
+            buffer = f.read(node_size)
 
         is_leaf, key_count, next_leaf = struct.unpack('iiQ', buffer[:16])
 
         node = BPlusTreeNode(is_leaf=bool(is_leaf))
 
         if is_leaf:
-            record_size = IndexRecord(self.index_format, 0, 0).size
+            node = BPlusTreeNode(is_leaf=True)
+            node.next = next_leaf
             node.records = []
+
+            record_size = self.leaf_record_size
             for i in range(key_count):
                 start = 16 + i * record_size
                 end = start + record_size
                 record_data = buffer[start:end]
+                if len(record_data) < record_size:
+                    raise ValueError(f"Registro incompleto: se esperaban {record_size} bytes, pero se leyeron {len(record_data)}.")
                 record = IndexRecord.unpack(record_data, self.index_format)
                 node.records.append(record)
             node.next = next_leaf
         else:
+            node = BPlusTreeNode(is_leaf=False)
             keys_start = 16
-            keys_size = 4 * self.max_keys
-            keys = list(struct.unpack(f'{self.max_keys}i', buffer[keys_start:keys_start + keys_size]))
 
-            children_start = keys_start + keys_size
-            children = list(struct.unpack(
-                f'{self.max_keys + 1}Q',
-                buffer[children_start:children_start + 8 * (self.max_keys + 1)]
-            ))
+            keys = []
+            for i in range(self.max_keys):
+                if self.index_format == 'i':
+                    k = struct.unpack_from('i', buffer, keys_start + i * 4)[0]
+                elif self.index_format == 'f':
+                    k = struct.unpack_from('f', buffer, keys_start + i * 4)[0]
+                elif 's' in self.index_format:
+                    size = int(self.index_format[:-1])
+                    raw = struct.unpack_from(f'{size}s', buffer, keys_start + i * size)[0]
+                    k = raw.rstrip(b'\x00').decode()
+                else:
+                    raise ValueError("Formato de clave no soportado")
+                keys.append(k)
+
+            if self.index_format == 'i' or self.index_format == 'f':
+                key_bytes = 4
+            elif 's' in self.index_format:
+                key_bytes = int(self.index_format[:-1])
+            else:
+                raise ValueError("Formato de clave no soportado")
+
+            children_start = keys_start + key_bytes * self.max_keys
+
+
+            children = list(struct.unpack(f'{self.max_keys + 1}Q', buffer[children_start:children_start + 8 * (self.max_keys + 1)]))
 
             node.keys = keys[:key_count]
             node.children = children[:key_count + 1]
@@ -133,16 +172,29 @@ class BPlusTreeIndex:
 
         if node.is_leaf:
             records_bytes = b''.join(record.pack() for record in node.records)
-            padding = b'\x00' * (self.node_size - 16 - len(records_bytes))  # 16 = header size
+            padding = b'\x00' * (self.node_size_leaf - 16 - len(records_bytes))  # use correct leaf size
             buffer = header + records_bytes + padding
         else:
             keys = node.keys + [0] * (self.max_keys - len(node.keys))
             children = node.children + [0] * (self.max_keys + 1 - len(node.children))
 
-            key_data = struct.pack(f'{self.max_keys}i', *keys)
-            child_data = struct.pack(f'{self.max_keys + 1}Q', *children)
-            buffer = header + key_data + child_data
-            buffer += b'\x00' * (self.node_size - len(buffer))
+        key_data = b''
+        for k in keys:
+            if self.index_format == 'i':
+                key_data += struct.pack('i', k)
+            elif self.index_format == 'f':
+                key_data += struct.pack('f', k)
+            elif 's' in self.index_format:
+                size = int(self.index_format[:-1])
+                encoded = str(k).encode('utf-8')[:size].ljust(size, b'\x00')
+                key_data += struct.pack(f'{size}s', encoded)
+            else:
+                raise ValueError("Formato de clave no soportado")
+
+        child_data = struct.pack(f'{self.max_keys + 1}Q', *children)
+        buffer = header + key_data + child_data
+        padding = b'\x00' * (self.node_size_internal - len(buffer))  # use correct internal size
+        buffer += padding
 
         with open(self.auxname, 'ab') as f:
             pos = f.tell()
@@ -164,7 +216,24 @@ class BPlusTreeIndex:
             keys = node.keys + [0] * (self.max_keys - len(node.keys))
             children = node.children + [0] * ((self.max_keys + 1) - len(node.children))
 
-            key_data = struct.pack(f'{self.max_keys}i', *keys)
+            key_data = b''
+            for k in keys:
+                if self.index_format == 'i':
+                    key_data += struct.pack('i', k)
+                elif self.index_format == 'f':
+                    key_data += struct.pack('f', k)
+                elif 's' in self.index_format:
+                    size = int(self.index_format[:-1])
+
+                    if isinstance(k, str):
+                        encoded = k.encode('utf-8')[:size].ljust(size, b'\x00')
+                    else:
+                        encoded = str(k).encode('utf-8')[:size].ljust(size, b'\x00')
+
+                    key_data += struct.pack(f'{size}s', encoded)
+                else:
+                    raise ValueError("Formato de clave no soportado")
+
             child_data = struct.pack(f'{self.max_keys + 1}Q', *children)
             buffer = header + key_data + child_data
             buffer += b'\x00' * (self.node_size - len(buffer))
@@ -182,7 +251,7 @@ class BPlusTreeIndex:
     def insert(self, record):
         with open(self.filename, 'ab') as file:
             pos = file.tell()
-            file.write(record.to_bytes())
+            file.write(record.pack())
 
         index_record = IndexRecord(self.index_format, record.key, pos)
         result = self._insert_aux(self.root_offset, index_record)
@@ -307,3 +376,47 @@ class BPlusTreeIndex:
             while idx < len(node.keys) and node.keys[idx] < min_key:
                 idx += 1
             self.range_search_aux(node.children[idx], min_key, max_key, result_list)
+
+    def delete(self):
+        pass
+
+    def delete_aux(self):
+        pass
+    
+    def scan_all(self):
+        pass
+#---------------------------------------------------------------------------------------------------------
+
+class BPlusTreeIndexWrapper:
+    def __init__(self, table_path: str, field_name: str):
+        self.table_path = table_path
+        self.field_name = field_name
+
+        schema_file = f"{table_path}.schema.json"
+        with open(schema_file, "r") as f:
+            schema = json.load(f)
+        for field in schema["fields"]:
+            if field["name"] == field_name:
+                self.index_format = field["type"]
+                break
+        else:
+            raise ValueError(f"Campo '{field_name}' no encontrado en el esquema.")
+
+        self.tree = BPlusTreeIndex(
+            order=4,
+            filename=table_path + ".dat",
+            auxname=f"{table_path}.{field_name}.btree.idx",
+            index_format=self.index_format
+        )
+
+    def insert_record(self, index_record: IndexRecord):
+        self.tree.insert(index_record)
+
+    def search(self, key):
+        return self.tree.search(key)
+
+    def range_search(self, min_key, max_key):
+        return self.tree.range_search(min_key, max_key)
+
+    def print_all(self):
+        pass
