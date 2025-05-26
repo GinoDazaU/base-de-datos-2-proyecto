@@ -16,7 +16,7 @@ class IndexRecord:
     TYPE_STRING = 2
     TYPE_TUPLE = 3
     
-    def __init__(self, format: str, key: Union[int, float, str, Tuple[Any, ...]], offset: int):
+    def __init__(self, format: str, key: Union[int, float, str, Tuple[Union[int, float], ...]], offset: int):
         """
         Inicializa el registro de índice.
         

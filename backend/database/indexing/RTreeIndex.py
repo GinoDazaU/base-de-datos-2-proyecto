@@ -1,7 +1,7 @@
 import os
 from rtree import index
 import json
-from typing import Union, List
+from typing import Union, List, Tuple
 from .IndexRecord import IndexRecord, re_tuple
 from . import utils
 
@@ -25,7 +25,6 @@ class RTreeIndex:
         props.storage = index.RT_Disk
         self.idx = index.Index(self.filename, properties = props)
 
-
     @staticmethod
     def build_index(heap_filename: str, extract_index_fn, key_field: str) -> bool:
         # Load schema
@@ -39,7 +38,7 @@ class RTreeIndex:
 
         # Extract and validate entries
         entries = extract_index_fn(key_field)
-        valid_entries = [(RTreeIndex.normalize_bounds(k, key_format), o) for k, o in entries if RTreeIndex.validate_type(k, key_format)]
+        valid_entries = [(RTreeIndex.normalize_bounds(k), o) for k, o in entries if RTreeIndex.validate_type(k, key_format)]
         
         # Create index using library
         props = index.Property()
@@ -56,7 +55,7 @@ class RTreeIndex:
         return True
 
     @staticmethod
-    def validate_type(value, format: str) -> bool:
+    def validate_type(value: Tuple[Union[int, float], ...], format: str) -> bool:
         m = re_tuple.fullmatch(format)
         if not m:
             return False
@@ -71,7 +70,7 @@ class RTreeIndex:
         return  all(isinstance(x, float) for x in value)
 
     @staticmethod
-    def normalize_bounds(value: tuple, format: str) -> tuple:
+    def normalize_bounds(value: Tuple[Union[int, float], ...]) -> tuple:
         if len(value) == 2:
             x, y = value
             return (x, y, x, y)
@@ -81,13 +80,23 @@ class RTreeIndex:
         else:
             return value
         
-    def insert_record(self, records: IndexRecord):
+    def insert_record(self, record: IndexRecord):
+        if self.key_format != record.format:
+            raise TypeError(f"El registro tiene format {record.format}, se esperaba {self.key_format}")
+        
+        if not isinstance(record.key, tuple):
+            raise TypeError(f"El campo del registro es de tipo {type(record.key)}, se esperaba una tupla numérica")
+
+        if not isinstance(record.offset, int):
+           raise TypeError(f"Offset inválido (debe ser int), se recibió {type(record.offset)}")
+        
+        bounds = RTreeIndex.normalize_bounds(record.key)
+        self.idx.insert(record.offset, bounds)
+    
+    def search_range(self, point: Tuple[Union[int, float], ...], radius: float) -> List[IndexRecord]:
         return NotImplemented
     
-    def search_range(self, point: tuple, radius: float) -> List[IndexRecord]:
-        return NotImplemented
-    
-    def search_knn(self, point: tuple, k: int) -> List[IndexRecord]:
+    def search_knn(self, point: Tuple[Union[int, float], ...], k: int) -> List[IndexRecord]:
         return NotImplemented
 
     def delete_record(self, key, offset) -> bool:
