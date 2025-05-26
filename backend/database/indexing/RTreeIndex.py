@@ -173,7 +173,23 @@ class RTreeIndex:
         return results
     
     def search_knn(self, point: Tuple[Union[int, float], ...], k: int) -> List[IndexRecord]:
-        return NotImplemented
+        self.validate_point(point)
+        point = tuple(float(c) for c in point)
+
+        offsets = self.idx.nearest(point, num_results = k)
+
+        heap_file = HeapFile(self.table_name)
+        field_names = [name for name, _ in heap_file.schema]
+        key_pos = field_names.index(self.indexed_field)
+
+        results: List[IndexRecord] = []
+
+        for offset in offsets:
+            record = heap_file.fetch_record_by_offset(offset)
+            key_val = record.values[key_pos]
+            results.append(IndexRecord(self.key_format, key_val, offset))
+
+        return results
 
     def delete_record(self, key: Tuple[Union[int, float], ...], offset: int) -> bool:
         return NotImplemented
