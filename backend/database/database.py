@@ -133,6 +133,13 @@ def search_hash_idx(table_name: str, field_name: str, field_value):
     hidx = ExtendibleHashIndex(table_path, field_name)
     return [heap.fetch_record_by_offset(r.offset) for r in hidx.search_record(field_value)]
 
+def search_seq_idx_range(table_name: str, field_name: str, start_value, end_value):
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    idx = SequentialIndex(table_path, field_name)
+    records = idx.search_range(start_value, end_value)
+    return [heap.fetch_record_by_offset(rec.offset) for rec in records]
+
 # =============================================================================
 # 🧠 Mantenimiento de índices secundarios
 # =============================================================================
