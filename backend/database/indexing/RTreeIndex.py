@@ -84,7 +84,10 @@ class RTreeIndex:
     def insert_record(self, records: IndexRecord):
         return NotImplemented
     
-    def search_range(self, key: tuple, radius: float) -> List[IndexRecord]:
+    def search_range(self, point: tuple, radius: float) -> List[IndexRecord]:
+        return NotImplemented
+    
+    def search_knn(self, point: tuple, k: int) -> List[IndexRecord]:
         return NotImplemented
 
     def delete_record(self, key, offset) -> bool:
