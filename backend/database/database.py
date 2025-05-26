@@ -98,12 +98,15 @@ def _remove_from_secondary_indexes(table_path: str, record: Record, offset: int)
         value = record.values[[n for n, _ in schema].index(field_name)]
 
         if idx_type == "seq":
+            print(f"[DEBUG] Eliminando del índice secuencial: {field_name}={value}, offset={offset}")
             SequentialIndex(table_path, field_name).delete_record(value, offset)
-            pass
+
         elif idx_type == "hash":
+            print(f"[DEBUG] Eliminando del índice hash: {field_name}={value}, offset={offset}")
             ExtendibleHashIndex(table_path, field_name).delete_record(value, offset)
             pass
         elif idx_type == "btree":
+            print(f"[DEBUG] Eliminando del índice btree: {field_name}={value}, offset={offset}")
             BPlusTreeIndexWrapper(table_path, field_name).delete_record(value, offset)
             pass
 

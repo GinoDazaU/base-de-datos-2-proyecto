@@ -139,30 +139,6 @@ class HeapFile:
             print("Registro:", record, " insertado correctamente")
             return slot_off
         
-    def insert_record_free(self, record: Record) -> int:
-        """Inserta un registro sin verificar unicidad de PK. Usa free-list si hay huecos."""
-        if record.schema != self.schema:
-            raise ValueError("Esquema del registro no coincide.")
-
-        with open(self.filename, "r+b") as fh:
-            if self.free_head == -1:  # sin huecos → append
-                slot_off = self.heap_size
-                fh.seek(0, os.SEEK_END)
-                fh.write(record.pack())
-                fh.write(struct.pack("i", 0))  # next_free = 0
-                self.heap_size += 1
-            else:  # reciclar hueco
-                slot_off = self.free_head
-                byte_off = METADATA_SIZE + slot_off * self.slot_size
-                fh.seek(byte_off + self.rec_data_size)
-                self.free_head = struct.unpack("i", fh.read(4))[0]  # siguiente libre
-                fh.seek(byte_off)
-                fh.write(record.pack())
-                fh.write(struct.pack("i", 0))
-
-            self._write_header(fh)
-            print("Registro (sin restricción PK):", record, "insertado en offset", slot_off)
-            return slot_off
 
     # ------------------------------------------------------------------
     # Borrado -----------------------------------------------------------
@@ -179,17 +155,18 @@ class HeapFile:
                 fh.seek(byte_off)
                 buf = fh.read(self.rec_data_size)
                 rec = Record.unpack(buf, self.schema)
+                old_rec = Record.unpack(buf, self.schema)
                 if rec.values[pk_idx] != key:
                     continue
                 # marcar hueco: set PK = sentinel y next_free = free_head
-                print("Registro con PK:", key, "con contenido:", rec, "borrado correctamente")
                 rec.values[pk_idx] = sentinel
                 fh.seek(byte_off)
                 fh.write(rec.pack())
                 fh.write(struct.pack("i", self.free_head))
                 self.free_head = pos
                 self._write_header(fh)
-                return True, pos, rec
+                print("Registro con PK:", key, "con contenido:", old_rec, "borrado correctamente")
+                return True, pos, old_rec
         return False, -1, None
     
     # ------------------------------------------------------------------

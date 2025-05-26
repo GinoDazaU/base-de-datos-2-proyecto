@@ -4,28 +4,30 @@ import string
 import glob
 import os
 import time
+from faker import Faker
 
 def _table_path(table_name: str) -> str:
     """Devuelve la ruta absoluta (sin extensión) de la tabla."""
     return os.path.join(tables_dir, table_name)
 
-def _test_heapfile():
-    import glob, os, time
-    from faker import Faker
+def _test_heapfile(n: int):
     fake = Faker()
 
     table_name = "Alumno"
     schema = [("codigo", "10s"), ("nombre", "20s"), ("precio", "f")]
     pk = "codigo"
 
+    # Limpiar archivos existentes
     for path in glob.glob(f"{_table_path(table_name)}*"):
         os.remove(path)
 
     create_table(table_name, schema, pk)
 
-    target_codigo = "A00666"
-    print("== INSERTANDO 1K ==")
-    for i in range(1000):
+    target_index = n // 2
+    target_codigo = f"A{target_index:05d}"
+
+    print(f"== INSERTANDO {n} REGISTROS ==")
+    for i in range(n):
         codigo = f"A{i:05d}"
         nombre = fake.first_name()
         precio = round(fake.pyfloat(min_value=1.0, max_value=100.0), 2)
@@ -47,9 +49,8 @@ def _test_heapfile():
     resultados = search_by_field(table_name, "codigo", target_codigo)
     print(f"Buscar {target_codigo}: {'ENCONTRADO' if resultados else 'NO ENCONTRADO'}")
 
-def _test_heapfile_seqidx():
-    import glob, os, time, random
-    from faker import Faker
+
+def _test_seqidx(n: int):
     fake = Faker()
 
     table_name = "Alumno"
@@ -62,9 +63,11 @@ def _test_heapfile_seqidx():
     create_table(table_name, schema, pk)
     create_seq_idx(table_name, "codigo")  # índice secuencial por código
 
-    target_codigo = "A00666"
-    print("== INSERTANDO 2000 ==")
-    for i in range(2000):
+    target_index = n // 2
+    target_codigo = f"A{target_index:05d}"
+
+    print(f"== INSERTANDO {n} REGISTROS ==")
+    for i in range(n):
         codigo = f"A{i:05d}"
         nombre = fake.first_name()
         precio = round(random.uniform(1.0, 100.0), 2)
@@ -77,7 +80,6 @@ def _test_heapfile_seqidx():
     resultados = search_by_field(table_name, "codigo", target_codigo)
     t2 = time.time()
     print(f"Sin índice: {'ENCONTRADO' if resultados else 'NO ENCONTRADO'} en {t2 - t1:.6f} segundos")
-
     for r in resultados:
         print(r)
 
@@ -92,10 +94,15 @@ def _test_heapfile_seqidx():
     delete_record(table_name, target_codigo)
 
     print("== BUSCANDO POST-BORRADO ==")
+    print("== BUSCANDO SIN INDICE ==")
     resultados = search_by_field(table_name, "codigo", target_codigo)
     print(f"Buscar {target_codigo} después de borrar: {'ENCONTRADO' if resultados else 'NO ENCONTRADO'}")
+    print("== BUSCANDO CON INDICE SECUENCIAL ==")
+    resultados = search_seq_idx(table_name, "codigo", target_codigo)
+    print(f"Buscar {target_codigo} después de borrar: {'ENCONTRADO' if resultados else 'NO ENCONTRADO'}")
 
-def _test_heapfile_hashidx():
+
+def _test_hashidx():
     """Demo: crea un HeapFile e inserta 1000 registros (sin índices)."""
 
     table_name = "Heap1000"
@@ -167,4 +174,4 @@ def _test_insercion_sin_pk():
     print(f"Tiempo de inserción sin verificación de PK: {tiempo_total:.4f} segundos")
 
 if __name__ == "__main__":
-    _test_insercion_sin_pk()
+    _test_seqidx(1000)
