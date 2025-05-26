@@ -143,5 +143,30 @@ def _test_heapfile_hashidx():
         print(r)
     print(f"Búsqueda con índice hash tomó {end - start:.6f} segundos")
 
+    def _test_heapfile_rtreeidx():
+        import random
+        from faker import Faker
+        fake = Faker()
+
+        table_name = "GeoPlace"
+        schema = [("id", "i"), ("location", "2f"), ("name", "20s")]
+        pk = "id"
+
+        for path in glob.glob(f"{_table_path(table_name)}"):
+            os.remove(path)
+
+        create_table(table_name, schema, pk)
+
+        records_list = []
+
+        num_records = 50
+        for i in range(num_records):
+            id_val = i + 1
+            location = (round(random.uniform(0, 100), 2), round(random.uniform(0, 100), 2))
+            name = fake.name()[:20]
+            rec = Record(schema, [id_val, location, name])
+            insert_record(table_name, rec)
+            records_list.append(rec)
+
 if __name__ == "__main__":
     _test_heapfile()
