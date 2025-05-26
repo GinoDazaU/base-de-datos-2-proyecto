@@ -122,6 +122,9 @@ class RTreeIndex:
             raise TypeError(f"Componentes de {point!r} deben ser int o float")
 
     def insert_record(self, record: IndexRecord):
+        if not isinstance(record, IndexRecord):
+            raise TypeError("Se esperaba un objeto IndexRecord")
+
         if self.key_format != record.format:
             raise TypeError(f"El registro tiene formato {record.format}, se esperaba {self.key_format}")
         
@@ -129,7 +132,7 @@ class RTreeIndex:
             raise TypeError(f"El campo del registro es de tipo {type(record.key)}, se esperaba una tupla numérica")
 
         if not isinstance(record.offset, int):
-           raise TypeError(f"Offset inválido (debe ser int), se recibió {type(record.offset)}")
+            raise TypeError(f"Offset inválido (debe ser int), se recibió {type(record.offset)}")
         
         bounds = RTreeIndex.to_mbr(record.key)
         self.idx.insert(record.offset, bounds)
@@ -192,4 +195,15 @@ class RTreeIndex:
         return results
 
     def delete_record(self, key: Tuple[Union[int, float], ...], offset: int) -> bool:
-        return NotImplemented
+        if not RTreeIndex.validate_type(key, self.key_format):
+            raise TypeError(f"La clave debe ser tupla de números")
+        if not isinstance(offset, int):
+            raise TypeError(f"El offset debe ser int")
+        
+        bounds = self.to_mbr(key)
+
+        try:
+            self.idx.delete(id = offset, coordinates = bounds)
+            return True
+        except Exception as e:
+            return False
