@@ -62,7 +62,7 @@ class Record:
         format_str = ''.join(fmt for _, fmt in schema)
         return struct.calcsize(format_str)
 
-    def __str__(self) -> None:
+    def __str__(self) -> str:
         out_parts = []
         for (_, fmt), value in zip(self.schema, self.values):
             if 's' in fmt:                         # cadena fija
