@@ -175,6 +175,28 @@ class RTreeIndex:
 
         return results
     
+    def search_bounds(self, lower_bound: Tuple[Union[int, float], ...], upper_bound: Tuple[Union[int, float], ...]) -> List[IndexRecord]:
+        self.validate_point(lower_bound)
+        self.validate_point(upper_bound)
+        lower_bound = tuple(float(c) for c in lower_bound)
+        upper_bound = tuple(float(c) for c in upper_bound)
+        bounds = lower_bound + upper_bound
+
+        offsets = list(self.idx.intersection(bounds))
+
+        heap_file = HeapFile(self.table_name)
+        field_names = [name for name, _ in heap_file.schema]
+        key_pos = field_names.index(self.indexed_field)
+
+        results: List[IndexRecord] = []
+
+        for offset in offsets:
+            record = heap_file.fetch_record_by_offset(offset)
+            key_val = record.values[key_pos]
+            results.append(IndexRecord(self.key_format, key_val, offset))
+
+        return results
+
     def search_knn(self, point: Tuple[Union[int, float], ...], k: int) -> List[IndexRecord]:
         self.validate_point(point)
         point = tuple(float(c) for c in point)
