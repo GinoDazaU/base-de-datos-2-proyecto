@@ -24,7 +24,7 @@ def _test_heapfile():
     create_table(table_name, schema, pk)
 
     target_codigo = "A00666"
-    print("== INSERTANDO 10K ==")
+    print("== INSERTANDO 1K ==")
     for i in range(1000):
         codigo = f"A{i:05d}"
         nombre = fake.first_name()
@@ -143,5 +143,28 @@ def _test_heapfile_hashidx():
         print(r)
     print(f"Búsqueda con índice hash tomó {end - start:.6f} segundos")
 
+def _test_insercion_sin_pk():
+    schema = [("id", "i"), ("nombre", "20s"), ("precio", "f")]
+    registros = 4000
+
+    # Limpiar archivos anteriores
+    for f in glob.glob(_table_path("SinPk") + ".*"):
+        os.remove(f)
+
+    # Crear tabla con PK, pero sin usar su restricción
+    create_table("SinPk", schema, primary_key="id")
+
+    heap = HeapFile(_table_path("SinPk"))
+
+    tiempo_inicio = time.time()
+    for i in range(registros):
+        nombre = "P" + ''.join(random.choices(string.ascii_uppercase, k=5))
+        precio = round(random.uniform(1.0, 100.0), 2)
+        rec = Record(schema, [i + 1, nombre, precio])
+        heap.insert_record_free(rec)
+    tiempo_total = time.time() - tiempo_inicio
+
+    print(f"Tiempo de inserción sin verificación de PK: {tiempo_total:.4f} segundos")
+
 if __name__ == "__main__":
-    _test_heapfile()
+    _test_insercion_sin_pk()

@@ -138,6 +138,32 @@ class HeapFile:
             self._write_header(fh)                      # actualizar cabecera
             print("Registro:", record, " insertado correctamente")
             return slot_off
+        
+    def insert_record_free(self, record: Record) -> int:
+        """Inserta un registro sin verificar unicidad de PK. Usa free-list si hay huecos."""
+        if record.schema != self.schema:
+            raise ValueError("Esquema del registro no coincide.")
+
+        with open(self.filename, "r+b") as fh:
+            if self.free_head == -1:  # sin huecos → append
+                slot_off = self.heap_size
+                fh.seek(0, os.SEEK_END)
+                fh.write(record.pack())
+                fh.write(struct.pack("i", 0))  # next_free = 0
+                self.heap_size += 1
+            else:  # reciclar hueco
+                slot_off = self.free_head
+                byte_off = METADATA_SIZE + slot_off * self.slot_size
+                fh.seek(byte_off + self.rec_data_size)
+                self.free_head = struct.unpack("i", fh.read(4))[0]  # siguiente libre
+                fh.seek(byte_off)
+                fh.write(record.pack())
+                fh.write(struct.pack("i", 0))
+
+            self._write_header(fh)
+            print("Registro (sin restricción PK):", record, "insertado en offset", slot_off)
+            return slot_off
+
     # ------------------------------------------------------------------
     # Borrado -----------------------------------------------------------
     # ------------------------------------------------------------------

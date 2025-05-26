@@ -209,3 +209,36 @@ def search_hash_idx(table_name: str, field_name: str, field_value):
 
 def print_hash_idx(table_name: str, field_name: str):
     ExtendibleHashIndex(_table_path(table_name), field_name).print_all()
+
+def create_table_with_hash_pk(table_name: str,
+                               schema: List[Tuple[str, str]],
+                               primary_key: str) -> None:
+    """Crea la tabla y un índice hash extensible sobre la clave primaria."""
+    create_table(table_name, schema, primary_key)
+    create_hash_idx(table_name, primary_key)
+
+def insert_record_hash_pk(table_name: str, record: Record) -> int:
+    """
+    Inserta un registro verificando unicidad de PK usando el índice hash,
+    y si no existe, lo inserta sin validación usando insert_record_free.
+    """
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+
+    if heap.primary_key is None:
+        raise ValueError(f"La tabla '{table_name}' no tiene clave primaria.")
+
+    pk_idx = [i for i, (n, _) in enumerate(record.schema) if n == heap.primary_key][0]
+    pk_value = record.values[pk_idx]
+
+    # buscar en índice hash
+    hidx = ExtendibleHashIndex(table_path, heap.primary_key)
+    if hidx.search_record(pk_value):
+        raise ValueError(f"PK duplicada detectada por índice hash: {pk_value}")
+
+    # insertar sin validación
+    offset = heap.insert_record_free(record)
+
+    # actualizar índices
+    _update_secondary_indexes(table_path, record, offset)
+    return offset
