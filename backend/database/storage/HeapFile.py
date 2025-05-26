@@ -13,6 +13,7 @@ class HeapFile:
 
     def __init__(self, table_name: str) -> None:
         # Inicializa el archivo heap cargando el esquema y el tamaño actual.
+        self.table_name = table_name.split("/")[-1] # saves table name for stuff in parser
         self.filename = table_name + ".dat"
         self.schema = self._load_schema(self.filename)
         self.record_size = Record.get_size(self.schema)
@@ -165,7 +166,7 @@ class HeapFile:
     def to_dataframe(heapfile: "HeapFile") -> pd.DataFrame:
         with open(heapfile.filename, "rb") as f:
             f.seek(heapfile.METADATA_SIZE)
-            headers = [name for name, _ in heapfile.schema]
+            headers = [heapfile.table_name + "." + column_name for column_name, _ in heapfile.schema] # explicit table name prefix
             df = pd.DataFrame(columns=headers)
             for _ in range(heapfile.heap_size):
                 buf = f.read(heapfile.record_size)
