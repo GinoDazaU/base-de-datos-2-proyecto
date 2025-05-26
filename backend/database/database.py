@@ -53,7 +53,6 @@ def insert_record(table_name: str, record: Record) -> int:
     _update_secondary_indexes(table_path, record, offset)
     return offset
 
-
 def insert_record_free(table_name: str, record: Record) -> int:
     """Esto es de testing (no usar en frontend)"""
     table_path = _table_path(table_name)
@@ -96,7 +95,6 @@ def insert_record_btree_pk(table_name: str, record: Record) -> int:
 
     _update_secondary_indexes(table_path, record, offset)
     return offset
-
 
 def delete_record(table_name: str, pk_value):
     table_path = _table_path(table_name)
