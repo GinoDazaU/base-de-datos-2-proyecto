@@ -1,215 +1,260 @@
 import os
 import json
-import math
 from typing import List, Dict, Any, Union
 
 from .IndexRecord import IndexRecord
 from . import utils
 
-# ---------------------------------------------------------------------------
-#  Parámetros globales del índice hash extensible
-# ---------------------------------------------------------------------------
-GLOBAL_DEPTH: int = 16   # profundidad máxima permitida del directorio
-BUCKET_FACTOR: int = 4   # capacidad máxima de registros por bucket
 
-# ---------------------------------------------------------------------------
-#  Valores centinela (registros "borrados")
-# ---------------------------------------------------------------------------
-SENTINEL_INT = -1
-SENTINEL_FLOAT = -1.0
-SENTINEL_STR = ""
-
-def _sentinel(fmt: str):
-    if fmt == "i":
-        return SENTINEL_INT
-    if fmt == "f":
-        return SENTINEL_FLOAT
-    if "s" in fmt:
-        return SENTINEL_STR
-    raise ValueError(f"Formato no soportado: {fmt}")
-
-# ---------------------------------------------------------------------------
-#  Clase principal
-# ---------------------------------------------------------------------------
 class ExtendibleHashIndex:
-    """Índice hash extensible persistente en JSON.
+    """Índice Hash Extensible (directory + buckets).
 
-    Formato de archivo (pretty‑printed para legibilidad):
+    ▸ Directorio:   2^global_depth entradas → id de bucket.
+    ▸ Bucket:       lista de IndexRecord (hasta BUCKET_FACTOR) + local_depth.
 
-    {
-      "global_depth": 1,
-      "bucket_factor": 4,
-      "key_format": "10s",
-      "directory": [0, 0],          # 2 ** global_depth entries
-      "buckets": {
-        "0": {"depth": 1, "records": [["ana", 15], ["bob", 7]]}
-      }
-    }
+    El índice se persiste en un único archivo JSON con la extensión
+    ".hash.idx".  Para un nombre base `table_path` y campo `field_name`, el
+    archivo se llama:
+
+        table_path + "." + field_name + ".hash.idx"
+
+    Solo se soportan claves *int* y *string* (el formato se obtiene del schema
+    de la tabla).
     """
 
-    # ------------------------------------------------------------------
-    #  Construcción inicial --------------------------------------------
-    # ------------------------------------------------------------------
-    @staticmethod
-    def build_index(base_filename: str, extract_index_fn, key_field: str) -> None:
-        """Crea / recrea el archivo *.hash.idx para *key_field* a partir
-        de los valores actuales del `HeapFile`.
-        """
-        schema = utils.load_schema(base_filename)
-        key_fmt = utils.get_key_format_from_schema(schema, key_field)
+    GLOBAL_DEPTH: int = 16        # Profundidad máxima del directorio (2^16)
+    BUCKET_FACTOR: int = 4        # Máx. registros por bucket antes de dividir
 
-        idx_filename = f"{base_filename}.{key_field}.hash.idx"
-        if os.path.exists(idx_filename):
-            os.remove(idx_filename)
-
-        # --- 1) Estado mínimo ---------------------------------------
-        state = {
-            "global_depth": 1,
-            "bucket_factor": BUCKET_FACTOR,
-            "key_format": key_fmt,
-            "directory": [0, 0],           # 2 ** 1
-            "buckets": {
-                "0": {"depth": 1, "records": []}
-            }
-        }
-        with open(idx_filename, "w", encoding="utf-8") as jf:
-            json.dump(state, jf, indent=2)
-
-        # --- 2) Insertar todas las entradas existentes --------------
-        idx = ExtendibleHashIndex(base_filename, key_field)
-        for key, off in extract_index_fn(key_field):
-            if not ExtendibleHashIndex._validate_type(key, key_fmt):
-                continue
-            idx.insert_record(IndexRecord(key_fmt, key, off))
+    SENTINEL_INT = -1
+    SENTINEL_STR = ""
 
     # ------------------------------------------------------------------
-    #  Inicialización de instancia -------------------------------------
+    #  API pública -------------------------------------------------------
     # ------------------------------------------------------------------
-    def __init__(self, base_filename: str, key_field: str):
-        self.filename = f"{base_filename}.{key_field}.hash.idx"
+
+    def __init__(self, table_path: str, field_name: str):
+        self.table_path = table_path
+        self.field_name = field_name
+        self.filename = f"{table_path}.{field_name}.hash.idx"
+
         if not os.path.exists(self.filename):
-            raise FileNotFoundError(
-                f"Índice inexistente: {self.filename}. Crea el índice con create_hash_idx().")
-        with open(self.filename, "r", encoding="utf-8") as jf:
-            self._state: Dict[str, Any] = json.load(jf)
+            raise FileNotFoundError(f"Índice hash no encontrado: {self.filename}.")
 
-        self.key_format: str = self._state["key_format"]
-        self.bucket_factor: int = self._state["bucket_factor"]
+        self._load()
+
+    # ...................... Operaciones de consulta ...................
+
+    def search_record(self, key: Union[int, str]) -> List[IndexRecord]:
+        """Devuelve todos los IndexRecord cuyo key == *key* (lista vacía si no hay)."""
+        if not self._validate_type(key):
+            raise TypeError(f"Clave {key!r} no coincide con formato '{self.key_format}'.")
+
+        bucket_idx = self._bucket_index(key)
+        bucket = self.buckets[self.directory[bucket_idx]]
+        return [IndexRecord(self.key_format, rec['key'], rec['offset'])
+                for rec in bucket['records']
+                if rec['key'] == key]
+
+    # ...................... Operaciones de inserción ..................
+
+    def insert_record(self, idx_rec: IndexRecord) -> None:
+        if idx_rec.format != self.key_format:
+            raise TypeError("Formato de IndexRecord no coincide con el índice.")
+        if self._is_sentinel(idx_rec.key):
+            return  # no indexamos centinelas
+
+        self._insert_internal(idx_rec)
+        self._save()
+
+    # ...................... Operaciones de borrado ....................
+
+    def delete_record(self, key: Union[int, str], offset: int) -> bool:
+        """Elimina el par (key, offset).  Devuelve True si lo encontró."""
+        if not self._validate_type(key):
+            raise TypeError("Tipo de clave incorrecto.")
+
+        bucket_idx = self._bucket_index(key)
+        bucket = self.buckets[self.directory[bucket_idx]]
+        before = len(bucket['records'])
+        bucket['records'] = [rec for rec in bucket['records']
+                              if not (rec['key'] == key and rec['offset'] == offset)]
+        found = len(bucket['records']) < before
+        if found:
+            self._save()
+        return found
+
+    # ...................... Debug / inspección ........................
+
+    def print_all(self) -> None:
+        print(f"FILE: {self.filename}")
+        print(f"GlobalDepth={self.global_depth}  BucketFactor={self.BUCKET_FACTOR}  Format='{self.key_format}'")
+        print("-" * 60)
+        for i, bucket_id in enumerate(self.directory):
+            print(f"Dir[{i:>5b}]: → Bucket {bucket_id}")
+        print("\nBuckets:")
+        for bid, bucket in enumerate(self.buckets):
+            print(f"  Bucket {bid}: local_depth={bucket['local_depth']}  size={len(bucket['records'])}")
+            for rec in bucket['records']:
+                print(f"    {rec['key']!r} -> {rec['offset']}")
+        print("=" * 60)
 
     # ------------------------------------------------------------------
-    #  API pública ------------------------------------------------------
+    #  Creación (estático) ----------------------------------------------
     # ------------------------------------------------------------------
-    def insert_record(self, record: IndexRecord) -> None:
-        if record.format != self.key_format:
-            raise TypeError("Formato de clave incompatible con el índice")
-        self._insert_in_memory(record)
-        self._persist()
 
-    def search_record(self, key: Union[int, float, str]):
-        if not self._validate_type(key, self.key_format):
-            raise TypeError("Tipo de clave incorrecto")
-        dir_idx = self._directory_index(key)
-        bucket_id = self._state["directory"][dir_idx]
-        bucket = self._state["buckets"][str(bucket_id)]
-        return [IndexRecord(self.key_format, k, off) for k, off in bucket["records"] if k == key]
-
-    def delete_record(self, key, offset):
-        if not self._validate_type(key, self.key_format):
-            raise TypeError("Tipo de clave incorrecto")
-        dir_idx = self._directory_index(key)
-        bucket = self._state["buckets"][str(self._state["directory"][dir_idx])]
-        for i, (k, off) in enumerate(bucket["records"]):
-            if k == key and off == offset:
-                del bucket["records"][i]
-                self._persist()
-                return True
-        return False
-
-    def print_all(self):
-        print(json.dumps(self._state, indent=2))
-
-    # ------------------------------------------------------------------
-    #  Internals --------------------------------------------------------
-    # ------------------------------------------------------------------
     @staticmethod
-    def _validate_type(val, fmt):
-        if fmt == "i":
-            return isinstance(val, int)
-        if fmt == "f":
-            return isinstance(val, float)
-        if "s" in fmt:
-            return isinstance(val, str)
+    def build_index(table_path: str, extract_index_fn, key_field: str):
+        """Reconstruye el índice a partir de los datos actuales del HeapFile."""
+        # ---- determinar formato de clave ----
+        schema = utils.load_schema(table_path)
+        key_format = utils.get_key_format_from_schema(schema, key_field)
+        if key_format not in ('i',) and 's' not in key_format:
+            raise ValueError("ExtendibleHashIndex solo soporta int o string.")
+
+        idx = ExtendibleHashIndex._new_empty(table_path, key_field, key_format)
+
+        # ---- insertar (key, offset) de la tabla ----
+        for key, offset in extract_index_fn(key_field):
+            if idx._is_sentinel(key):
+                continue
+            if not idx._validate_type(key):
+                continue
+            idx._insert_internal(IndexRecord(key_format, key, offset))
+
+        idx._save()
+        return True
+
+    # ------------------------------------------------------------------
+    #  Implementación interna ------------------------------------------
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _new_empty(cls, table_path: str, field_name: str, key_format: str):
+        """Crea un índice vacío (1 bucket, global_depth=1) y lo devuelve sin guardar."""
+        instance = object.__new__(cls)
+        instance.table_path = table_path
+        instance.field_name = field_name
+        instance.filename = f"{table_path}.{field_name}.hash.idx"
+
+        instance.key_format = key_format
+        instance.global_depth = 1  # directorio de 2 entradas
+        instance.directory = [0, 0]
+        instance.buckets = [{
+            'local_depth': 1,
+            'records': []
+        }]
+        return instance
+
+    # ............................... Helpers ...........................
+
+    def _validate_type(self, key) -> bool:
+        if self.key_format == 'i':
+            return isinstance(key, int)
+        # formato 'Ns' (string fijo)
+        if 's' in self.key_format:
+            return isinstance(key, str)
         return False
 
-    def _hash(self, key):
-        h = hash(key)
-        if isinstance(key, float):
-            h = hash(round(key, 10))
-        return h & ((1 << GLOBAL_DEPTH) - 1)
+    def _is_sentinel(self, key) -> bool:
+        if self.key_format == 'i':
+            return key == self.SENTINEL_INT
+        else:
+            return key == self.SENTINEL_STR
 
-    def _directory_index(self, key):
-        gd = self._state["global_depth"]
-        return self._hash(key) & ((1 << gd) - 1)
+    def _hash_key(self, key: Union[int, str]) -> int:
+        """Hash determinístico (32‑bit) para int o str."""
+        if self.key_format == 'i':
+            return key & 0xFFFFFFFF
+        # simple hash para string (polynomial rolling)
+        h = 0
+        for ch in key:
+            h = ((h * 31) + ord(ch)) & 0xFFFFFFFF
+        return h
 
-    def _insert_in_memory(self, rec: IndexRecord):
+    def _bucket_index(self, key) -> int:
+        mask = (1 << self.global_depth) - 1
+        return self._hash_key(key) & mask
+
+    def _insert_internal(self, idx_rec: IndexRecord):
+        """Inserción *en memoria* (sin guardar)."""
         while True:
-            dir_idx = self._directory_index(rec.key)
-            bucket_id = self._state["directory"][dir_idx]
-            bucket = self._state["buckets"][str(bucket_id)]
+            dir_idx = self._bucket_index(idx_rec.key)
+            bucket_id = self.directory[dir_idx]
+            bucket = self.buckets[bucket_id]
 
-            # Duplicado exacto
-            if any(k == rec.key and off == rec.offset for k, off in bucket["records"]):
+            # --- insertar si hay espacio ----
+            if len(bucket['records']) < self.BUCKET_FACTOR:
+                bucket['records'].append({
+                    'key': idx_rec.key,
+                    'offset': idx_rec.offset
+                })
                 return
 
-            # Espacio libre
-            if len(bucket["records"]) < self.bucket_factor:
-                bucket["records"].append([rec.key, rec.offset])
+            # --- bucket lleno ----
+            if bucket['local_depth'] == self.GLOBAL_DEPTH:
+                # No podemos dividir más: usar overflow (sin límite)
+                bucket['records'].append({
+                    'key': idx_rec.key,
+                    'offset': idx_rec.offset
+                })
                 return
 
-            # Necesario split
-            if bucket["depth"] == GLOBAL_DEPTH:
-                raise RuntimeError("Se alcanzó la profundidad máxima global")
-
-            # Si LD == GD implica duplicar directorio
-            if bucket["depth"] == self._state["global_depth"]:
-                self._double_directory()
-                # recalcular después de aumentar GD
-                continue
-
+            # ---- dividir bucket ----
             self._split_bucket(bucket_id)
-            # repetirá el ciclo con nueva distribución
-
-    def _double_directory(self):
-        self._state["directory"].extend(self._state["directory"])
-        self._state["global_depth"] += 1
+            # loop nuevamente para reubicar idx_rec
 
     def _split_bucket(self, bucket_id: int):
-        bucket = self._state["buckets"][str(bucket_id)]
-        old_depth = bucket["depth"]
-        new_depth = old_depth + 1
-        bucket["depth"] = new_depth
+        old_bucket = self.buckets[bucket_id]
+        old_ld = old_bucket['local_depth']
+        new_ld = old_ld + 1
+        old_bucket['local_depth'] = new_ld
 
-        # Crear nuevo bucket
-        new_bucket_id = str(max(int(b) for b in self._state["buckets"].keys()) + 1)
-        self._state["buckets"][new_bucket_id] = {"depth": new_depth, "records": []}
+        # Crear bucket nuevo
+        new_bucket_id = len(self.buckets)
+        new_bucket = {
+            'local_depth': new_ld,
+            'records': []
+        }
+        self.buckets.append(new_bucket)
 
-        # Actualizar directorio
-        gd = self._state["global_depth"]
-        for i in range(1 << gd):
-            if self._state["directory"][i] != bucket_id:
-                continue
-            if (i >> (new_depth - 1)) & 1:  # bit significativo para el nuevo nivel
-                self._state["directory"][i] = int(new_bucket_id)
+        # Duplicar directorio si es necesario
+        if new_ld > self.global_depth:
+            if self.global_depth >= self.GLOBAL_DEPTH:
+                return  # no deberíamos ocurrir porque chequeamos antes
+            self.directory = self.directory + self.directory
+            self.global_depth += 1
 
-        # Reinsertar registros
-        old_records = bucket["records"]
-        bucket["records"] = []
-        for k, off in old_records:
-            self._insert_in_memory(IndexRecord(self.key_format, k, off))
+        # Reasignar entradas del directorio
+        for i in range(len(self.directory)):
+            if self.directory[i] == bucket_id:
+                if ((i >> (new_ld - 1)) & 1):
+                    self.directory[i] = new_bucket_id
 
-    # ------------------------------------------------------------------
-    #  Persistencia -----------------------------------------------------
-    # ------------------------------------------------------------------
-    def _persist(self):
-        with open(self.filename, "w", encoding="utf-8") as jf:
-            json.dump(self._state, jf, indent=2)
+        # Reinsertar registros del bucket antiguo (puede mover algunos)
+        old_records = old_bucket['records']
+        old_bucket['records'] = []
+        for rec in old_records:
+            key, offset = rec['key'], rec['offset']
+            dir_idx = self._bucket_index(key)
+            dest_bucket = self.buckets[self.directory[dir_idx]]
+            dest_bucket['records'].append(rec)
+
+    # .......................... Persistencia ...........................
+
+    def _load(self):
+        with open(self.filename, 'r', encoding='utf-8') as fh:
+            data = json.load(fh)
+        self.key_format = data['key_format']
+        self.global_depth = data['global_depth']
+        self.directory = data['directory']
+        self.buckets = data['buckets']
+
+    def _save(self):
+        data = {
+            'key_format': self.key_format,
+            'global_depth': self.global_depth,
+            'directory': self.directory,
+            'buckets': self.buckets
+        }
+        with open(self.filename, 'w', encoding='utf-8') as fh:
+            json.dump(data, fh)

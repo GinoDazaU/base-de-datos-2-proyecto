@@ -102,76 +102,73 @@ def _test_seqidx(n: int):
     print(f"Buscar {target_codigo} después de borrar: {'ENCONTRADO' if resultados else 'NO ENCONTRADO'}")
 
 
-def _test_hashidx():
-    """Demo: crea un HeapFile e inserta 1000 registros (sin índices)."""
-
-    table_name = "Heap1000"
+def _test_hashidx(n: int):
+    table_name = f"Heap{n}"
     schema = [("id", "i"), ("nombre", "20s"), ("precio", "f")]
 
     # Eliminar archivos anteriores
-    if os.path.exists(_table_path(table_name) + ".dat"):
-        for f in glob.glob(_table_path(table_name) + ".*"):
-            os.remove(f)
+    for f in glob.glob(_table_path(table_name) + ".*"):
+        os.remove(f)
 
-    # Crear tabla e índice
+    # Crear tabla e índice hash sobre el campo "nombre"
     create_table(table_name, schema, primary_key="id")
-    create_hash_idx(table_name, schema[1][0])  # índice sobre el campo "nombre"
+    create_hash_idx(table_name, "nombre")
+    print(f"Tabla {table_name} creada.")
+    print(f"Índice hash sobre el campo 'nombre' creado.")
 
-    # Insertar 1000 registros y guardar un nombre para búsqueda
     nombre_objetivo = None
-    for i in range(10000):
+
+    print(f"== INSERTANDO {n} REGISTROS ==")
+    for i in range(n):
         nombre = "P" + ''.join(random.choices(string.ascii_uppercase, k=5))
-        if i == 5223:  # Elegimos un nombre arbitrario
+        if i == n // 2:
             nombre_objetivo = nombre
         precio = round(random.uniform(1.0, 100.0), 2)
         rec = Record(schema, [i + 1, nombre, precio])
         insert_record(table_name, rec)
 
-    print("\nSe insertaron 1000 registros en HeapFile 'Heap1000'.")
-    print("Se insertaron 1000 registros en el índice hash.")
-
-    print_table(table_name)
-
-    print(f"\nBuscando el nombre objetivo: {nombre_objetivo}")
+    print(f"\nSe insertaron {n} registros en HeapFile '{table_name}'.")
+    print(f"Buscando el nombre objetivo: {nombre_objetivo}\n")
 
     # Cronometrar búsqueda sin índice
     start = time.time()
-    results: list[Record] = search_by_field(table_name, schema[1][0], nombre_objetivo)
+    results = search_by_field(table_name, "nombre", nombre_objetivo)
+    end = time.time()
     for r in results:
         print(r)
-    end = time.time()
-    print(f"Búsqueda sin índice tomó {end - start:.6f} segundos")
+    print(f"\nBúsqueda sin índice tomó {end - start:.6f} segundos")
 
-    # Cronometrar búsqueda con índice
+    # Cronometrar búsqueda con índice hash
     start = time.time()
-    results = search_hash_idx(table_name, schema[1][0], nombre_objetivo)
+    results = search_hash_idx(table_name, "nombre", nombre_objetivo)
     end = time.time()
     for r in results:
         print(r)
     print(f"Búsqueda con índice hash tomó {end - start:.6f} segundos")
 
-def _test_insercion_sin_pk():
+
+def _test_insercion_heap_sin_pk(n: int):
+    table_name = "SinPk"
     schema = [("id", "i"), ("nombre", "20s"), ("precio", "f")]
-    registros = 4000
 
-    # Limpiar archivos anteriores
-    for f in glob.glob(_table_path("SinPk") + ".*"):
-        os.remove(f)
+    # Borrar archivos antiguos de la tabla
+    for path in glob.glob(f"{_table_path(table_name)}*"):
+        os.remove(path)
 
-    # Crear tabla con PK, pero sin usar su restricción
-    create_table("SinPk", schema, primary_key="id")
+    # Crear tabla sin clave primaria
+    create_table(table_name, schema, primary_key=None)
+    heap = HeapFile(_table_path(table_name))
 
-    heap = HeapFile(_table_path("SinPk"))
-
-    tiempo_inicio = time.time()
-    for i in range(registros):
+    print(f"== INSERTANDO {n} REGISTROS (sin PK) ==")
+    t1 = time.time()
+    for i in range(n):
         nombre = "P" + ''.join(random.choices(string.ascii_uppercase, k=5))
         precio = round(random.uniform(1.0, 100.0), 2)
         rec = Record(schema, [i + 1, nombre, precio])
         heap.insert_record_free(rec)
-    tiempo_total = time.time() - tiempo_inicio
+    t2 = time.time()
 
-    print(f"Tiempo de inserción sin verificación de PK: {tiempo_total:.4f} segundos")
+    print(f"== INSERCIÓN COMPLETA en {t2 - t1:.6f} segundos ==")
 
 if __name__ == "__main__":
-    _test_seqidx(1000)
+    _test_hashidx(1000)
