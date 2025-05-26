@@ -53,6 +53,13 @@ def insert_record(table_name: str, record: Record) -> int:
     _update_secondary_indexes(table_path, record, offset)
     return offset
 
+
+def insert_record_free(table_name: str, record: Record) -> int:
+    """Esto es de testing (no usar en frontend)"""
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    return heap.insert_record_free(record)
+
 def insert_record_hash_pk(table_name: str, record: Record) -> int:
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
@@ -195,3 +202,6 @@ def print_seq_idx(table_name: str, field_name: str):
 
 def print_hash_idx(table_name: str, field_name: str):
     ExtendibleHashIndex(_table_path(table_name), field_name).print_all()
+
+def print_btree_idx(table_name: str, field_name: str):
+    pass # BPlusTreeIndexIndex(_table_path(table_name), field_name).print_all()
