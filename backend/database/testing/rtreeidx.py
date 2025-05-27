@@ -17,5 +17,8 @@ def _test_rtreeidx(n: int):
         insert_record(table_name, record)
     pass
 
+    create_rtree_idx(table_name, "coord")
+    print(f"RTree index created for {table_name} on 'coord' field.")
+
 if __name__ == "__main__":
     _test_rtreeidx(1)
