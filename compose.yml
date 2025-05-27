@@ -8,6 +8,8 @@ services:
     build:
       context: ./backend/database
       dockerfile: DockerFile
+    volumes:
+      - ./backend/database/tables:/app/backend/database/tables
     image: backend
     ports:
       - 8000:8000

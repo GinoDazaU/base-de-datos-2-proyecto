@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn  # Importar uvicorn para correr el servidor
 from  parser import Parser
 from catalog import build_json_structure
-
+import os
 # FastAPI App
 app = FastAPI()
 
@@ -41,7 +41,7 @@ def ejecutar_consulta(entrada: ConsultaSQL,limit:int ):
 @app.get("/estructura")
 def obtener_estructura_bd():
     try:
-        base_path = "backend/database/tables"  # Carpeta donde están los archivos
+        base_path = base_path = os.path.join(os.path.dirname(__file__), "tables")  # Carpeta donde están los archivos
         db_name = "MY_DB"
 
         structure = build_json_structure(base_path, db_name)
