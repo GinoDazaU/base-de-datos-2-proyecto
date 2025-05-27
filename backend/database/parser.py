@@ -265,7 +265,7 @@ class Query:
         print_debug(f"Selecting {columns} from {name}")
         df: pd.DataFrame = environment.levels[self.level][name][1]
         df = df[columns] if len(columns) > 0 else df # if empty list (*) return full df
-        return QueryResult(success=True, data=df, message=f"Selected {columns if len(columns) > 0 else "*"} from {name} successfully")
+        return QueryResult(success=True, data=df, message=f"Selected {columns if len(columns) > 0 else '*'} from {name} successfully")
 
     def evaluate_from(self, from_clause):
         """
