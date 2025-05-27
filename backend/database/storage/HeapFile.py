@@ -2,6 +2,7 @@ import struct
 import json
 import os
 from typing import Optional, Tuple, List
+import pandas as pd
 
 from .Record import Record
 
@@ -304,3 +305,20 @@ class HeapFile:
                 rec = Record.unpack(buf, self.schema)
                 print(rec)
                 fh.seek(PTR_SIZE, os.SEEK_CUR)
+    
+    # ------------------------------------------------------------------
+    # Utilidades de parser ---------------------------------------------
+    # ------------------------------------------------------------------
+    @staticmethod
+    def to_dataframe(heapfile: "HeapFile", alias=None) -> pd.DataFrame:
+        with open(heapfile.filename, "rb") as f:
+            f.seek(METADATA_SIZE)
+            headers = [(heapfile.table_name if alias is None else alias) + "." + column_name for column_name, _ in heapfile.schema] # explicit table name prefix
+            rows = []
+            for _ in range(heapfile.heap_size):
+                buf = f.read(heapfile.rec_data_size)
+                rec = Record.unpack(buf, heapfile.schema)
+                row = {name: value for name, value in zip(headers, rec.values)}
+                rows.append(row)
+            df = pd.DataFrame(rows, columns=headers)
+        return df

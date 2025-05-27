@@ -228,17 +228,16 @@ class Query:
             elif "value" in item: # select column_name
                 # check for ambiguity in inverted index
                 column_name = item["value"]
-                alias, col = column_name.split(".") if "." in column_name else (None, column_name)
-                # TODO: RETRIEVE TABLE ALIAS FROM ENVIRONMENT
-                print_debug(f"Processing column: {column_name} with alias: {alias} and col: {col}")
-                if alias is not None and col not in environment.inverted_index[self.level]: # SELECT table.col FROM table, table2, etc (col doesnt exist anywhere)
-                    raise Exception(f"Table {alias} does not have column {col}")
+                table_identifier, col = column_name.split(".") if "." in column_name else (None, column_name)
+                print_debug(f"Processing column: {column_name} with alias: {table_identifier} and col: {col}")
+                if table_identifier is not None and col not in environment.inverted_index[self.level]: # SELECT table.col FROM table, table2, etc (col doesnt exist anywhere)
+                    raise Exception(f"Table {table_identifier} does not have column {col}")
                 if col not in environment.inverted_index[self.level]: # SELECT col FROM table1 (table doesnt have col)
                     raise Exception(f"No table has column {col}")
-                if len(environment.inverted_index[self.level][col]) > 1 and alias is None: # SELECT col FROM table1, table2, etc (col exists in multiple tables)
+                if len(environment.inverted_index[self.level][col]) > 1 and table_identifier is None: # SELECT col FROM table1, table2, etc (col exists in multiple tables)
                     raise Exception(f"Column {col} is ambiguous, found on tables: {environment.inverted_index[self.level][col]}")
                 table_that_has_col = environment.inverted_index[self.level][col][0] # get first table that has the column
-                columns.append((table_that_has_col if alias is None else alias) + "." + col) # add table alias if it exists, else just column name
+                columns.append((table_that_has_col if table_identifier is None else table_identifier) + "." + col) # add table alias if it exists, else just column name
             else:
                 raise Exception(f"Unknown select clause item: {item}")
         
@@ -290,11 +289,11 @@ class Query:
                 raise Exception(f"Unknown from clause type: {type(table)}")
             
             hp = HeapFile(_table_path(original_schema_name))
-            df = HeapFile.to_dataframe(hp)
+            df = HeapFile.to_dataframe(hp, alias) # dataframes are now built using the (hopefully non ambiguous) alias (if present)
 
             # columns have table.column format
             for column_name in df.columns:
-                alias, column_name = column_name.split(".")
+                _, column_name = column_name.split(".")
                 if column_name not in environment.inverted_index[self.level]:
                     environment.inverted_index[self.level][column_name] = []
                 environment.inverted_index[self.level][column_name].append(alias) # maps column name to list of aliases at this level
@@ -337,12 +336,14 @@ def main():
 
     insert_error = "insert into students(id, name, age, grade) values(2, 'Pepito', 20, 19.5)"
 
+    select_error = "select a.id, name, a.age from students as a"
+
     # result = parser.parse(create_table)
     # result = parser.parse(create_table_2)
     # result = parser.parse(insert)
     # result = parser.parse(insert_2)
 
-    result = parser.parse(insert_error)
+    result = parser.parse(select_error)
     print(result.message)
     print(result.data)
 
