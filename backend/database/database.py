@@ -5,7 +5,6 @@
 import os
 import glob
 import time
-import re
 from typing import List, Tuple, Optional, Union
 
 from storage.HeapFile import HeapFile
