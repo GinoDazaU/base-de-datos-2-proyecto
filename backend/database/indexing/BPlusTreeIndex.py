@@ -2,6 +2,7 @@ from .IndexRecord import IndexRecord
 from . import utils
 import struct
 import os
+import math
 import json
 
 NODE_HEADER_FORMAT = 'iiQ'  # is_leaf, key_count, next_leaf_offset
@@ -20,6 +21,7 @@ class BPlusTreeNode:
 class BPlusTreeIndex:
     def __init__(self, order, filename, auxname, index_format='i'):
         self.order = order
+        self.min_keys = math.ceil(self.order / 2)
         self.max_keys = order
         self.filename = filename
         self.auxname = auxname
@@ -316,6 +318,65 @@ class BPlusTreeIndex:
                 idx += 1
             self.range_search_aux(node.children[idx], min_key, max_key, result_list)
 
+    def _handle_leaf_underflow(self, node, node_offset):
+        """
+        Intenta redistribuir con un hermano. Si no es posible, fusión (caso siguiente).
+        """
+        parent_offset, parent_node, idx_in_parent = self._find_parent(self.root_offset, node_offset)
+
+        # Verifica hermanos
+        left_sibling = None
+        right_sibling = None
+        left_offset = None
+        right_offset = None
+
+        if idx_in_parent > 0:
+            left_offset = parent_node.children[idx_in_parent - 1]
+            left_sibling = self.load_node(left_offset)
+
+        if idx_in_parent < len(parent_node.children) - 1:
+            right_offset = parent_node.children[idx_in_parent + 1]
+            right_sibling = self.load_node(right_offset)
+
+        # Intenta redistribuir con el hermano izquierdo
+        if left_sibling and len(left_sibling.records) > self.min_keys:
+            borrowed = left_sibling.records.pop()
+            node.records.insert(0, borrowed)
+            parent_node.keys[idx_in_parent - 1] = node.records[0].key
+
+            self.save_node_at(left_offset, left_sibling)
+            self.save_node_at(node_offset, node)
+            self.save_node_at(parent_offset, parent_node)
+            return None
+
+        # Intenta redistribuir con el hermano derecho
+        if right_sibling and len(right_sibling.records) > self.min_keys:
+            borrowed = right_sibling.records.pop(0)
+            node.records.append(borrowed)
+            parent_node.keys[idx_in_parent] = right_sibling.records[0].key
+
+            self.save_node_at(right_offset, right_sibling)
+            self.save_node_at(node_offset, node)
+            self.save_node_at(parent_offset, parent_node)
+            return None
+
+        return None
+    
+    def _find_parent(self, current_offset, child_offset):
+        current_node = self.load_node(current_offset)
+
+        if current_node.is_leaf:
+            return None, None, None  # Las hojas no tienen hijos
+
+        for i, ptr in enumerate(current_node.children):
+            if ptr == child_offset:
+                return current_offset, current_node, i
+            else:
+                result = self._find_parent(ptr, child_offset)
+                if result[0] is not None:
+                    return result
+        return None, None, None
+
     def delete(self, key, offset):
         print(f"[DEBUG DELETE] Eliminando clave: {key}, offset: {offset}")
         self._delete_aux(self.root_offset, key, offset)
@@ -324,23 +385,20 @@ class BPlusTreeIndex:
         node = self.load_node(node_offset)
 
         if node.is_leaf:
-            original_len = len(node.records)
+            # Eliminar el registro con matching key AND offset
             node.records = [r for r in node.records if not (r.key == key and r.offset == offset)]
-
-            if len(node.records) < original_len:
-                print(f"[DEBUG DELETE] Eliminado en hoja. Nueva cantidad: {len(node.records)}")
-                self.save_node_at(node_offset, node)
+            
+            if len(node.records) < self.min_keys:
+                return self._handle_leaf_underflow(node, node_offset)
             else:
-                print("[DEBUG DELETE] Clave no encontrada en hoja.")
-            return
+                self.save_node_at(node_offset, node)
+                return None
 
         # Nodo interno: buscar el hijo correspondiente
         idx = 0
         while idx < len(node.keys) and key > node.keys[idx]:
             idx += 1
         self._delete_aux(node.children[idx], key, offset)
-
-        # NOTA: No implementamos aún rebalanceo de nodos internos
     
     def scan_all(self):
         node = self.load_node(self.root_offset)
