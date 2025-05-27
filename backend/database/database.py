@@ -275,17 +275,37 @@ def create_rtree_idx(table_name: str, field_name: str):
 # 🛠️ Creación de índices secundarios
 # =============================================================================
 
-def drop_seq_idx(table_name: str, field_name: str):
-    pass
+def drop_seq_idx(table_name: str, field_name: str) -> None:
+    table_path = _table_path(table_name)
+    idx_path = f"{table_path}.{field_name}.seq.idx"
+    if not os.path.exists(idx_path):
+        raise FileNotFoundError(f"Índice secuencial '{idx_path}' no encontrado.")
+    
+    os.remove(idx_path)
 
-def drop_btree_idx(table_name: str, field_name: str):
-    pass
+def drop_btree_idx(table_name: str, field_name: str) -> None:
+    table_path = _table_path(table_name)
+    idx_path = f"{table_path}.{field_name}.btree.idx"
+    if not os.path.exists(idx_path):
+        raise FileNotFoundError(f"Índice B+ Tree '{idx_path}' no encontrado.")
+    
+    os.remove(idx_path)
 
-def drop_hash_idx(table_name: str, field_name: str):
-    pass
+def drop_hash_idx(table_name: str, field_name: str) -> None:
+    table_path = _table_path(table_name)
+    idx_paths = (f"{table_path}.{field_name}.hash.{ext}" for ext in ("db", "idx", "tree"))
+    for idx_path in idx_paths:
+        if not os.path.exists(idx_path):
+            raise FileNotFoundError(f"Índice hash '{idx_path}' no encontrado.")
+        os.remove(idx_path)
 
-def drop_rtree_idx(table_name: str, field_name: str):
-    pass
+def drop_rtree_idx(table_name: str, field_name: str) -> None:
+    table_path = _table_path(table_name)
+    idx_paths = (f"{table_path}.{field_name}.rtree.{ext}" for ext in ("idx", "dat"))
+    for idx_path in idx_paths:
+        if not os.path.exists(idx_path):
+            raise FileNotFoundError(f"Índice R-Tree '{idx_path}' no encontrado.")
+        os.remove(idx_path)
 
 # =============================================================================
 # 🧾 Impresión de estructuras (depuración)
