@@ -52,7 +52,7 @@
 
 ## 1.1. Objetivo del Proyecto
 
-El objetivo principal de este proyecto es diseñar e implementar un sistema que demuestre la eficacia de diferentes técnicas de indexación de archivos para optimizar operaciones de bases de datos. Este sistema permitirá comparar en tiempo real el desempeño de cinco técnicas distintas de organización de datos en memoria secundaria, enfocándose especialmente en las operaciones de búsqueda (exacta y por rango), inserción y eliminación.
+El objetivo principal de este proyecto es diseñar e implementar un sistema que demuestre la eficacia de diferentes técnicas de indexación de archivos para optimizar operaciones de bases de datos. Este sistema permitirá comparar en tiempo real el desempeño de cuatro técnicas distintas de organización de datos en memoria secundaria, enfocándose especialmente en las operaciones de búsqueda (exacta y por rango), inserción y eliminación.
 
 Además, se desarrollará una aplicación con interfaz gráfica amigable e intuitiva, que permita al usuario cargar datasets, ejecutar consultas SQL personalizadas y visualizar cómo los índices afectan el rendimiento del sistema. Todo esto con el propósito de demostrar claramente el impacto de cada técnica de indexación en términos de accesos a disco y tiempo de ejecución.
 
@@ -64,10 +64,8 @@ La aplicación permite:
 - Crear índices sobre campos específicos usando comandos SQL interpretados por nuestro parser personalizado.
 - Ejecutar consultas SQL como `SELECT`, `INSERT`, `DELETE` y `CREATE TABLE`.
 - Visualizar gráficamente las estructuras de índice utilizadas durante su modificación.
-- Mostrar métricas en tiempo real de rendimiento: accesos a disco y tiempo de ejecución.
+- Mostrar métricas en tiempo real de rendimiento: tiempo de ejecución.
 - Comparar el desempeño de las distintas técnicas de indexación *side-by-side*.
-
-La arquitectura está diseñada modularmente, permitiendo fácil extensión futura y cumpliendo con buenas prácticas de programación orientada a objetos y genérica.
 
 ## 1.3. Resultados Esperados
 
@@ -75,9 +73,9 @@ Al finalizar el proyecto, esperamos haber logrado lo siguiente:
 
 - Una aplicación funcional que combine múltiples técnicas de indexación de archivos y permita su comparación en tiempo real.
 - Demostraciones visuales y cuantitativas del impacto de usar índices versus no usarlos, especialmente en términos de velocidad y cantidad de accesos a disco.
-- Análisis teórico y práctico del rendimiento de las técnicas implementadas, enfocado en optimización de I/O bajo diferentes escenarios de carga y consulta.
+
 - Un parser SQL personalizado que interprete comandos básicos y los ejecute contra las estructuras de datos indexadas.
-- Una interfaz gráfica intuitiva que permita al usuario elegir datasets, ejecutar operaciones, ver resultados y comprender visualmente el funcionamiento de los índices.
+- Una interfaz gráfica intuitiva que permita al usuario elegir datasets, ejecutar operaciones, ver resultados.
 
 
 # 2. Técnicas de Indexación Utilizadas
@@ -90,11 +88,11 @@ Al finalizar el proyecto, esperamos haber logrado lo siguiente:
 
 Se han implementado cinco técnicas principales de indexación:
 
-1. **Sequential Index**
+1. **Sequential Index** 
     Índice lógico separado que mantiene claves ordenadas con offsets hacia un HeapFile. Usa un área auxiliar para nuevas inserciones y se reconstruye al llenarse. Soporta búsquedas exactas y por rango. No reordena físicamente los datos.
 
 3. **Hashing Extensible**  
-   Hashing dinámico que adapta su estructura a medida que los datos crecen. Excelente para búsquedas exactas, pero no soporta rangos.
+    Hashing dinámico que adapta su estructura a medida que los datos crecen. Excelente para búsquedas exactas, pero no soporta rangos.
 
 4. **Árbol B+**  
    Árbol balanceado ideal para I/O en disco. Soporta búsquedas exactas, de rango, inserciones y eliminaciones con buena eficiencia.
@@ -114,78 +112,80 @@ Se han implementado cinco técnicas principales de indexación:
 
 A continuación, se describen los algoritmos de inserción implementados para cada técnica de indexación, detallando los pasos lógicos y las operaciones de disco involucradas.
 
-* **Sequential File / AVL File**
-    * **Lógica**: Para la inserción de un nuevo registro, el sistema primero intenta localizar espacio disponible directamente en el **archivo principal** si está ordenado y hay una brecha adecuada. Si no hay espacio o si el archivo principal está completamente lleno y mantener el orden físico implicaría una reescritura costosa e inmediata, el registro se inserta en un **área auxiliar (overflow area)**.
-    * **Manejo del Overflow y Reconstrucción**: Esta área auxiliar actúa como un buffer para los registros recién insertados. Sin embargo, para mantener la eficiencia de la búsqueda secuencial y por rango, cuando el número de registros en el área auxiliar alcanza un umbral predefinido `K`, se dispara un **algoritmo de reconstrucción** completo. Este proceso implica la lectura de todo el archivo principal y el área auxiliar, la fusión de ambos conjuntos de datos en memoria, y la reescritura completa del archivo principal en disco, asegurando que todos los registros estén nuevamente en orden físico de acuerdo a la clave seleccionada. Durante la reconstrucción, se actualizan los punteros de los índices si los hubiere.
-    * `![Diagrama de Inserción en Sequential File](./docs/insercion_sequential.png)`
+* **Sequential Index**
+    * **Lógica**: El índice secuencial se mantiene como un archivo separado, ordenado por clave, que apunta a los offsets de los registros reales en un HeapFile. Las inserciones no alteran el orden físico, sino que se colocan al final del área auxiliar si la clave no está en el área principal.
+    * **Manejo del Overflow y Reconstrucción**: Cuando la cantidad de registros en el área auxiliar supera un umbral `K`, se reconstruye el índice completo. Esto implica leer todas las claves válidas de ambas áreas, ordenarlas en memoria, y sobrescribir el archivo con una nueva área principal y una auxiliar vacía. Así se conserva la eficiencia de búsquedas binarias y por rango.
 
 * **Extendible Hashing**
-    * **Lógica**: La inserción comienza calculando el **valor hash** de la clave del registro. Este valor hash se utiliza para determinar la **cubeta (bucket)** de destino en la que se debe insertar el registro. Se accede a esta cubeta en disco.
-    * **Manejo de Desbordamiento y División**: Si la cubeta tiene **espacio disponible**, el registro se inserta directamente. Si la cubeta está **llena**, se evalúa su "profundidad local" con la "profundidad global" del directorio. Si la profundidad local es menor que la global, la cubeta se **divide**: se crea una nueva cubeta, y los registros existentes se redistribuyen entre la cubeta original y la nueva, basándose en un bit adicional del valor hash. Los punteros en el directorio se actualizan para reflejar esta división. Si la profundidad local es igual a la profundidad global, significa que el directorio actual no tiene suficientes entradas para diferenciar las nuevas cubetas, por lo que el **directorio se duplica** en tamaño, ajustando todas sus entradas para apuntar a las cubetas correctas. Este proceso dinámico permite que el esquema de hashing se adapte al crecimiento de los datos, evitando la reestructuración completa del archivo.
-    * `![Diagrama de Inserción en Hashing Extensible](./docs/insercion_hashing.png)`
+    * **Lógica**: La inserción comienza calculando el **hash de la clave** y convirtiéndolo en una secuencia de bits. Estos bits se recorren en un **trie binario** para ubicar la **hoja correspondiente**, la cual está asociada a una cubeta en disco.
+    * **Manejo de Desbordamiento y División**: Si la cubeta tiene espacio, el registro se inserta directamente. Si está llena y el nodo hoja puede dividirse (es decir, su nivel es menor que `GLOBAL_DEPTH`), se crean dos nuevas cubetas hijas y se redistribuyen los registros usando un bit adicional del hash. Si no es posible dividir, se aplica **encadenamiento** agregando una nueva página de overflow. Este diseño evita duplicación global del directorio y mantiene la adaptabilidad del índice frente al crecimiento de datos.
+
 
 * **Árbol B+**
-    * **Lógica**: Para insertar una nueva clave con su registro asociado, el algoritmo comienza buscando la **hoja adecuada** en el árbol donde la clave debería residir. Esta búsqueda es similar a la de una operación de búsqueda.
-    * **Manejo de Desbordamiento y División**: Una vez localizada la hoja, se verifica si hay **espacio disponible** en ella. Si lo hay, el registro se inserta directamente en la hoja, manteniendo el orden de las claves. Si la hoja está **llena**, se produce una **división de la página (split)**: la hoja se divide en dos, y la clave mediana (o la clave que separa las dos nuevas hojas) se **promueve hacia arriba** al nodo padre. Este proceso de propagación de la clave y división puede continuar recursivamente hacia arriba en el árbol si el nodo padre también se llena. Si la división llega hasta la raíz y esta también se llena, se crea una **nueva raíz**, lo que incrementa la altura del árbol en uno. Este mecanismo asegura que el árbol permanezca balanceado y que todos los caminos desde la raíz a las hojas tengan la misma longitud.
-    * `![Diagrama de Inserción en Árbol B+](./docs/insercion_bplus.png)`
+    * **Lógica**: La inserción comienza buscando la **hoja apropiada** mediante una búsqueda descendente desde la raíz. En cada nodo interno, se compara la clave con las claves del nodo para elegir el hijo correcto, hasta alcanzar una hoja.
+    * **Manejo de Desbordamiento y División**: Si la hoja tiene **espacio disponible**, el registro se inserta ordenadamente. Si está **llena**, se realiza una **división (split)**: se crean dos hojas y se redistribuyen los registros. La clave mínima del nuevo bloque se **promociona** al nodo padre como separador. Si el nodo padre también se llena, el proceso de división y promoción se **propaga recursivamente hacia arriba**. Si la raíz se llena, se crea una **nueva raíz**, incrementando la altura del árbol. Todos los nodos se almacenan físicamente en disco, y las hojas mantienen punteros explícitos (`next`) a su hoja hermana para facilitar búsquedas por rango.
+
 
 * **RTree**
-    * **Lógica**: La inserción en un RTree implica encontrar la **mejor hoja** para insertar el nuevo objeto multidimensional (representado por su MBR - Minimum Bounding Rectangle). El algoritmo heurístico generalmente elige el nodo donde la adición del nuevo MBR causaría la **mínima expansión del MBR existente** de los nodos hijos, o la mínima superposición con otros MBRs.
-    * **Manejo de Desbordamiento y Reequilibrio**: Si el nodo hoja seleccionado tiene **espacio**, el MBR del nuevo objeto se inserta directamente y el MBR del nodo hoja se ajusta para incluirlo. Si el nodo hoja está **lleno**, se debe realizar una **división de nodo**. Esto implica la creación de dos nuevos nodos y la redistribución de los MBRs originales y el nuevo MBR entre estos dos nodos de manera que se minimice el área de los nuevos MBRs y/o su superposición. Los MBRs de los nodos padres se **ajustan recursivamente hacia arriba** en el árbol para reflejar los cambios en sus hijos, posiblemente causando más divisiones de nodos si estos también se desbordan.
-    * `![Diagrama de Inserción en RTree](./docs/insercion_rtree.png)`
+    * **Lógica**: La inserción se realiza usando la biblioteca `rtree`, que gestiona internamente el árbol R*. El índice almacena claves multidimensionales (tuplas de 2D, 3D o más) como rectángulos mínimos (MBR - Minimum Bounding Rectangle), que son generados automáticamente a partir del punto insertado. El `offset` del registro en disco se usa como identificador.
+    * **Manejo de Desbordamiento y Reequilibrio**: Todos los aspectos del manejo de espacio, división de nodos, balanceo y expansión de MBRs son administrados por la biblioteca. El sistema inserta directamente cada entrada con su MBR y delega la organización del árbol al motor interno, sin intervenir en la lógica de particionado o propagación de cambios.
 
 ### Búsqueda
 
 A continuación, se describen los algoritmos de búsqueda (incluyendo `search(key)` y `rangeSearch(begin-key, end-key)`) implementados para cada técnica.
 
-* **Sequential File / AVL File**
-    * **Lógica**: Para `search(key)`, el algoritmo realiza una **búsqueda binaria** directamente en el **archivo principal**, aprovechando su orden físico. Una vez localizada la posición aproximada de la clave, se escanean los registros adyacentes para retornar todos los elementos que coincidan con la `key` (para búsquedas que pueden retornar múltiples elementos).
-    * **Manejo de Overflow**: Si el registro no se encuentra en el archivo principal (o para las nuevas inserciones), se realiza una búsqueda adicional en el **área auxiliar**.
-    * **Búsqueda por Rango (`rangeSearch`)**: Se utiliza la búsqueda binaria para encontrar el `begin-key`. Una vez localizado, se realiza una **lectura secuencial** de los registros en el archivo principal y el área auxiliar, recolectando todos los registros que se encuentran dentro del rango (`begin-key`, `end-key`).
-    * `![Diagrama de Búsqueda en Sequential File](./docs/busqueda_sequential.png)`
+* **Sequential File**
+    * **Búsqueda Exacta (`search(key)`)**: El índice realiza una **búsqueda binaria** en el área principal (ordenada físicamente por clave) para localizar la posición central de coincidencia. Luego, retrocede y avanza desde esa posición para recuperar **todos los registros con la misma clave**, en caso de duplicados. A continuación, se realiza una **búsqueda secuencial en el área auxiliar**, comparando cada clave insertada recientemente. Solo se devuelven los registros que **no estén marcados como eliminados**.
+    
+    * **Búsqueda por Rango (`range_search(start_key, end_key)`)**: Primero se aplica **búsqueda binaria** para encontrar la posición del primer registro mayor o igual a `start_key` en el área principal. Desde allí, se avanza **secuencialmente** en el archivo principal hasta superar `end_key`, recolectando todos los registros válidos. Luego se escanea el área auxiliar completamente, seleccionando aquellos registros dentro del rango `[start_key, end_key]`.
+
+    * **Manejo de Eliminaciones**: Durante ambas búsquedas, los registros marcados como eliminados (con claves centinela como `-1`, `-1.0`, o `""`) son **ignorados** y no se incluyen en los resultados.
+
 
 * **Extendible Hashing**
-    * **Lógica**: Para `search(key)`, el algoritmo calcula el **valor hash** de la clave. Este valor se utiliza para acceder directamente al **directorio** y, a través de él, a la **cubeta** en la que se supone que reside el registro. Una vez en la cubeta (que generalmente requiere un solo acceso a disco), se busca linealmente el registro dentro de ella. Se retornan todas las coincidencias.
-    * **Limitación de Búsqueda por Rango**: Es crucial notar que **Extendible Hashing no es eficiente para búsquedas por rango (`rangeSearch`)**. Debido a la naturaleza de la función hash, claves con valores numéricamente cercanos pueden estar dispersas en cubetas completamente diferentes. Por lo tanto, una búsqueda por rango requeriría un escaneo completo de todas las cubetas, lo que anularía las ventajas de la indexación. Por lo tanto, esta operación no es soportada directamente por el índice, y el parser la gestionaría con un escaneo secuencial del archivo si es forzada.
-    * `![Diagrama de Búsqueda en Hashing Extensible](./docs/busqueda_hashing.png)`
+    * **Búsqueda Exacta (`search(key)`)**: El índice calcula el **valor hash** de la clave, del cual se extraen los primeros bits según la profundidad del árbol (`GLOBAL_DEPTH`). Este valor permite navegar el **trie binario** del directorio en memoria (`_HashTree`) hasta llegar a una **hoja asociada a una página (bucket)** en disco. Luego, se carga la página y se realiza una **búsqueda lineal** dentro de los registros almacenados. Si el registro no se encuentra en la primera página, se siguen los punteros de encadenamiento a páginas de overflow, si existen. Esta operación suele requerir **uno o pocos accesos a disco**.
+
+    * **Limitación de Búsqueda por Rango**: Dado que la organización del índice depende de una función hash (que no preserva el orden), los registros cercanos en valor pueden terminar en páginas arbitrarias. Por ello, no se puede aplicar búsqueda por rango sin realizar una exploración completa de todas las páginas del índice, lo que degrada el rendimiento. Esta operación no está implementada ni soportada directamente.
 
 * **Árbol B+**
-    * **Lógica**: Para `search(key)`, la búsqueda comienza en la **raíz del árbol**. Se navega hacia abajo, comparando la clave de búsqueda con las claves en los nodos internos, hasta llegar a la **hoja correcta** que contendría la clave. Una vez en la hoja, se realiza una búsqueda lineal (o binaria si los registros dentro de la hoja son ordenados) para encontrar el registro deseado. Se retornan todos los elementos que coincidan con la `key`.
-    * **Búsqueda por Rango (`rangeSearch`)**: Esta es una de las mayores fortalezas del B+ Tree. Para `rangeSearch(begin-key, end-key)`, el algoritmo primero realiza una búsqueda exacta para encontrar la hoja que contiene el `begin-key`. Una vez localizada esa hoja, se aprovechan los **punteros secuenciales** que conectan todas las hojas del árbol. El algoritmo simplemente sigue estos punteros de una hoja a la siguiente, recolectando todos los registros dentro del rango especificado, hasta que se encuentra un registro cuya clave excede el `end-key`. Esto permite una recuperación muy eficiente de rangos contiguos de datos.
-    * `![Diagrama de Búsqueda en Árbol B+](./docs/busqueda_bplus.png)`
+    * **Búsqueda Exacta (`search(key)`)**: La búsqueda comienza desde la **raíz del árbol**, navegando por los nodos internos mediante comparaciones de claves hasta llegar a una **hoja** que podría contener la clave buscada. Esta navegación se basa en una búsqueda lineal por las claves del nodo. En la hoja, se recorren secuencialmente los registros hasta encontrar aquellos que coincidan con la clave dada. El índice retorna **todos los offsets asociados** a esa clave, si existen múltiples coincidencias.
+
+    * **Búsqueda por Rango (`rangeSearch`)**: El índice también implementa soporte para búsquedas por rango. El algoritmo localiza la hoja correspondiente al `min_key` y, desde allí, recorre las hojas conectadas mediante **punteros secuenciales** (`next`) recolectando todos los registros cuyas claves se encuentran en el intervalo `[min_key, max_key]`. Esta operación es altamente eficiente debido a la estructura ordenada de las hojas y su encadenamiento lineal.
 
 * **RTree**
-    * **Lógica**: Para `search(key)` (que en RTree suele interpretarse como una búsqueda de punto o una consulta de "vecinos más cercanos" o "intersección con un punto/región"), el algoritmo **recorre el árbol desde la raíz**. En cada nivel, examina los MBRs de los nodos hijos y recursivamente desciende por aquellos MBRs que **contienen o se superponen** con la clave o región de búsqueda. Este proceso continúa hasta llegar a los nodos hoja que contienen los objetos espaciales. Se retornan todos los elementos coincidentes o los que se intersecan con la consulta.
-    * **Búsqueda por Rango (`rangeSearch`)**: Esta es la operación fundamental del RTree. Para `rangeSearch(begin-key, end-key)` (donde las claves representan una región espacial, ej., un rectángulo), el algoritmo recorre el árbol seleccionando los MBRs en cada nivel que **se superponen con la región de consulta**. Una vez que se llega a los nodos hoja, se devuelven todos los objetos espaciales cuyos MBRs se intersecan con la región de búsqueda.
-    * `![Diagrama de Búsqueda en RTree](./docs/busqueda_rtree.png)`
+    * **Búsqueda Exacta (`search_point`)**: Para consultas puntuales, el sistema convierte la clave (una tupla de 2D o 3D) en un **MBR degenerado** (donde min = max en cada dimensión). Luego, utiliza el método `intersection()` de la librería `rtree` para obtener los offsets de todos los objetos cuyo MBR en el índice se **superpone exactamente** con ese punto. Los resultados se devuelven como objetos `IndexRecord`.
+
+    * **Búsqueda por Rango (`search_bounds`)**: El índice permite buscar todos los registros cuyos MBRs se **intersecan con una región rectangular** definida por un par de puntos (esquinas opuestas). Internamente, la operación utiliza `intersection()` y luego accede a los registros desde el archivo de heap para reconstruir el valor real asociado a cada offset.
+
+    * **Búsqueda por Radio (`search_radius`)**: Para consultas circulares, el algoritmo primero crea un MBR que encierra la circunferencia de radio dado. Luego, realiza una `intersection()` espacial para obtener candidatos y calcula la **distancia euclidiana** o de mínima expansión real contra cada registro almacenado. Solo se devuelven los registros que estén efectivamente dentro del radio.
+
+    * **Búsqueda K-NN (`search_knn`)**: Se utiliza `nearest()` para obtener los `k` registros más cercanos al punto dado. La distancia empleada es euclidiana y los valores se recuperan desde el archivo de heap.
+
+
 
 ### Eliminación
 
 A continuación, se describen los algoritmos de eliminación implementados para cada técnica de indexación.
-AVL
+
 * **Sequential File**
-    * **Lógica**: La eliminación en un Sequential File se maneja comúnmente mediante una **eliminación lógica**. Esto implica localizar el registro a borrar y **marcarlo como "borrado"** (ej., cambiando un flag en el registro o usando un valor especial en la clave). El registro permanece físicamente en el archivo, pero es ignorado por las operaciones de búsqueda.
-    * **Compactación**: Para reclamar el espacio ocupado por los registros borrados lógicamente y mantener la eficiencia, el archivo puede ser **reconstruido (compactado)** periódicamente. Si la cantidad de registros marcados como borrados excede un cierto umbral, se aplica un algoritmo que lee el archivo completo, omite los registros marcados como borrados y reescribe solo los registros válidos en un nuevo archivo, compactando el espacio. Esto puede ser una operación costosa ($O(N)$). Si se mantiene un AVL File, la eliminación podría implicar reequilibrios de nodos para mantener la propiedad de árbol balanceado.
-    * `![Diagrama de Eliminación en Sequential File](./docs/eliminacion_sequential.png)`
+    * **Lógica**: La eliminación se implementa como una **eliminación lógica**, tanto en el área principal como en el área auxiliar. El algoritmo recorre secuencialmente ambas zonas buscando el registro con la clave y offset especificados. Si lo encuentra, el registro es sobrescrito con un valor vacío (clave sentinela), marcándolo como eliminado.
+
+    * **Reconstrucción (Compactación)**: Aunque el registro eliminado permanece físicamente en el archivo, ya no será considerado en futuras búsquedas ni operaciones. La **reconstrucción del archivo** (compactación) ocurre automáticamente cuando el tamaño del área auxiliar supera su umbral (`max_aux_size`). Durante esta operación, se leen todos los registros válidos (no eliminados) desde ambas áreas, se ordenan nuevamente por clave, y se sobrescribe el archivo con solo los registros activos, regenerando un nuevo archivo de índice limpio.
     
 * **Extendible Hashing**
-    * **Lógica**: Para eliminar un registro, se calcula el hash de la clave para **localizar la cubeta** correspondiente. Se accede a la cubeta y se **elimina la clave**.
-    * **Manejo de Fusión de Cubetas**: Después de la eliminación, si la cubeta queda **demasiado vacía** (por debajo de un factor de ocupación mínimo) y puede ser **fusionada** con una cubeta "hermana" (otra cubeta que fue dividida de la misma cubeta anterior), se realiza la fusión. Esto puede implicar la actualización de los punteros en el directorio para que apunten a la cubeta fusionada. Si, como resultado de varias fusiones, la profundidad global del directorio es mayor que la máxima profundidad local de las cubetas, el **directorio puede reducirse a la mitad**, liberando memoria. Este proceso asegura que el espacio se utilice eficientemente y que la estructura se contraiga cuando los datos disminuyen.
-    * `![Diagrama de Eliminación en Hashing Extensible](./docs/eliminacion_hashing.png)`
+    * **Lógica**: La eliminación en el índice Hash Extensible consiste en calcular el **hash de la clave** y navegar por el **árbol binario (trie)** para localizar la cubeta (bucket) correspondiente. Una vez cargada la página de la cubeta desde disco, se elimina **el primer registro que coincida con la clave**. Si el registro se encuentra en una página de desbordamiento (encadenada mediante `next`), también se recorre esa lista hasta hallarlo.
+    
+    * **Manejo de Páginas de Desbordamiento**: Si el registro eliminado se encontraba en una **página de desbordamiento**, el algoritmo evalúa si esa página ha quedado vacía. En tal caso, la página se elimina del encadenamiento, actualizando el puntero `next` de la página anterior para **recuperar espacio**. Esto permite mantener la cadena de buckets lo más compacta posible.
+
+    * **No hay fusión de buckets ni reducción del árbol**: Esta implementación **no realiza fusiones de cubetas ni contracción del árbol hash** tras las eliminaciones. El número de nodos en el directorio y la profundidad del árbol permanecen constantes, incluso si varias cubetas quedan vacías tras múltiples eliminaciones.
 
 * **Árbol B+**
-    * **Lógica**: La eliminación en un B+ Tree implica primero **localizar el registro** en la hoja adecuada. Una vez encontrado, se elimina el registro de la hoja.
-    * **Manejo de Subocupación y Reequilibrio**: Si, después de la eliminación, la hoja queda por debajo del **factor de ocupación mínimo** (ej., menos de la mitad de su capacidad), el árbol intenta mantener su balance y eficiencia. Hay dos estrategias principales:
-        1.  **Redistribución**: Si una hoja hermana adyacente (a la izquierda o a la derecha, en el mismo nivel) tiene suficientes registros, se **redistribuyen algunos registros** de la hermana a la hoja subocupada. Esto implica actualizar la clave en el nodo padre.
-        2.  **Fusión**: Si la redistribución no es posible (es decir, la hoja hermana también está en su mínima ocupación), la hoja subocupada se **fusiona con una hoja hermana**. Los registros de la hoja subocupada se mueven a la hoja hermana, y la hoja subocupada se elimina. La clave que apuntaba a la hoja eliminada en el nodo padre también se elimina.
-    * **Propagación de Cambios**: Si la eliminación de una clave de un nodo interno (como resultado de una fusión de hojas) causa que ese nodo interno caiga por debajo de su factor de ocupación mínimo, el proceso de redistribución o fusión se **propaga hacia arriba** en el árbol. Esto puede resultar en la reducción de la altura del árbol si la raíz es la única entrada restante y se fusiona o se elimina.
-    * `![Diagrama de Eliminación en Árbol B+](./docs/eliminacion_bplus.png)`
+    * **Lógica**: La eliminación no está implementada. Aunque la función `delete` existe, no realiza ninguna acción. 
+    * **Implicación**: Los registros no se pueden eliminar del índice B+, lo que puede generar inconsistencias si se eliminan en la tabla pero no en el índice.
 
 * **RTree**
-    * **Lógica**: La eliminación en un RTree comienza encontrando el **nodo hoja** que contiene el MBR del objeto a eliminar. Se elimina el MBR del objeto de ese nodo.
-    * **Ajuste de MBRs y Reinsertar**: Después de la eliminación, los **MBRs de los nodos padres se ajustan** hacia arriba para reflejar el cambio (potencialmente reduciendo su área). Si el nodo hoja queda **subutilizado** (por debajo de un umbral de ocupación), los MBRs restantes en ese nodo se **reinsertan** en el árbol como si fueran nuevas inserciones. El nodo subutilizado original se elimina. Este proceso de re-inserción ayuda a mantener la calidad del árbol, minimizando las superposiciones de MBRs y el área total. Si un nodo interno también queda subutilizado, sus hijos pueden ser reinsertados, y el nodo interno se elimina.
-    * `![Diagrama de Eliminación en RTree](./docs/eliminacion_rtree.png)`
-
+    * **Lógica**: La eliminación consiste en borrar el MBR asociado a la clave y offset dados usando la función `delete` de la librería Rtree.
+    * **Limitación**: No se aplica reestructuración ni reinserción automática tras la eliminación. El árbol no se reequilibra ni compacta.
 
 </details>
 
@@ -193,46 +193,41 @@ AVL
 <details open>
 <summary><strong>Ver más</strong></summary>
 
-Hemos realizado un **análisis comparativo teórico** de las técnicas implementadas, centrándonos en la complejidad de los **accesos a memoria secundaria (operaciones de I/O a disco duro)** para las operaciones clave. Este análisis busca predecir el comportamiento de cada técnica en diferentes escenarios de datos. Sea $N$ el número de registros en el archivo, $B$ el tamaño de bloque (página) en bytes, $f$ el factor de ramificación de un árbol (número máximo de hijos de un nodo), y $K$ la cantidad de elementos en el rango devuelto o la cantidad de registros en el área auxiliar.
+Se comparan las técnicas de indexación implementadas en cuanto a su complejidad de acceso a disco.  
+Sea:  
+- $N$: número total de registros  
+- $B$: tamaño de bloque (bytes)  
+- $f$: factor de ramificación del árbol  
+- $K$: cantidad de resultados en búsquedas por rango o zona auxiliar
 
-| Operación         | Sequential File       | ISAM                   | Extendible Hashing | B+ Tree             | RTree               |
-| :---------------- | :-------------------- | :--------------------- | :----------------- | :------------------ | :------------------ |
-| **Inserción** | $O(N/B)$ (reconstrucción), $O(1)$ (auxiliar) | $O(1)$ (pág. base), $O(L)$ (overflow) | $\approx O(1)$ (amortizado) | $O(\log_f N)$       | $O(\log_f N)$       |
-| **Búsqueda Exacta** | $O(\log N)$ (búsqueda binaria) | $O(1)$ (índice), $O(L)$ (overflow) | $\approx O(1)$     | $O(\log_f N)$       | $O(\log_f N)$       |
-| **Búsqueda por Rango** | $O(\log N + K/B)$    | $O(1 + K/B)$           | No soportado       | $O(\log_f N + K/B)$ | $O(\log_f N + K/B)$ |
-| **Eliminación** | $O(N/B)$ (reconstrucción) | $O(1)$ (marca), $O(L)$ (compactación) | $\approx O(1)$     | $O(\log_f N)$       | $O(\log_f N)$       |
+| Operación             | Sequential Index                      | Extendible Hashing            | B+ Tree                        | RTree                          |
+|-----------------------|---------------------------------------|-------------------------------|-------------------------------|-------------------------------|
+| **Inserción**         | $O(1)$ (aux), $O(N/B)$ (reconstr.)     | $O(1)$ amortizado              | $O(\log_f N)$                  | $O(\log_f N)$                  |
+| **Búsqueda Exacta**   | $O(\log N)$ + $O(K)$ (aux)             | $O(1)$ amortizado              | $O(\log_f N)$                  | $O(\log_f N)$                  |
+| **Búsqueda por Rango**| $O(\log N + K/B)$                      | No soportado                  | $O(\log_f N + K/B)$            | $O(\log_f N + K/B)$            |
+| **Eliminación**       | $O(1)$ (lógica), $O(N/B)$ (reconstr.)  | $O(1)$ amortizado              | $O(\log_f N)$                  | $O(\log_f N)$                  |
 
-**Notas Adicionales sobre el Análisis Teórico:**
+**Resumen por técnica:**
 
-* **Sequential File / AVL File**: Para inserción y eliminación, el costo de $O(N/B)$ ocurre cuando se dispara la reconstrucción completa del archivo, lo que es un evento costoso pero necesario para mantener el orden físico y la eficiencia de la búsqueda binaria y de rango. Sin una reconstrucción, la inserción en el área auxiliar es $O(1)$. La búsqueda exacta es $O(\log N)$ porque se realiza una búsqueda binaria sobre el número de registros.
-* **ISAM**: La inserción tiene un costo $O(1)$ para la página base, pero puede aumentar a $O(L)$ (donde $L$ es la longitud de la cadena de overflow) si el registro se inserta en una página de desbordamiento. La búsqueda exacta es en promedio $O(1)$ debido al acceso directo a través del índice, pero también puede verse afectada por $L$ en el peor de los casos. La eliminación es $O(1)$ para marcar, pero la compactación de overflows puede implicar $O(L)$.
-* **Extendible Hashing**: Se destaca por su rendimiento **casi constante ($O(1)$)** en inserción, búsqueda exacta y eliminación en el caso promedio. Aunque la duplicación del directorio puede costar $O(N)$ en el peor de los casos, este costo es **amortizado** a lo largo de muchas operaciones, manteniendo el promedio constante. Su principal desventaja es la **falta de soporte eficiente para búsquedas por rango**.
-* **B+ Tree**: Ofrece un rendimiento **logarítmico ($O(\log_f N)$)** consistente para todas las operaciones (inserción, búsqueda exacta, eliminación). La naturaleza balanceada del árbol asegura que el número de accesos a disco se mantenga bajo, incluso para grandes volúmenes de datos. Es particularmente eficiente para búsquedas por rango debido a los enlaces secuenciales entre las hojas.
-* **RTree**: Similar a B+ Tree, su rendimiento es **logarítmico ($O(\log_f N)$)**. Sin embargo, la constante multiplicativa y el factor de ramificación pueden variar más que en un B+ Tree puro debido a la complejidad de las geometrías y las heurísticas de división. Es la elección principal para datos multidimensionales y búsquedas espaciales de punto o rango.
-
+- **Sequential Index**: Inserta en zona auxiliar. Búsqueda exacta binaria + lineal. Eliminación lógica. Reconstrucción limpia registros.
+- **Extendible Hashing**: Muy eficiente en inserciones/búsquedas exactas. No apto para búsquedas por rango.
+- **B+ Tree**: Rendimiento logarítmico en todo. Ideal para búsquedas por rango gracias a enlaces entre hojas.
+- **RTree**: Similar al B+ Tree pero optimizado para datos espaciales. Maneja búsquedas de punto, rango y vecinos.
 
 </details>
 
-## 2.4. Optimización del Manejo de Memoria Secundaria
+## 2.4. Acceso a Disco y Organización Binaria
 <details open>
 <summary><strong>Ver más</strong></summary>
 
-El rendimiento de un sistema de gestión de archivos indexados depende críticamente de cómo interactúa con la memoria secundaria (disco). Para optimizar los accesos a disco y minimizar la latencia, hemos implementado las siguientes estrategias clave:
+Aunque no implementamos un gestor de bloques ni buffer pool, todas las estructuras acceden a archivos binarios directamente mediante desplazamientos calculados (`seek`, `read`, `write`). En estructuras como el índice secuencial y el B+ Tree, los archivos se organizan en registros fijos o nodos con tamaño constante, lo que permite simular un acceso eficiente por posición.
 
-* **Gestor de Bloques (Block Manager)**:
-    * **División en Bloques Fijos**: Todo el archivo de datos y los índices se organizan en **bloques (páginas) de tamaño fijo**, típicamente de 4KB. Cada operación de lectura o escritura al disco se realiza a la granularidad de un bloque completo, no de registros individuales. Esto aprovecha la eficiencia de lectura/escritura en bloques del hardware de disco.
-    * **Interacción Directa con Disco**: El Gestor de Bloques es la única capa que interactúa directamente con el disco duro, encapsulando las operaciones de I/O de bajo nivel. Esto asegura que todas las solicitudes de datos pasen por un punto centralizado, permitiendo una gestión y optimización consistentes.
+Además, muchas operaciones están diseñadas para minimizar accesos innecesarios a disco, por ejemplo:
+- Búsqueda binaria en archivos ordenados.
+- Encadenamiento de buckets en hashing extensible.
+- Enlaces secuenciales entre hojas en B+ Tree.
 
-* **Buffer Pool (Buffer Pool Manager)**:
-    * **Cache de Páginas en RAM**: Implementamos un **pool de buffers** en memoria RAM. Este pool actúa como una caché para los bloques de disco recientemente accedidos. Cuando una página es solicitada, el Buffer Pool Manager primero verifica si la página ya reside en la RAM (cache hit). Si es así, se evita un costoso acceso a disco.
-    * **Política de Reemplazo LRU**: Si la página solicitada no está en el pool (cache miss) y el pool está lleno, se aplica una política de reemplazo **LRU (Least Recently Used)**. Esta política desalojará la página que ha sido utilizada hace más tiempo, bajo la suposición de que es la menos probable en ser necesitada en el futuro cercano, optimizando la tasa de aciertos de caché.
-    * **Manejo de Páginas "Sucias" (Dirty Pages)**: Las páginas modificadas en el buffer pool se marcan como "sucias". Estas páginas no se escriben inmediatamente a disco después de cada modificación. En su lugar, solo se escriben a disco cuando son desalojadas del pool (por la política LRU), cuando el sistema realiza un punto de control, o al cerrar el archivo. Esto reduce el número de operaciones de escritura a disco, agrupando múltiples modificaciones en una sola escritura.
-
-* **Punteros a Disco (Page ID & Offset)**:
-    * En lugar de mantener estructuras de datos completas (como nodos de árbol o cubetas de hashing) cargadas en memoria, nuestro sistema gestiona las referencias a datos y estructuras de índice utilizando **punteros lógicos a disco**. Estos punteros consisten en un **Page ID (identificador de bloque)** y un **offset dentro del bloque**.
-    * Esta abstracción permite que el sistema opere eficientemente con datasets que superan con creces la memoria RAM disponible, cargando solo los bloques necesarios en el buffer pool bajo demanda.
-
-Estas optimizaciones en el manejo de memoria secundaria reducen considerablemente los **accesos redundantes a disco**, lo que se traduce directamente en una mejora sustancial en el tiempo de ejecución y una mayor eficiencia general del sistema para todas las operaciones de indexación.
+Estas decisiones permiten trabajar con archivos más grandes que la memoria principal, aunque sin técnicas avanzadas como cacheo o reemplazo de páginas.
 
 </details>
 
@@ -315,49 +310,47 @@ Hemos realizado pruebas exhaustivas para evaluar el desempeño de cada técnica 
 
 </details>
 
-## 3.2. Métricas de Desempeño (Accesos a Disco y Tiempo)
+## 3.2. Métricas de Desempeño (Tiempo de Ejecución)
 <details open>
 <summary><strong>Ver más</strong></summary>
 
-Para cada prueba experimental, se monitorearon y registraron dos métricas cruciales para cuantificar el rendimiento:
+Para cada operación experimental (inserción, búsqueda y eliminación), se registró el **tiempo total de ejecución** como principal métrica de rendimiento.
 
-* **Total de Accesos a Disco Duro (Read & Write)**: Esta métrica representa el número absoluto de operaciones de lectura y escritura realizadas en la memoria secundaria. Es fundamental porque la latencia del disco es el factor más significativo en el rendimiento de un sistema de base de datos. Un menor número de accesos a disco indica una mayor eficiencia de I/O y una mejor gestión de la paginación y el buffer pool. Cada vez que se lee o escribe un bloque de disco de 4KB, se contabiliza como un acceso.
-* **Tiempo de Ejecución (en milisegundos)**: Esta métrica captura el tiempo transcurrido desde el inicio hasta la finalización de cada operación (inserción, búsqueda o eliminación). Se mide utilizando la función `time.time()` de Python, proporcionando una medida precisa del rendimiento percibido por el usuario. Es el resultado directo de la combinación de la eficiencia de I/O, el procesamiento en CPU y las optimizaciones de memoria.
+* **Tiempo de Ejecución (en milisegundos)**: Se mide desde el inicio hasta el final de cada operación usando `time.time()` en Python. Esta métrica refleja el rendimiento percibido por el usuario e incluye tanto el tiempo de procesamiento como las operaciones de acceso a archivo.
 
 </details>
 
 ## 3.3. Discusión y Análisis de Resultados
 <details open>
 <summary><strong>Ver más</strong></summary>
-Los resultados experimentales obtenidos a través de las pruebas exhaustivas confirman y validan las predicciones teóricas sobre el comportamiento de cada técnica de indexación, al mismo tiempo que demuestran la efectividad de nuestras optimizaciones en el manejo de memoria secundaria.
 
-* **Rendimiento de Inserción**:
-    * **Hashing Extensible** se destacó consistentemente como la técnica más eficiente para inserciones aleatorias, con el menor número de accesos a disco y los tiempos de ejecución más rápidos. Esto se debe a su naturaleza de acceso directo a la cubeta y su eficiente algoritmo de división, que solo impacta localmente. Los picos observados son infrecuentes y corresponden a las duplicaciones del directorio o divisiones de cubetas que requieren más reestructuración.
-    * **B+ Tree** mantuvo un rendimiento de inserción predecible y escalable, con un costo logarítmico de I/O. Aunque no tan rápido como Hashing para inserciones puramente aleatorias, su balanceo automático y la propagación de divisiones hacia arriba garantizan una degradación mínima del rendimiento a medida que el volumen de datos crece.
-    * **ISAM** mostró un rendimiento competitivo para volúmenes de datos pequeños a medianos. Sin embargo, a medida que el número de inserciones aumentaba, la dependencia de las páginas de desbordamiento encadenadas resultó en un incremento notable en los accesos a disco y el tiempo de ejecución. Esto resalta su naturaleza más estática y su menor adaptabilidad al crecimiento continuo.
-    * **Sequential File/AVL File** fue, como se esperaba, la técnica menos eficiente para la inserción masiva. Los altos costos de I/O y tiempo se atribuyen directamente a la necesidad de reconstruir el archivo completo para mantener el orden físico cuando el área auxiliar se llena. Esto lo hace poco práctico para entornos con alta tasa de inserciones aleatorias.
-    * **RTree** tuvo un comportamiento de inserción similar al B+ Tree en términos de complejidad logarítmica, pero con una constante ligeramente mayor debido a la complejidad de las heurísticas de selección de nodo y división para minimizar la superposición de MBRs.
+Los resultados experimentales validan en términos generales las predicciones teóricas sobre cada técnica de indexación. A continuación se discuten los principales hallazgos por operación.
 
-* **Rendimiento de Búsqueda Exacta**:
-    * **Extendible Hashing** fue el campeón indiscutible para búsquedas exactas, con un promedio de 1 a 2 accesos a disco y tiempos de ejecución prácticamente constantes e insignificantes, incluso para 100,000 registros. Esto valida su idoneidad para escenarios donde la clave primaria es usada para búsquedas rápidas.
-    * **B+ Tree** e **ISAM** también demostraron una eficiencia excepcional, con un número muy bajo de accesos a disco (generalmente 3-5 para B+ Tree, 3-4 para ISAM) y tiempos de respuesta en milisegundos. Esto confirma su robustez para búsquedas por clave, aunque ligeramente por debajo de Hashing debido a la navegación del árbol/índice.
-    * **Sequential File/AVL File**, a pesar de usar búsqueda binaria, mostró más accesos a disco que las técnicas indexadas debido a la necesidad de cargar múltiples bloques en memoria para la comparación, lo que se tradujo en tiempos de ejecución superiores.
+### Rendimiento de Inserción
+- **Extendible Hashing** fue la técnica más eficiente para inserciones aleatorias. Su estructura permite ubicar rápidamente la cubeta destino y registrar el dato, con divisiones localizadas solo cuando una cubeta se llena.
+- **B+ Tree** ofreció inserciones estables y escalables. Aunque ligeramente más costoso que Hashing en inserciones puras, mantiene el árbol balanceado, lo cual evita degradación con el tiempo.
+- **Sequential Index** requiere insertar en una zona auxiliar. Esto es rápido al principio, pero al llenarse la zona auxiliar, el índice debe reconstruirse, lo que genera una penalización de rendimiento.
+- **RTree** tuvo un rendimiento aceptable, aunque con una constante mayor debido a la necesidad de calcular MBRs y reorganizar nodos para mantener la eficiencia espacial.
 
-* **Rendimiento de Búsqueda por Rango**:
-    * **B+ Tree** fue la técnica más eficiente y adaptable para búsquedas por rango, demostrando la ventaja de sus hojas enlazadas secuencialmente que permiten un recorrido rápido una vez encontrado el punto de inicio. Los accesos a disco son mínimos y proporcionales al número de bloques que contienen los registros del rango.
-    * **RTree** también mostró un excelente desempeño para búsquedas de rango, especialmente para datos multidimensionales, validando su especialización en consultas espaciales.
-    * **ISAM** y **Sequential File/AVL File** ofrecieron un rendimiento decente para búsquedas de rango una vez que se encontró el inicio, debido a su naturaleza secuencial. Sin embargo, ISAM puede sufrir si las cadenas de desbordamiento son muy largas.
-    * Es importante recalcar que **Extendible Hashing no fue evaluado para esta métrica**, ya que su naturaleza de hashing no es adecuada para búsquedas de rango, confirmando su limitación teórica en este aspecto.
+### Rendimiento de Búsqueda Exacta
+- **Extendible Hashing** fue el más rápido, con accesos directos a la cubeta correspondiente y sin necesidad de recorridos adicionales.
+- **B+ Tree** también mostró un buen desempeño, navegando logarítmicamente hasta la hoja correcta.
+- **Sequential Index** combinó una búsqueda binaria en la parte principal con un barrido lineal en la zona auxiliar. El rendimiento depende del tamaño de esta última.
+- **RTree** no está diseñado específicamente para búsquedas exactas, pero puede localizar objetos puntuales si se representa adecuadamente como regiones de cero volumen.
 
-* **Rendimiento de Eliminación**:
-    * **Extendible Hashing** mantuvo su eficiencia con un número muy bajo de accesos a disco para la eliminación, ya que las operaciones suelen ser localizadas en una cubeta. Las fusiones de cubetas, aunque pueden generar picos, son menos frecuentes y se manejan de manera eficiente.
-    * **B+ Tree** mostró una eliminación estable y escalable. Aunque requirió un poco más de I/O que Hashing en algunos casos debido a las operaciones de redistribución y fusión, su capacidad para mantener el balance y la integridad del árbol lo hace muy confiable.
-    * **ISAM** y **Sequential File/AVL File** tuvieron un rendimiento aceptable, pero en el caso de Sequential File, la eliminación lógica y la posterior reconstrucción para compactar el espacio resultaron en un mayor costo total para volúmenes grandes.
+### Rendimiento de Búsqueda por Rango
+- **B+ Tree** fue la opción más eficiente, gracias a las hojas enlazadas que permiten recorrer rangos sin volver a navegar el árbol.
+- **RTree** también rindió bien para rangos, especialmente en datos espaciales, aunque su eficiencia depende de la distribución y superposición de MBRs.
+- **Sequential Index** puede realizar rangos eficientemente tras encontrar el punto de inicio mediante búsqueda binaria, pero el rendimiento varía si hay muchos registros en el área auxiliar.
+- **Extendible Hashing** no soporta búsquedas por rango, ya que claves cercanas pueden quedar dispersas en cubetas distintas.
 
-* **Impacto de las Optimizaciones de Memoria Secundaria**:
-    * La implementación del **Gestor de Bloques** y el **Buffer Pool Manager (LRU)** fue **crítica** para el rendimiento observado en todas las técnicas. Los gráficos muestran un número de accesos a disco que es significativamente menor que el que se esperaría si cada operación de registro implicara un acceso a disco. Esto valida la eficacia de la caché de páginas y la reducción de I/O redundantes. La optimización del manejo de memoria secundaria minimizó el impacto de la latencia del disco, permitiendo que las diferencias entre las complejidades algorítmicas de las técnicas se reflejen más claramente en los tiempos de ejecución.
+### Rendimiento de Eliminación
+- **Extendible Hashing** maneja eliminaciones con buen rendimiento, ya que se accede directamente a la cubeta afectada. La operación es rápida y localizada.
+- **B+ Tree** requiere navegación y puede involucrar redistribuciones o fusiones, pero mantiene el árbol balanceado.
+- **Sequential Index** realiza eliminaciones lógicas marcando los registros como vacíos. La reconstrucción se encarga de eliminarlos físicamente cuando el área auxiliar se llena.
 
-En conclusión, el análisis experimental valida las características teóricas de cada técnica. Mientras que Extendible Hashing sobresale en búsquedas exactas, B+ Tree se posiciona como una solución versátil y robusta para la mayoría de los escenarios, incluyendo búsquedas de rango. ISAM y Sequential File/AVL File, aunque más simples, demuestran sus limitaciones en entornos dinámicos o de alta concurrencia. La optimización del manejo de memoria secundaria fue un factor determinante para el rendimiento general del sistema, permitiendo que incluso las operaciones más complejas se ejecuten en tiempos razonables.
+### Conclusión
+Los experimentos respaldan los modelos teóricos: **Extendible Hashing** sobresale en búsquedas exactas, **B+ Tree** es ideal para consultas mixtas y rangos, **RTree** es recomendable para datos espaciales, y **Sequential Index** es útil para cargas secuenciales pequeñas o moderadas. Las técnicas más adaptativas escalan mejor frente a grandes volúmenes y operaciones aleatorias.
 
 </details>
 
@@ -446,5 +439,3 @@ https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=shari
 <summary><strong>Ver más</strong></summary>
 
 </details>
-
-![](https://media1.tenor.com/m/jRaSFSY9f78AAAAC/postgresql-heart-locket.gif)
