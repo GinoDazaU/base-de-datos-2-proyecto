@@ -19,7 +19,7 @@ def create_test_table(table_name: str, n: int) -> None:
     create_btree_idx(table_name, "value")
     create_rtree_idx(table_name, "coord")
 
-    for i in range(n):
+    for i in range(1, n + 1):
         record = Record(schema, [i, f"name_{i}", random.uniform(0.0, 100.0), (random.uniform(0.0, 100.0), random.uniform(0.0, 100.0))])
         insert_record(table_name, record)
 
@@ -77,6 +77,6 @@ def drop_test_table(table_name: str) -> None:
 
 if __name__ == "__main__":
     table_name = "test_all_idx"
-    create_test_table(table_name, 100)
+    create_test_table(table_name, 1000)
     test_search(table_name)
     drop_test_table(table_name)
