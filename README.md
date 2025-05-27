@@ -90,11 +90,8 @@ Al finalizar el proyecto, esperamos haber logrado lo siguiente:
 
 Se han implementado cinco técnicas principales de indexación:
 
-1. **Sequential File**  
-   Estructura ordenada donde los registros están almacenados físicamente en orden ascendente según la clave primaria. Se utiliza un área de overflow para nuevas inserciones, y se reconstruye al llenarse.
-
-2. **ISAM - Índice Estático de Dos Niveles**  
-   Índice estático construido inicialmente sobre datos ordenados. Las nuevas inserciones se almacenan en páginas de overflow. Eficiente para lecturas, menos flexible para actualizaciones frecuentes.
+1. **Sequential Index**
+    Índice lógico separado que mantiene claves ordenadas con offsets hacia un HeapFile. Usa un área auxiliar para nuevas inserciones y se reconstruye al llenarse. Soporta búsquedas exactas y por rango. No reordena físicamente los datos.
 
 3. **Hashing Extensible**  
    Hashing dinámico que adapta su estructura a medida que los datos crecen. Excelente para búsquedas exactas, pero no soporta rangos.
@@ -122,11 +119,6 @@ A continuación, se describen los algoritmos de inserción implementados para ca
     * **Manejo del Overflow y Reconstrucción**: Esta área auxiliar actúa como un buffer para los registros recién insertados. Sin embargo, para mantener la eficiencia de la búsqueda secuencial y por rango, cuando el número de registros en el área auxiliar alcanza un umbral predefinido `K`, se dispara un **algoritmo de reconstrucción** completo. Este proceso implica la lectura de todo el archivo principal y el área auxiliar, la fusión de ambos conjuntos de datos en memoria, y la reescritura completa del archivo principal en disco, asegurando que todos los registros estén nuevamente en orden físico de acuerdo a la clave seleccionada. Durante la reconstrucción, se actualizan los punteros de los índices si los hubiere.
     * `![Diagrama de Inserción en Sequential File](./docs/insercion_sequential.png)`
 
-* **ISAM (Indexed Sequential Access Method)**
-    * **Lógica**: Para insertar un registro, se utiliza la estructura de índice para **localizar la página de datos** (o bloque) correcta donde debería residir el registro, basándose en su clave. Si hay **espacio disponible** en esa página de datos, el registro se inserta directamente, manteniendo el orden dentro de la página.
-    * **Manejo de Desbordamiento (Overflow)**: Si la página de datos está **llena**, el nuevo registro no se inserta en el archivo principal. En su lugar, se inserta en una **página de desbordamiento (overflow page)**. Si ya existen páginas de desbordamiento encadenadas a la página de datos principal, se busca espacio en ellas. Si todas las páginas de desbordamiento existentes están llenas, se crea una **nueva página de desbordamiento** y se encadena a la última página de desbordamiento de esa secuencia, o directamente a la página de datos principal si es la primera página de desbordamiento. Esta estrategia minimiza la reestructuración del archivo principal, pero puede degradar el rendimiento de la búsqueda si las cadenas de desbordamiento se vuelven muy largas.
-    * `![Diagrama de Inserción en ISAM](./docs/insercion_isam.png)`
-
 * **Extendible Hashing**
     * **Lógica**: La inserción comienza calculando el **valor hash** de la clave del registro. Este valor hash se utiliza para determinar la **cubeta (bucket)** de destino en la que se debe insertar el registro. Se accede a esta cubeta en disco.
     * **Manejo de Desbordamiento y División**: Si la cubeta tiene **espacio disponible**, el registro se inserta directamente. Si la cubeta está **llena**, se evalúa su "profundidad local" con la "profundidad global" del directorio. Si la profundidad local es menor que la global, la cubeta se **divide**: se crea una nueva cubeta, y los registros existentes se redistribuyen entre la cubeta original y la nueva, basándose en un bit adicional del valor hash. Los punteros en el directorio se actualizan para reflejar esta división. Si la profundidad local es igual a la profundidad global, significa que el directorio actual no tiene suficientes entradas para diferenciar las nuevas cubetas, por lo que el **directorio se duplica** en tamaño, ajustando todas sus entradas para apuntar a las cubetas correctas. Este proceso dinámico permite que el esquema de hashing se adapte al crecimiento de los datos, evitando la reestructuración completa del archivo.
@@ -152,12 +144,6 @@ A continuación, se describen los algoritmos de búsqueda (incluyendo `search(ke
     * **Búsqueda por Rango (`rangeSearch`)**: Se utiliza la búsqueda binaria para encontrar el `begin-key`. Una vez localizado, se realiza una **lectura secuencial** de los registros en el archivo principal y el área auxiliar, recolectando todos los registros que se encuentran dentro del rango (`begin-key`, `end-key`).
     * `![Diagrama de Búsqueda en Sequential File](./docs/busqueda_sequential.png)`
 
-* **ISAM (Indexed Sequential Access Method)**
-    * **Lógica**: Para `search(key)`, el algoritmo utiliza el **índice de dos niveles**. Primero, el **índice maestro** se utiliza para localizar el bloque en el **índice primario**. Luego, el índice primario se utiliza para localizar la **página de datos base** donde el registro debería estar. Una vez en la página de datos, se busca el registro.
-    * **Manejo de Overflow**: Si el registro no se encuentra en la página de datos base (debido a que fue insertado posteriormente), la búsqueda continúa a través de las **páginas de desbordamiento encadenadas** a esa página de datos, hasta que se encuentre el registro o se determine que no existe. Se retornan todos los elementos que coincidan con la `key`.
-    * **Búsqueda por Rango (`rangeSearch`)**: Similar a `search(key)`, se utiliza el índice para localizar la `begin-key`. Una vez que se encuentra la página de datos base (y potencialmente la página de desbordamiento) que contiene la `begin-key`, se realiza una **lectura secuencial** a través de las páginas de datos y sus cadenas de desbordamiento, recolectando todos los registros dentro del rango especificado hasta que se exceda `end-key` o se llegue al final del archivo.
-    * `![Diagrama de Búsqueda en ISAM](./docs/busqueda_isam.png)`
-
 * **Extendible Hashing**
     * **Lógica**: Para `search(key)`, el algoritmo calcula el **valor hash** de la clave. Este valor se utiliza para acceder directamente al **directorio** y, a través de él, a la **cubeta** en la que se supone que reside el registro. Una vez en la cubeta (que generalmente requiere un solo acceso a disco), se busca linealmente el registro dentro de ella. Se retornan todas las coincidencias.
     * **Limitación de Búsqueda por Rango**: Es crucial notar que **Extendible Hashing no es eficiente para búsquedas por rango (`rangeSearch`)**. Debido a la naturaleza de la función hash, claves con valores numéricamente cercanos pueden estar dispersas en cubetas completamente diferentes. Por lo tanto, una búsqueda por rango requeriría un escaneo completo de todas las cubetas, lo que anularía las ventajas de la indexación. Por lo tanto, esta operación no es soportada directamente por el índice, y el parser la gestionaría con un escaneo secuencial del archivo si es forzada.
@@ -181,12 +167,7 @@ AVL
     * **Lógica**: La eliminación en un Sequential File se maneja comúnmente mediante una **eliminación lógica**. Esto implica localizar el registro a borrar y **marcarlo como "borrado"** (ej., cambiando un flag en el registro o usando un valor especial en la clave). El registro permanece físicamente en el archivo, pero es ignorado por las operaciones de búsqueda.
     * **Compactación**: Para reclamar el espacio ocupado por los registros borrados lógicamente y mantener la eficiencia, el archivo puede ser **reconstruido (compactado)** periódicamente. Si la cantidad de registros marcados como borrados excede un cierto umbral, se aplica un algoritmo que lee el archivo completo, omite los registros marcados como borrados y reescribe solo los registros válidos en un nuevo archivo, compactando el espacio. Esto puede ser una operación costosa ($O(N)$). Si se mantiene un AVL File, la eliminación podría implicar reequilibrios de nodos para mantener la propiedad de árbol balanceado.
     * `![Diagrama de Eliminación en Sequential File](./docs/eliminacion_sequential.png)`
-
-* **ISAM (Indexed Sequential Access Method)**
-    * **Lógica**: Para eliminar un registro, el algoritmo primero **localiza el registro** utilizando el índice de dos niveles para encontrar la página de datos base o la página de desbordamiento donde se encuentra el registro. Una vez localizado, el registro se **marca como borrado lógicamente**.
-    * **Manejo de Espacio y Compactación**: El espacio ocupado por el registro borrado se considera "disponible" para futuras inserciones dentro de esa misma página. Sin embargo, en ISAM, la eliminación física y la compactación de las páginas no suelen ser automáticas o frecuentes. Si se excede cierto umbral de registros borrados lógicamente en una página, o si una página de desbordamiento queda completamente vacía, se puede activar una **reorganización o compactación manual** de esa página o de la cadena de desbordamiento para liberar espacio. Esto es menos frecuente que una reconstrucción completa del archivo.
-    * `![Diagrama de Eliminación en ISAM](./docs/eliminacion_isam.png)`
-
+    
 * **Extendible Hashing**
     * **Lógica**: Para eliminar un registro, se calcula el hash de la clave para **localizar la cubeta** correspondiente. Se accede a la cubeta y se **elimina la clave**.
     * **Manejo de Fusión de Cubetas**: Después de la eliminación, si la cubeta queda **demasiado vacía** (por debajo de un factor de ocupación mínimo) y puede ser **fusionada** con una cubeta "hermana" (otra cubeta que fue dividida de la misma cubeta anterior), se realiza la fusión. Esto puede implicar la actualización de los punteros en el directorio para que apunten a la cubeta fusionada. Si, como resultado de varias fusiones, la profundidad global del directorio es mayor que la máxima profundidad local de las cubetas, el **directorio puede reducirse a la mitad**, liberando memoria. Este proceso asegura que el espacio se utilice eficientemente y que la estructura se contraiga cuando los datos disminuyen.
