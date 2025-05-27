@@ -5,7 +5,8 @@
 import os
 import glob
 import random
-from typing import List, Tuple, Optional
+import time
+from typing import List, Tuple, Optional, Union
 
 from storage.HeapFile import HeapFile
 from storage.Record import Record
@@ -13,6 +14,7 @@ from indexing.SequentialIndex import SequentialIndex
 from indexing.ExtendibleHashIndex import ExtendibleHashIndex
 from indexing.BPlusTreeIndex import BPlusTreeIndex, BPlusTreeIndexWrapper
 from indexing.IndexRecord import IndexRecord
+from indexing.RTreeIndex import RTreeIndex
 
 # Ruta base para almacenamiento de tablas
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -96,6 +98,25 @@ def insert_record_btree_pk(table_name: str, record: Record) -> int:
     _update_secondary_indexes(table_path, record, offset)
     return offset
 
+def insert_record_rtree_pk(table_name: str, record: Record) -> int:
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+
+    if heap.primary_key is None:
+        raise ValueError(f"La tabla '{table_name}' no tiene clave primaria.")
+    
+    pk_idx = [i for i, (n, _) in enumerate(record.schema) if n == heap.primary_key][0]
+    pk_value = record.values[pk_idx]
+
+    rtree = RTreeIndex(table_path, heap.primary_key)
+    if rtree.search_record(pk_value):
+        raise ValueError(f"PK duplicada detectada por índice R-Tree: {pk_value}")
+    
+    offset = heap.insert_record_free(record)
+
+    _update_secondary_indexes(table_path, record, offset)
+    return offset
+
 def delete_record(table_name: str, pk_value):
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
@@ -125,6 +146,13 @@ def search_btree_idx(table_name: str, field_name: str, field_value):
     offsets = btree.search(field_value)
     return [heap.fetch_record_by_offset(off) for off in offsets] if offsets else []
 
+def search_btree_idx_range(table_name: str, field_name: str, start_value, end_value):
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    btree = BPlusTreeIndexWrapper(table_path, field_name)
+    offsets = btree.range_search(start_value, end_value)
+    return [heap.fetch_record_by_offset(off) for off in offsets] if offsets else []
+
 def search_hash_idx(table_name: str, field_name: str, field_value):
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
@@ -136,6 +164,34 @@ def search_seq_idx_range(table_name: str, field_name: str, start_value, end_valu
     heap = HeapFile(table_path)
     idx = SequentialIndex(table_path, field_name)
     records = idx.search_range(start_value, end_value)
+    return [heap.fetch_record_by_offset(rec.offset) for rec in records]
+
+def search_rtree_record(table_name: str, field_name: str, point: Tuple[Union[int, float], ...]) -> List[Record]:
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    rtree = RTreeIndex(table_path, field_name)
+    records = rtree.search_record(point)
+    return [heap.fetch_record_by_offset(rec.offset) for rec in records]
+
+def search_rtree_bounds(table_name: str, field_name: str, lower_bound: Tuple[Union[int, float], ...], upper_bound: Tuple[Union[int, float], ...]) -> List[Record]:
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    rtree = RTreeIndex(table_path, field_name)
+    records = rtree.search_bounds(lower_bound, upper_bound)
+    return [heap.fetch_record_by_offset(rec.offset) for rec in records]
+
+def search_rtree_radius(table_name: str, field_name: str, point: Tuple[Union[int, float], ...], radius: float) -> List[Record]:
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    rtree = RTreeIndex(table_path, field_name)
+    records = rtree.search_radius(point, radius)
+    return [heap.fetch_record_by_offset(rec.offset) for rec in records]
+
+def search_rtree_knn(table_name: str, field_name: str, point: Tuple[Union[int, float], ...], k: int) -> List[Record]:
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    rtree = RTreeIndex(table_path, field_name)
+    records = rtree.search_knn(point, k)
     return [heap.fetch_record_by_offset(rec.offset) for rec in records]
 
 # =============================================================================
@@ -159,9 +215,16 @@ def _update_secondary_indexes(table_path: str, record: Record, offset: int) -> N
         elif idx_type == "hash":
             ExtendibleHashIndex(table_path, field_name).insert_record(idx_rec)
         elif idx_type == "btree":
+            start = time.time()
             BPlusTreeIndexWrapper(table_path, field_name).insert_record(idx_rec)
+            end = time.time()
+            print(f"[DEBUG Tiempo B+Tree Insert] {field_name}: {end - start:.6f} s")
+        elif idx_type == "rtree":
+            RTreeIndex(table_path, field_name).insert_record(idx_rec)
 
-def _remove_from_secondary_indexes(table_path: str, record: Record, offset: int) -> None:
+def _remove_from_secondary_indexes(table_path: str, record: Optional[Record], offset: int) -> None:
+    if record is None:
+        return  # No hay registro para eliminar
     schema = record.schema
     for idx_file in glob.glob(f"{table_path}.*.*.idx"):
         parts = os.path.basename(idx_file).split('.')
@@ -178,6 +241,8 @@ def _remove_from_secondary_indexes(table_path: str, record: Record, offset: int)
             ExtendibleHashIndex(table_path, field_name).delete_record(value, offset)
         elif idx_type == "btree":
             BPlusTreeIndexWrapper(table_path, field_name).delete_record(value, offset)
+        elif idx_type == "rtree":
+            RTreeIndex(table_path, field_name).delete_record(value, offset)
 
 # =============================================================================
 # 🛠️ Creación de índices secundarios
@@ -195,6 +260,10 @@ def create_hash_idx(table_name: str, field_name: str):
     path = _table_path(table_name)
     ExtendibleHashIndex.build_index(path, HeapFile(path).extract_index, field_name)
 
+def create_rtree_idx(table_name: str, field_name: str):
+    path = _table_path(table_name)
+    RTreeIndex.build_index(path, HeapFile(path).extract_index, field_name)
+
 # =============================================================================
 # 🧾 Impresión de estructuras (depuración)
 # =============================================================================
@@ -209,4 +278,8 @@ def print_hash_idx(table_name: str, field_name: str):
     ExtendibleHashIndex(_table_path(table_name), field_name).print_all()
 
 def print_btree_idx(table_name: str, field_name: str):
-    pass # BPlusTreeIndexIndex(_table_path(table_name), field_name).print_all()
+    path = _table_path(table_name)
+    BPlusTreeIndexWrapper(path, field_name).tree.scan_all()
+
+def print_rtree_idx(table_name: str, field_name: str):
+    RTreeIndex(_table_path(table_name), field_name).print_all()

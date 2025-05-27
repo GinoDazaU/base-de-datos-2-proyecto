@@ -28,7 +28,7 @@ def _test_hashidx(n: int):
         insert_record(table_name, rec)
 
     print(f"\nBuscando registros con nombre: {nombre_objetivo}\n")
-
+pr
     # Búsqueda sin índice
     t1 = time.time()
     res_no_idx = search_by_field(table_name, "nombre", nombre_objetivo)

@@ -56,5 +56,18 @@ def _test_btreeidx(n: int):
     res2 = search_btree_idx(table_name, "nombre", nombre_objetivo)
     print(f"Con índice B+: {'ENCONTRADO' if res2 else 'NO ENCONTRADO'}")
 
+    # Elegimos valores de rango basados en el alfabeto
+    valor_inicio = "PA"    # por ejemplo
+    valor_fin = "PZ"
+
+    print(f"\n== BÚSQUEDA POR RANGO: '{valor_inicio}' a '{valor_fin}' ==")
+    t5 = time.time()
+    res_rango = search_btree_idx_range(table_name, "nombre", valor_inicio, valor_fin)
+    t6 = time.time()
+    print(f"Con índice B+ (rango): {len(res_rango)} encontrado(s) en {t6 - t5:.6f} s")
+
+    print("\n== SCAN B+ TREE ==")
+    #print_btree_idx(table_name, "nombre")
+
 if __name__ == "__main__":
-    _test_btreeidx(1000)
+    _test_btreeidx(100)
