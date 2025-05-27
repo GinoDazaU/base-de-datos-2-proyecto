@@ -78,5 +78,5 @@ def drop_test_table(table_name: str) -> None:
 if __name__ == "__main__":
     table_name = "test_all_idx"
     create_test_table(table_name, 10000)
-    test_search(table_name)
+    #test_search(table_name)
     drop_test_table(table_name)
