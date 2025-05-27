@@ -291,14 +291,14 @@ def create_rtree_idx(table_name: str, field_name: str):
 def drop_seq_idx(table_name: str, field_name: str) -> None:
     table_path = _table_path(table_name)
     idx_path = f"{table_path}.{field_name}.seq.idx"
-    if os.path.exists(idx_path):
+    if not os.path.exists(idx_path):
         raise FileNotFoundError(f"Index file {idx_path} does not exist.")
     os.remove(idx_path)
 
 def drop_btree_idx(table_name: str, field_name: str) -> None:
     table_path = _table_path(table_name)
     idx_path = f"{table_path}.{field_name}.btree.idx"
-    if os.path.exists(idx_path):
+    if not os.path.exists(idx_path):
         raise FileNotFoundError(f"Index file {idx_path} does not exist.")
     os.remove(idx_path)
 
@@ -314,7 +314,7 @@ def drop_rtree_idx(table_name: str, field_name: str) -> None:
     table_path = _table_path(table_name)
     idx_paths = (f"{table_path}.{field_name}.rtree.{ext}" for ext in ("idx", "dat"))
     for idx_path in idx_paths:
-        if os.path.exists(idx_path):
+        if not os.path.exists(idx_path):
             raise FileNotFoundError(f"Index file {idx_path} does not exist.")
         os.remove(idx_path)
 
