@@ -45,6 +45,13 @@ def create_table_with_hash_pk(table_name: str, schema: List[Tuple[str, str]], pr
     create_hash_idx(table_name, primary_key)
 
 # =============================================================================
+# 🧱 Eliminar de tablas
+# =============================================================================
+
+def drop_table(table_name: str) -> None:
+    pass
+
+# =============================================================================
 # ✏️ Inserción y eliminación de registros
 # =============================================================================
 
@@ -89,7 +96,7 @@ def insert_record_btree_pk(table_name: str, record: Record) -> int:
     pk_idx = [i for i, (n, _) in enumerate(record.schema) if n == heap.primary_key][0]
     pk_value = record.values[pk_idx]
 
-    btree = BPlusTreeIndex(table_path, heap.primary_key)
+    btree = BPlusTreeIndexWrapper(table_path, heap.primary_key)
     if btree.search(pk_value):
         raise ValueError(f"PK duplicada detectada por índice B+ Tree: {pk_value}")
 
@@ -263,6 +270,22 @@ def create_hash_idx(table_name: str, field_name: str):
 def create_rtree_idx(table_name: str, field_name: str):
     path = _table_path(table_name)
     RTreeIndex.build_index(path, HeapFile(path).extract_index, field_name)
+
+# =============================================================================
+# 🛠️ Creación de índices secundarios
+# =============================================================================
+
+def drop_seq_idx(table_name: str, field_name: str):
+    pass
+
+def drop_btree_idx(table_name: str, field_name: str):
+    pass
+
+def drop_hash_idx(table_name: str, field_name: str):
+    pass
+
+def drop_rtree_idx(table_name: str, field_name: str):
+    pass
 
 # =============================================================================
 # 🧾 Impresión de estructuras (depuración)
