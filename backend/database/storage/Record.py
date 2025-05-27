@@ -66,7 +66,7 @@ class Record:
         out_parts = []
         for (_, fmt), value in zip(self.schema, self.values):
             if 's' in fmt:                         # cadena fija
-                out_parts.append(value)
+                out_parts.append(str(value))
             elif fmt[:-1].isdigit():               # '4f', '3i', etc.
                 # Formatear cada componente según su tipo base
                 base = fmt[-1]

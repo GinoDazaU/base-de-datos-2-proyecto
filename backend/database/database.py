@@ -29,6 +29,21 @@ def _table_path(table_name: str) -> str:
     return os.path.join(tables_dir, table_name)
 
 # =============================================================================
+# 📁 Utilidades para el parser
+# =============================================================================
+
+def check_table_exists(table_name: str):
+    return os.path.exists(_table_path(table_name) + ".dat")
+
+def get_table_schema(table_name: str):
+    if not check_table_exists(table_name):
+        raise Exception(f"Table {table_name} does not exist")
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    return heap.schema
+
+
+# =============================================================================
 # 🧱 Creación de tablas
 # =============================================================================
 

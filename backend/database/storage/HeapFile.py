@@ -53,6 +53,7 @@ class HeapFile:
     # Inicialización ----------------------------------------------------
     # ------------------------------------------------------------------
     def __init__(self, table_name: str):
+        self.table_name = table_name.split("/")[-1] # saves table name for stuff in parser
         self.filename = table_name + ".dat"
         self.schema, self.primary_key = self._load_schema(self.filename)
         self.rec_data_size = Record.get_size(self.schema)
