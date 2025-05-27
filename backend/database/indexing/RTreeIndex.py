@@ -137,8 +137,9 @@ class RTreeIndex:
         bounds = RTreeIndex.to_mbr(record.key)
         self.idx.insert(record.offset, bounds)
     
-    def search_point(self, point: Tuple[Union[int, float], ...]) -> List[IndexRecord]:
-        self.validate_point(point)
+    def search_record(self, point: Tuple[Union[int, float], ...]) -> List[IndexRecord]:
+        if not self.validate_type(point, self.key_format):
+            raise TypeError(f"La clave debe ser tupla de números con formato {self.key_format}")
 
         bounds = RTreeIndex.to_mbr(point)
         offsets = list(self.idx.intersection(bounds))
@@ -229,3 +230,18 @@ class RTreeIndex:
             return True
         except Exception as e:
             return False
+        
+    def print_all(self):
+        offsets = self.idx.intersection((float('-inf'),) * self.dims + (float('inf'),) * self.dims)
+        heap_file = HeapFile(self.table_name)
+        field_names = [name for name, _ in heap_file.schema]
+        key_pos = field_names.index(self.indexed_field)
+
+        results: List[IndexRecord] = []
+        for offset in offsets:
+            record = heap_file.fetch_record_by_offset(offset)
+            key_val = record.values[key_pos]
+            results.append(IndexRecord(self.key_format, key_val, offset))
+        
+        for rec in results:
+            print(f"Offset: {rec.offset}, Key: {rec.key}")
