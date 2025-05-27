@@ -1,49 +1,60 @@
 import os
 import sys
+import time
+import string
+import random
 
-# Ajustar el path para poder importar desde el backend
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from database import *
+from storage.Record import Record
 
-from database.indexing.BPlusTreeIndex import BPlusTreeIndex
-from database.indexing.IndexRecord import IndexRecord
+def _test_btreeidx(n: int):
+    table_name = f"Heap{n}"
+    schema = [("id", "i"), ("nombre", "20s"), ("precio", "f")]
 
+    # Crear tabla y crear índice B+ en el campo 'nombre'
+    create_table(table_name, schema, primary_key="id")
+    create_btree_idx(table_name, "nombre")
+    print(f"Tabla '{table_name}' creada con índice B+ en 'nombre'.")
 
-import os
+    nombre_objetivo = None
 
-def test_btree_minimo():
-    # Preparación
-    order = 3
-    index_format = "10s"  # Strings de hasta 10 caracteres
-    table_name = "btree_simple_test"
-    auxfile = table_name + ".btree.idx"
+    print(f"== INSERTANDO {n} REGISTROS ==")
+    for i in range(n):
+        nombre = "P" + ''.join(random.choices(string.ascii_uppercase, k=5))
+        if i == n // 2:
+            nombre_objetivo = nombre
+        precio = round(random.uniform(1.0, 100.0), 2)
+        rec = Record(schema, [i + 1, nombre, precio])
+        insert_record(table_name, rec)
 
-    # Elimina archivo viejo si existe
-    if os.path.exists(auxfile):
-        os.remove(auxfile)
+    print(f"\nBuscando registros con nombre: {nombre_objetivo}\n")
 
-    # Crear índice vacío
-    btree = BPlusTreeIndex(order, filename="dummy.dat", auxname=auxfile, index_format=index_format)
+    # Búsqueda sin índice
+    t1 = time.time()
+    res_no_idx = search_by_field(table_name, "nombre", nombre_objetivo)
+    t2 = time.time()
+    print(f"Sin índice: {len(res_no_idx)} encontrado(s) en {t2 - t1:.6f} s")
 
-    # Insertar claves manualmente
-    claves = ["ANA", "CARLOS", "LUCIA", "BEA", "PEDRO"]
-    offsets = [10, 20, 30, 40, 50]
+    # Búsqueda con índice B+
+    t3 = time.time()
+    res_btree_idx = search_btree_idx(table_name, "nombre", nombre_objetivo)
+    t4 = time.time()
+    print(f"Con índice B+: {len(res_btree_idx)} encontrado(s) en {t4 - t3:.6f} s")
 
-    for clave, offset in zip(claves, offsets):
-        rec = IndexRecord(index_format, clave, offset)
-        btree.insert(rec)
+    # Eliminación por PK de todos los encontrados
+    print("\n== ELIMINANDO REGISTROS POR PK ==")
+    for r in res_no_idx:
+        pk_idx = [i for i, (n, _) in enumerate(r.schema) if n == "id"][0]
+        delete_record(table_name, r.values[pk_idx])
 
-    # Buscar claves insertadas
-    for clave in claves:
-        resultados = btree.search(clave)
-        print(f"[BÚSQUEDA] Clave: {clave} → Offsets encontrados: {resultados}")
+    # Verificación post-borrado
+    print(f"\n== VERIFICACIÓN POST-BORRADO de {nombre_objetivo} ==")
+    res1 = search_by_field(table_name, "nombre", nombre_objetivo)
+    print(f"Sin índice: {'ENCONTRADO' if res1 else 'NO ENCONTRADO'}")
 
-    # Buscar clave que no existe
-    no_existente = "MARIO"
-    resultado = btree.search(no_existente)
-    print(f"[BÚSQUEDA] Clave inexistente '{no_existente}' → {resultado}")
-
-    btree.scan_all()
+    res2 = search_btree_idx(table_name, "nombre", nombre_objetivo)
+    print(f"Con índice B+: {'ENCONTRADO' if res2 else 'NO ENCONTRADO'}")
 
 if __name__ == "__main__":
-    test_btree_minimo()
-    
+    _test_btreeidx(1000)
