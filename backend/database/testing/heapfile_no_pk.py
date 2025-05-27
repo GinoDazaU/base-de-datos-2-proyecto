@@ -22,4 +22,4 @@ def _test_insercion_heap_sin_pk(n: int):
     print(f"== INSERCIÓN COMPLETA en {t2 - t1:.6f} segundos ==")
 
 if __name__ == "__main__":
-    _test_insercion_heap_sin_pk(1000)
+    _test_insercion_heap_sin_pk(10)
