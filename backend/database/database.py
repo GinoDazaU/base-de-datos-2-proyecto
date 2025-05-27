@@ -121,7 +121,7 @@ def search_seq_idx(table_name: str, field_name: str, field_value):
 def search_btree_idx(table_name: str, field_name: str, field_value):
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
-    btree = BPlusTreeIndex(table_path, field_name)
+    btree = BPlusTreeIndexWrapper(table_path, field_name)
     offsets = btree.search(field_value)
     return [heap.fetch_record_by_offset(off) for off in offsets] if offsets else []
 

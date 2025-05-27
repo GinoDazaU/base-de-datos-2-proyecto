@@ -313,7 +313,7 @@ class BPlusTreeIndex:
                 idx += 1
             self.range_search_aux(node.children[idx], min_key, max_key, result_list)
 
-    def delete(self):
+    def delete(self, key, offset):
         pass
 
     def delete_aux(self):
@@ -393,6 +393,9 @@ class BPlusTreeIndexWrapper:
 
     def range_search(self, min_key, max_key):
         return self.tree.range_search(min_key, max_key)
+
+    def delete_record(self, key, offset):
+        return self.tree.delete(key, offset)
 
     def print_all(self):
         pass
