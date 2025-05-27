@@ -185,11 +185,10 @@ class BPlusTreeIndex:
         self.root_offset = offset
 
     def insert(self, record):
-        with open(self.filename, 'ab') as file:
-            pos = file.tell()
-            file.write(record.pack())
+        print(f"[DEBUG INSERT] Insertando clave: {record.key}, offset: {record.offset}")
 
-        index_record = IndexRecord(self.index_format, record.key, pos)
+        # No escribas al archivo ni calcules un nuevo offset
+        index_record = IndexRecord(self.index_format, record.key, record.offset)
         result = self._insert_aux(self.root_offset, index_record)
 
         if result:
@@ -204,6 +203,7 @@ class BPlusTreeIndex:
         node = self.load_node(node_offset)
 
         if node.is_leaf:
+            print(f"[DEBUG _insert_aux] Insertando en hoja. Clave: {index_record.key}")        
             idx = 0
             while idx < len(node.records) and index_record.key > node.records[idx].key:
                 idx += 1
@@ -216,12 +216,14 @@ class BPlusTreeIndex:
                 return None
 
         else:
+            print(f"[DEBUG _insert_aux] Descendiendo en nodo interno. Clave: {index_record.key}")
             idx = 0
             while idx < len(node.keys) and index_record.key > node.keys[idx]:
                 idx += 1
             result = self._insert_aux(node.children[idx], index_record)
 
             if result:
+                print(f"[DEBUG _insert_aux] Split recibido desde hijo. Clave: {index_record.key}")
                 new_node_offset, new_key = result
                 node.keys.insert(idx, new_key)
                 node.children.insert(idx + 1, new_node_offset)
@@ -267,6 +269,7 @@ class BPlusTreeIndex:
         return new_offset, separator_key
 
     def search(self, key):
+        print(f"[DEBUG SEARCH] Buscando clave: {key}")    
         return self.search_aux(self.root_offset, key)
 
     def search_aux(self, node_offset, key):
@@ -283,7 +286,7 @@ class BPlusTreeIndex:
 
         else:
             idx = 0
-            while idx < len(node.keys) and key > node.keys[idx]:
+            while idx < len(node.keys) and key >= node.keys[idx]:
                 idx += 1
             return self.search_aux(node.children[idx], key)
 
@@ -320,7 +323,16 @@ class BPlusTreeIndex:
         pass
     
     def scan_all(self):
-        pass
+        node = self.load_node(self.root_offset)
+        # Bajar hasta la hoja más a la izquierda
+        while not node.is_leaf:
+            node = self.load_node(node.children[0])
+        
+        print("\n[SCAN ALL] Registros en las hojas del árbol:")
+        while node:
+            for rec in node.records:
+                print(f"  {rec.key!r} → {rec.offset}")
+            node = self.load_node(node.next) if node.next else None
 
     @staticmethod
     def build_index(table_path: str, extract_index_fn, key_field: str, order: int = 4):
@@ -354,6 +366,10 @@ class BPlusTreeIndex:
 
         entries = extract_index_fn(key_field)
         entries.sort(key=lambda x: x[0])
+
+        print("\n[DEBUG] Entradas extraídas para el índice B+ Tree:")
+        for key, offset in entries[:10]:
+            print(f"  Key: {key!r} -> Offset: {offset}")
 
         for key, offset in entries:
             index_record = IndexRecord(field_format, key, offset)
