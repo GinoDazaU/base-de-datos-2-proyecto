@@ -4,7 +4,6 @@
 
 import os
 import glob
-import random
 import time
 from typing import List, Tuple, Optional, Union
 
@@ -43,6 +42,28 @@ def create_table_with_btree_pk(table_name: str, schema: List[Tuple[str, str]], p
 def create_table_with_hash_pk(table_name: str, schema: List[Tuple[str, str]], primary_key: str) -> None:
     create_table(table_name, schema, primary_key)
     create_hash_idx(table_name, primary_key)
+
+# =============================================================================
+# 🧱 Eliminar de tablas
+# =============================================================================
+
+def drop_table(table_name: str) -> None:
+    # Eliminar todos los índices asociados
+    drop_all_indexes(table_name)
+
+    table_path = _table_path(table_name)
+    if not os.path.exists(f"{table_path}.dat"):
+        raise FileNotFoundError(f"La tabla '{table_name}' no existe.")
+    
+    # Eliminar el archivo principal de la tabla
+    os.remove(f"{table_path}.dat")
+
+    if not os.path.exists(f"{table_path}.schema.json"):
+        raise FileNotFoundError(f"El archivo de esquema de la tabla '{table_name}' no existe.")
+
+    os.remove(f"{table_path}.schema.json")
+
+    print(f"Tabla '{table_name}' eliminada correctamente.")
 
 # =============================================================================
 # ✏️ Inserción y eliminación de registros
@@ -89,7 +110,7 @@ def insert_record_btree_pk(table_name: str, record: Record) -> int:
     pk_idx = [i for i, (n, _) in enumerate(record.schema) if n == heap.primary_key][0]
     pk_value = record.values[pk_idx]
 
-    btree = BPlusTreeIndex(table_path, heap.primary_key)
+    btree = BPlusTreeIndexWrapper(table_path, heap.primary_key)
     if btree.search(pk_value):
         raise ValueError(f"PK duplicada detectada por índice B+ Tree: {pk_value}")
 
@@ -263,6 +284,81 @@ def create_hash_idx(table_name: str, field_name: str):
 def create_rtree_idx(table_name: str, field_name: str):
     path = _table_path(table_name)
     RTreeIndex.build_index(path, HeapFile(path).extract_index, field_name)
+
+# =============================================================================
+# 🛠️ Eliminación de índices secundarios
+# =============================================================================
+
+def drop_seq_idx(table_name: str, field_name: str) -> None:
+    table_path = _table_path(table_name)
+    idx_path = f"{table_path}.{field_name}.seq.idx"
+    if not os.path.exists(idx_path):
+        raise FileNotFoundError(f"Index file {idx_path} does not exist.")
+    os.remove(idx_path)
+
+def drop_btree_idx(table_name: str, field_name: str) -> None:
+    table_path = _table_path(table_name)
+    idx_path = f"{table_path}.{field_name}.btree.idx"
+    if not os.path.exists(idx_path):
+        raise FileNotFoundError(f"Index file {idx_path} does not exist.")
+    os.remove(idx_path)
+
+def drop_hash_idx(table_name: str, field_name: str) -> None:
+    table_path = _table_path(table_name)
+    idx_paths = (f"{table_path}.{field_name}.hash.{ext}" for ext in ("db", "idx", "tree"))
+    for idx_path in idx_paths:
+        if not os.path.exists(idx_path):
+            raise FileNotFoundError(f"Index file {idx_path} does not exist.")
+        os.remove(idx_path)
+
+def drop_rtree_idx(table_name: str, field_name: str) -> None:
+    table_path = _table_path(table_name)
+    idx_paths = (f"{table_path}.{field_name}.rtree.{ext}" for ext in ("idx", "dat"))
+    for idx_path in idx_paths:
+        if not os.path.exists(idx_path):
+            raise FileNotFoundError(f"Index file {idx_path} does not exist.")
+        os.remove(idx_path)
+
+def drop_all_indexes_for_field(table_name: str, field_name: str) -> None:
+    if check_seq_idx(table_name, field_name):
+        drop_seq_idx(table_name, field_name)
+    if check_btree_idx(table_name, field_name):
+        drop_btree_idx(table_name, field_name)
+    if check_hash_idx(table_name, field_name):
+        drop_hash_idx(table_name, field_name)
+    if check_rtree_idx(table_name, field_name):
+        drop_rtree_idx(table_name, field_name)
+
+def drop_all_indexes(table_name: str) -> None:
+    path = _table_path(table_name)
+    heap = HeapFile(path)
+    fields = [name for name, _ in heap.schema]
+    for field in fields:
+        drop_all_indexes_for_field(table_name, field)
+
+# =============================================================================
+# 🛠️ Verificación de índices secundarios
+# =============================================================================
+
+def check_seq_idx(table_name: str, field_name: str) -> bool:
+    table_path = _table_path(table_name)
+    idx_path = f"{table_path}.{field_name}.seq.idx"
+    return os.path.exists(idx_path)
+
+def check_btree_idx(table_name: str, field_name: str) -> bool:
+    table_path = _table_path(table_name)
+    idx_path = f"{table_path}.{field_name}.btree.idx"
+    return os.path.exists(idx_path)
+
+def check_hash_idx(table_name: str, field_name: str) -> bool:
+    table_path = _table_path(table_name)
+    idx_paths = (f"{table_path}.{field_name}.hash.{ext}" for ext in ("db", "idx", "tree"))
+    return all(os.path.exists(idx_path) for idx_path in idx_paths)
+
+def check_rtree_idx(table_name: str, field_name: str) -> bool:
+    table_path = _table_path(table_name)
+    idx_paths = (f"{table_path}.{field_name}.rtree.{ext}" for ext in ("idx", "dat"))
+    return all(os.path.exists(idx_path) for idx_path in idx_paths)
 
 # =============================================================================
 # 🧾 Impresión de estructuras (depuración)

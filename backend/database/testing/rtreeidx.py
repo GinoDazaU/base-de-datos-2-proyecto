@@ -17,5 +17,13 @@ def _test_create_rtreeidx(table_name: str, n: int):
 
     print_rtree_idx(table_name, "coord")
 
+    records = search_rtree_knn(table_name, "coord", (0, 0), 10)
+    print(f"Found {len(records)} records near (0, 0):")
+    for rec in records:
+        print(rec)
+    
+    drop_table(table_name)
+
+
 if __name__ == "__main__":
-    _test_create_rtreeidx("Hola4", 10)
+    _test_create_rtreeidx("RTreeTest", 100)
