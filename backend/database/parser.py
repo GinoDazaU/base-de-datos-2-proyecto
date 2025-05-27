@@ -1,6 +1,6 @@
 from mo_sql_parsing import parse
 import json
-from database import create_table, check_table_exists, get_table_schema, insert_record, _table_path, insert_record_free
+from database import create_table, check_table_exists, get_table_schema, insert_record, _table_path, insert_record_free, print_table
 import pandas as pd
 from enum import Enum
 from fancytypes.schema import SchemaType
@@ -8,12 +8,13 @@ from fancytypes.primitives import Varchar
 from storage.Record import Record
 from storage.HeapFile import HeapFile
 import time
+from pprint import pformat
 
 class DEBUG_ENABLE(Enum):
     NO = 0
     YES = 1
 
-DEBUG_ENABLE = DEBUG_ENABLE.NO
+DEBUG_ENABLE = DEBUG_ENABLE.YES
 DEFAULT_VARCHAR_LENGTH = 255
 
 def print_debug(message):
@@ -37,7 +38,18 @@ class Environment:
             self.current_level = 0
 
     def __repr__(self):
-        return f"Environment(current_level={self.current_level}, levels={self.levels}, inverted_index={self.inverted_index})"
+        # Print only the table names and aliases, not the full DataFrames
+        levels_summary = {
+            level: {alias: (name, "DataFrame(...)") for alias, (name, _) in tables.items()}
+            for level, tables in self.levels.items()
+        }
+        return (
+            f"Environment(\n"
+            f"  current_level={self.current_level},\n"
+            f"  levels={pformat(levels_summary, indent=2)},\n"
+            f"  inverted_index={pformat(self.inverted_index, indent=2)}\n"
+            f")"
+        )
 
     def ensure_level_exists(self, level):
         if level not in self.levels:
@@ -240,9 +252,9 @@ class Query:
                 columns.append((table_that_has_col if table_identifier is None else table_identifier) + "." + col) # add table alias if it exists, else just column name
             else:
                 raise Exception(f"Unknown select clause item: {item}")
-        
+
         if "where" in clause:
-            raise NotImplementedError("WHERE clause is not implemented yet")
+            self.evaluate_where(clause["where"])
         if "group_by" in clause:
             raise NotImplementedError("GROUP BY clause is not implemented yet")
         if "order_by" in clause:
@@ -252,17 +264,16 @@ class Query:
         
         # handle implicit cross join if more than one table in environment level
         if len(environment.levels[self.level]) > 1 and len(columns) == 0:
-            print_debug("adasdfghaseshgfdsaghdf")
+            print_debug("Cross join should be done here")
             columns = []
 
         resulting_table = next(iter(environment.levels[self.level])) # TODO, grabs first table temporarily
-
         return self.handle_select(resulting_table, columns)
+    
     def handle_select(self, name: str, columns: list[str]) -> QueryResult:
         """
         Does the actual selection of columns from a table.
         """
-        print_debug(f"Selecting {columns} from {name}")
         df: pd.DataFrame = environment.levels[self.level][name][1]
         df = df[columns] if len(columns) > 0 else df # if empty list (*) return full df
         return QueryResult(success=True, data=df, message=f"Selected {columns if len(columns) > 0 else "*"} from {name} successfully")
@@ -303,7 +314,102 @@ class Query:
             # when this function returns on evaluate_select, we can check each select clause to check for ambiguity
         print_debug(environment)
 
+    def evaluate_where(self, where_clause):
+        """
+        Evaluates the WHERE clause.
+        """
+        if "and" in where_clause:
+            raise NotImplementedError("AND operator in WHERE clause is not implemented yet")
+        elif "or" in where_clause:
+            raise NotImplementedError("OR operator in WHERE clause is not implemented yet")
+        else:
+            # single comparison
+            # format is "op": [val, val]
+
+            mask = self.evaluate_comparison(where_clause)
+            print_debug(f"Mask for WHERE clause:\n {mask}")
+            alias = next(iter(environment.levels[self.level]))
+            original_name = environment.levels[self.level][alias][0] # get the original name of the table
+            df = environment.levels[self.level][alias][1] # get the dataframe for the first table in the level
+            environment.levels[self.level][alias] = (original_name, df[mask])
+
+    def evaluate_comparison(self, where_clause):
+        op = None
+        if "eq" in where_clause:
+            op = "=="
+            left, right = where_clause["eq"]
+        elif "gt" in where_clause:
+            op = ">"
+            left, right = where_clause["gt"]
+        elif "lt" in where_clause:
+            op = "<"
+            left, right = where_clause["lt"]
+        elif "gte" in where_clause:
+            op = ">="
+            left, right = where_clause["gte"]
+        elif "lte" in where_clause:
+            op = "<="
+            left, right = where_clause["lte"]
+        elif "neq" in where_clause:
+            op = "!="
+            left, right = where_clause["neq"]
+        else:
+            raise Exception(f"Unknown comparison operator: {where_clause}")
+        left_value = self.fetch_value(left)
+        right_value = self.fetch_value(right)
+        print_debug(f"Evaluating comparison: between{type(left_value)} {op} {type(right_value)}")
+        return self.handle_comparison(op, left_value, right_value)
     
+    def handle_comparison(self, op: str, left_value, right_value):
+        if op == '==':
+            return left_value == right_value
+        elif op == '!=':
+            return left_value != right_value
+        elif op == '<':
+            return left_value < right_value
+        elif op == '>':
+            return left_value > right_value
+        elif op == '<=':
+            return left_value <= right_value
+        elif op == '>=':
+            return left_value >= right_value
+        else:
+            raise Exception(f"Unsupported operator: {op}")
+        
+    def fetch_value(self, value):
+        if isinstance(value, str): # is a column reference
+            return self.resolve_column_reference(value)
+        elif isinstance(value, dict): # is a literal value
+            literal_value = value["literal"]
+            return str(literal_value)
+        else:
+            return value # int or float
+
+    def resolve_column_reference(self, column_reference: str):
+        """
+        Resolves a column reference to its value in the current environment.
+        """
+        table_alias = None
+        column_name = None
+        if "." not in column_reference:
+            # no table alias, just column name
+            column_name = column_reference
+            if column_name not in environment.inverted_index[self.level]:
+                raise Exception(f"Column {column_name} not found at level {self.level}")
+            if len(environment.inverted_index[self.level][column_name]) > 1:
+                raise Exception(f"Column {column_name} is ambiguous, found on tables: {environment.inverted_index[self.level][column_name]}")
+            table_alias = environment.inverted_index[self.level][column_name][0] # get first table that has the column
+            df = environment.levels[self.level][table_alias][1]
+        else:
+            table_alias, column_name = column_reference.split(".")
+            if table_alias not in environment.levels[self.level]:
+                raise Exception(f"Table alias {table_alias} not found at level {self.level}")
+            df = environment.levels[self.level][table_alias][1]
+
+        to_search = table_alias + "." + column_name
+        if to_search not in df.columns:
+            raise Exception(f"Column {column_name} not found in table {table_alias} at level {self.level}")
+        return df[to_search]
 
 class Parser:
     def __init__(self):
@@ -323,29 +429,30 @@ class Parser:
 def main():
     parser = Parser()
 
-    create_table = "create table student (id int, name varchar(20), age int);"
+    create_table = "create table student(id int, name varchar(20), age int);"
     create_table_2 = "create table teacher (id int, name varchar(20), age int, subject varchar);"
 
-    insert = "insert into student (id, name, age) values (1, 'John Doe', 20);"
+    insert = "insert into student(id, name, age) values (1, 'John Doe', 20);"
     insert_2 = "insert into teacher (id, name, age, subject) values (2, 'John Doe', 30, 'Mathematics');"
 
-    select_basic = "select id, student.name from student;"
+    select_basic = "select * from student;"
     select_simple = "select student.id, teacher.id from student CROSS JOIN teacher;"
     select_cj = "select * from student, teacher;" # implicit cross join
     select_complex = "select student.id, t.id, t.name, name, * from student, teacher as t"
 
-    insert_error = "insert into students(id, name, age, grade) values(2, 'Pepito', 20, 19.5)"
+    insert_error = "insert into student(id, name, age) values(2, 'Pepito', 20)"
 
-    select_error = "select a.id, name, a.age from students as a"
+    select_error = "select a.id, name, a.age from student as a where id > 1"
 
     # result = parser.parse(create_table)
     # result = parser.parse(create_table_2)
     # result = parser.parse(insert)
     # result = parser.parse(insert_2)
-
-    result = parser.parse(select_error)
-    print(result.message)
-    print(result.data)
+    for i in range(20):
+        insert = f"insert into student(id, name, age) values ({i}, 'John Doe', 20);"
+        result = parser.parse(insert)
+        print(result.message)
+        print(result.data)
 
 def test():
     query = input("Enter a query: ")
@@ -357,5 +464,15 @@ def test():
     final_time = time.time()
     print(f"Query executed in {(final_time - initial_time) * 1000:.2f} ms")
 
+def wheretest():
+    query = "select * from student as a where a.id = 5;"
+    parser = Parser()
+    initial_time = time.time()
+    result = parser.parse(query)
+    print(result.message)
+    print(result.data)
+    final_time = time.time()
+    print(f"Query executed in {(final_time - initial_time) * 1000:.2f} ms")
+
 if __name__ == "__main__":
-    test()
+    wheretest()

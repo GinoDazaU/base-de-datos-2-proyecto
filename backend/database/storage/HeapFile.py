@@ -313,12 +313,32 @@ class HeapFile:
     def to_dataframe(heapfile: "HeapFile", alias=None) -> pd.DataFrame:
         with open(heapfile.filename, "rb") as f:
             f.seek(METADATA_SIZE)
-            headers = [(heapfile.table_name if alias is None else alias) + "." + column_name for column_name, _ in heapfile.schema] # explicit table name prefix
+            headers = [(heapfile.table_name if alias is None else alias) + "." + column_name for column_name, _ in heapfile.schema]
             rows = []
+            
+            # get pk for deleted files
+            pk_idx, pk_sentinel = None, None
+            if heapfile.primary_key is not None:
+                pk_idx, pk_fmt = heapfile._pk_idx_fmt()
+                pk_sentinel = heapfile._sentinel(pk_fmt)
+            
             for _ in range(heapfile.heap_size):
                 buf = f.read(heapfile.rec_data_size)
+                if len(buf) < heapfile.rec_data_size:
+                    break
+                    
                 rec = Record.unpack(buf, heapfile.schema)
+                
+                # skips del records
+                if pk_idx is not None and rec.values[pk_idx] == pk_sentinel:
+                    f.seek(PTR_SIZE, os.SEEK_CUR)  # skips ptr
+                    continue
+                
                 row = {name: value for name, value in zip(headers, rec.values)}
                 rows.append(row)
+                
+                # skips next_free
+                f.seek(PTR_SIZE, os.SEEK_CUR)
+                
             df = pd.DataFrame(rows, columns=headers)
         return df
