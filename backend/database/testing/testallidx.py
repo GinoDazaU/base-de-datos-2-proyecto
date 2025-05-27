@@ -36,7 +36,7 @@ def test_search(table_name: str) -> None:
     total_time = end_time - start_time
     print(f"Search in field 'id' with sequential index took {total_time:.6f} seconds, found {len(record)} records.\n")
 
-    print(f"Testing search on field 'name' in table {table_name}")
+    print(f"Testing search on field 'name' in table {table_name}\n")
     start_time = time.time()
     record: list = search_by_field(table_name, "name", "name_50")
     end_time = time.time()
@@ -48,7 +48,7 @@ def test_search(table_name: str) -> None:
     total_time = end_time - start_time
     print(f"Search in field 'name' with hash index took {total_time:.6f} seconds, found {len(record)} records.\n")
 
-    print(f"Testing search on field 'value' in table {table_name}")
+    print(f"Testing search on field 'value' in table {table_name}\n")
     start_time = time.time()
     record: list = search_by_field(table_name, "value", 50.0)
     end_time = time.time()
@@ -60,7 +60,7 @@ def test_search(table_name: str) -> None:
     total_time = end_time - start_time
     print(f"Search in field 'value' with B-Tree index took {total_time:.6f} seconds, found {len(record)} records.\n")
 
-    print(f"Testing search on field 'coord' in table {table_name}")
+    print(f"Testing search on field 'coord' in table {table_name}\n")
     start_time = time.time()
     record: list = search_by_field(table_name, "coord", (50.0, 50.0))
     end_time = time.time()
@@ -77,6 +77,6 @@ def drop_test_table(table_name: str) -> None:
 
 if __name__ == "__main__":
     table_name = "test_all_idx"
-    create_test_table(table_name, 1000)
+    create_test_table(table_name, 10000)
     test_search(table_name)
     drop_test_table(table_name)
