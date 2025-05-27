@@ -317,10 +317,30 @@ class BPlusTreeIndex:
             self.range_search_aux(node.children[idx], min_key, max_key, result_list)
 
     def delete(self, key, offset):
-        pass
+        print(f"[DEBUG DELETE] Eliminando clave: {key}, offset: {offset}")
+        self._delete_aux(self.root_offset, key, offset)
 
-    def delete_aux(self):
-        pass
+    def _delete_aux(self, node_offset, key, offset):
+        node = self.load_node(node_offset)
+
+        if node.is_leaf:
+            original_len = len(node.records)
+            node.records = [r for r in node.records if not (r.key == key and r.offset == offset)]
+
+            if len(node.records) < original_len:
+                print(f"[DEBUG DELETE] Eliminado en hoja. Nueva cantidad: {len(node.records)}")
+                self.save_node_at(node_offset, node)
+            else:
+                print("[DEBUG DELETE] Clave no encontrada en hoja.")
+            return
+
+        # Nodo interno: buscar el hijo correspondiente
+        idx = 0
+        while idx < len(node.keys) and key > node.keys[idx]:
+            idx += 1
+        self._delete_aux(node.children[idx], key, offset)
+
+        # NOTA: No implementamos aún rebalanceo de nodos internos
     
     def scan_all(self):
         node = self.load_node(self.root_offset)

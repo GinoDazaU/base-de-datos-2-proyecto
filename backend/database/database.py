@@ -5,6 +5,7 @@
 import os
 import glob
 import random
+import time
 from typing import List, Tuple, Optional, Union
 
 from storage.HeapFile import HeapFile
@@ -145,6 +146,13 @@ def search_btree_idx(table_name: str, field_name: str, field_value):
     offsets = btree.search(field_value)
     return [heap.fetch_record_by_offset(off) for off in offsets] if offsets else []
 
+def search_btree_idx_range(table_name: str, field_name: str, start_value, end_value):
+    table_path = _table_path(table_name)
+    heap = HeapFile(table_path)
+    btree = BPlusTreeIndexWrapper(table_path, field_name)
+    offsets = btree.range_search(start_value, end_value)
+    return [heap.fetch_record_by_offset(off) for off in offsets] if offsets else []
+
 def search_hash_idx(table_name: str, field_name: str, field_value):
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
@@ -207,7 +215,10 @@ def _update_secondary_indexes(table_path: str, record: Record, offset: int) -> N
         elif idx_type == "hash":
             ExtendibleHashIndex(table_path, field_name).insert_record(idx_rec)
         elif idx_type == "btree":
+            start = time.time()
             BPlusTreeIndexWrapper(table_path, field_name).insert_record(idx_rec)
+            end = time.time()
+            print(f"[DEBUG Tiempo B+Tree Insert] {field_name}: {end - start:.6f} s")
         elif idx_type == "rtree":
             RTreeIndex(table_path, field_name).insert_record(idx_rec)
 
@@ -267,7 +278,8 @@ def print_hash_idx(table_name: str, field_name: str):
     ExtendibleHashIndex(_table_path(table_name), field_name).print_all()
 
 def print_btree_idx(table_name: str, field_name: str):
-    pass # BPlusTreeIndexIndex(_table_path(table_name), field_name).print_all()
+    path = _table_path(table_name)
+    BPlusTreeIndexWrapper(path, field_name).tree.scan_all()
 
 def print_rtree_idx(table_name: str, field_name: str):
     RTreeIndex(_table_path(table_name), field_name).print_all()
