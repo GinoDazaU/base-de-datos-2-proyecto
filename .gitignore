@@ -1,8 +1,8 @@
 *.exe
-*.dat
 *.env
 *__pycache__
 *venv
+*.dat
 *.schema.json
 *.json
 *.idx
