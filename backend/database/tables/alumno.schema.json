@@ -1,0 +1,15 @@
+{
+    "table_name": "alumno",
+    "fields": [
+        {
+            "name": "id",
+            "type": "i",
+            "is_primary_key": false
+        },
+        {
+            "name": "edad",
+            "type": "f",
+            "is_primary_key": false
+        }
+    ]
+}

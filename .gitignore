@@ -2,9 +2,9 @@
 *.env
 *__pycache__
 *venv
-*.dat
-*.schema.json
-*.json
-*.idx
-*.tree
-*.db
+#*.dat
+#*.schema.json
+#*.json
+#*.idx
+#*.tree
+#*.db
