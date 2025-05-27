@@ -1,0 +1,43 @@
+# Stage 1: Build the Next.js application
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Define and accept build argument
+ARG NEXT_PUBLIC_BACK_API_URL
+ENV NEXT_PUBLIC_BACK_API_URL=$NEXT_PUBLIC_BACK_API_URL
+
+# Copia los archivos de definición de paquetes y el archivo de configuración de Next.js
+COPY package.json package-lock.json ./
+COPY next.config.ts ./
+
+RUN npm install
+
+# Copia el resto del código fuente de tu aplicación Next.js
+COPY . .
+
+# Construye la aplicación Next.js para producción
+# La bandera --no-lint minimiza las advertencias durante la construcción
+RUN npm run build --no-lint
+
+# Stage 2: Create the production image
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# Establece el entorno de producción
+ENV NODE_ENV production
+
+# Copia los archivos necesarios desde la etapa 'builder'
+COPY --from=builder /app/next.config.ts ./
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./        
+COPY --from=builder /app/package-lock.json ./  
+
+# Expone el puerto por defecto de Next.js
+EXPOSE 3000
+
+# Define el comando para iniciar la aplicación Next.js en producción
+CMD ["npm", "start"]

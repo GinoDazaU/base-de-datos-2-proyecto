@@ -172,7 +172,7 @@ export function DataQuillLayout({
 
           {/* Panel inferior (Results) */}
           <div className="flex-1 rounded-lg border-border shadow-lg flex flex-col overflow-hidden">
-            <div className="flex-1 p-2 overflow-y-auto">{resultsTable}</div>
+            <div className="flex-1 p-2 overflow-auto">{resultsTable}</div>
           </div>
         </div>
       </main>

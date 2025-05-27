@@ -1,0 +1,18 @@
+🔢 Insertados 1000 registros con índices (btree + hash + seq) en 70.2178 segundos.
+
+🔍 Comparando búsquedas con 1000 registros en la tabla 'alumnos':
+
+🔸 Nombre = 'Luis'
+Hash Index     → 1 resultados en 0.016031 s
+Búsqueda Lineal→ 92 resultados en 0.002996 s
+
+🔸 Pensión en rango [500.0, 1000.0]
+Heap Scan      → 0 resultados en 0.004003 s
+SequentialIdx  → 414 resultados en 0.031247 s
+
+🔸 Ciclo = 5
+B+Tree Index   → 1 resultados en 0.008586 s
+Búsqueda Lineal→ 89 resultados en 0.004526 s
+
+============================================================
+

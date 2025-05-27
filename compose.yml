@@ -1,0 +1,39 @@
+
+networks:
+  my_network:
+    driver: bridge
+
+services:
+  backend:
+    build:
+      context: ./backend/database
+      dockerfile: DockerFile
+    image: backend
+    ports:
+      - 8000:8000
+    networks: 
+      - my_network
+    expose:
+      - "8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: DockerFile
+      args:
+        NEXT_PUBLIC_BACK_API_URL: http://54.84.175.94:8000
+    image: frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_BACK_API_URL=http://54.84.175.94:8000
+    restart: always
+    depends_on:
+      - backend
+    networks: 
+      - my_network
+    expose:
+      - "3000"

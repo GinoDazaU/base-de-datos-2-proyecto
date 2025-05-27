@@ -104,14 +104,14 @@ export function ResultsTable({
       </Card>
     );
   }
-
+  /*
   if (rows.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         No results to display. Run a query to see data.
       </div>
     );
-  }
+  }*/
 
   return (
     <div className="relative h-full flex flex-col">
@@ -140,39 +140,43 @@ export function ResultsTable({
       </div>
 
       {/* Contenido pestañas */}
-      <div className="flex-1 overflow-hidden">
-        {activeTab === "result" && (
-          <ScrollArea className="h-full font-mono text-sm">
-            <Table>
-              <TableHeader className="sticky top-0 bg-card z-10">
-                <TableRow>
-                  {columns.map((col) => (
-                    <TableHead
-                      key={col.key}
-                      className="whitespace-nowrap text-foreground/80"
-                    >
-                      {col.name}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row, rowIndex) => (
-                  <TableRow key={rowIndex}>
-                    {columns.map((col) => (
-                      <TableCell
-                        key={`${rowIndex}-${col.key}`}
-                        className="whitespace-nowrap"
-                      >
-                        {String(row[col.key])}
-                      </TableCell>
+      <div className="flex-1 overflow-y-auto"> {/* Cambiado a overflow-y-auto para permitir x */}
+          {activeTab === "result" && (
+            <ScrollArea className="h-full font-mono text-sm">
+              {/* Wrapper para el desplazamiento horizontal */}
+              <div className="overflow-x-auto pb-4">
+                <Table className="min-w-max">
+                  <TableHeader className="sticky top-0 bg-card z-10">
+                    <TableRow>
+                      {columns.map((col) => (
+                        <TableHead
+                          key={col.key}
+                          className="whitespace-nowrap text-foreground/80"
+                        >
+                          {col.name}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((row, rowIndex) => (
+                      <TableRow key={rowIndex}>
+                        {columns.map((col) => (
+                          <TableCell
+                            key={`${rowIndex}-${col.key}`}
+                            className="whitespace-nowrap"
+                          >
+                            {String(row[col.key])}
+                          </TableCell>
+                        ))}
+                      </TableRow>
                     ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </ScrollArea>
-        )}
+                  </TableBody>
+                </Table>
+              </div>
+            </ScrollArea>
+          )}
+
 
         {activeTab === "queryPlan" && (
           <ScrollArea className="h-full p-4 font-mono text-sm whitespace-pre-wrap bg-card text-foreground">
@@ -190,7 +194,7 @@ export function ResultsTable({
       {/* Barra de estado inferior */}
       <div className="border-t border-border bg-card flex justify-between items-center px-4 py-2 text-xs text-muted-foreground select-none">
         <div>
-          {rows.length} record{rows.length !== 1 ? "s" : ""} found
+          {rowCount} record{rowCount !== 1 ? "s" : ""} found
         </div>
         <div>
           {executionTime !== undefined

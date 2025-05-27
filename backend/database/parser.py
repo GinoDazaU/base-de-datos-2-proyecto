@@ -319,6 +319,33 @@ class Parser:
             print_debug(f"Exception at parse(): {e}")
             return QueryResult(success=False, data=None, message=str(e))
         
+    def parsejson(self, query:str,limit):
+        tree = parse(query)
+        print_debug("Parse tree:\n" + json.dumps(tree, indent=2))
+        root = Query(tree, 0)
+        queryresult= root.evaluate() # should return a QueryResult object
+        
+        if queryresult.success:
+            df=queryresult.data
+            if df is not None:
+                df=queryresult.data
+                df_limited_rows = df.head(limit) # Obtiene las primeras 10 filas
+                query_result = {
+                    'columns': [{'key': col, 'name': col} for col in df_limited_rows.columns],
+                    'rows': df_limited_rows.to_dict(orient='records'),
+                    'count_rows':len(df) 
+                }
+                return query_result
+            else:
+                return {
+                            'columns': [],
+                            'rows': [],
+                            "message": "Consulta ejecutada correctamente.",
+                            'count_rows':0
+                            }
+        else:
+            return Exception(f"Error en la consulta:")
+        
     
 def main():
     parser = Parser()

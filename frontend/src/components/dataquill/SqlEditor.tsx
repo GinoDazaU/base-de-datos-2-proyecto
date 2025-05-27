@@ -49,6 +49,12 @@ export function SqlEditor({
     return () => clearTimeout(timer);
   }, []);
 
+  const handleGetSelectedText = () => {
+    const selection = editorRef.current?.getSelection();
+    const model = editorRef.current?.getModel();
+    const selectedText = model?.getValueInRange(selection);
+    return selectedText;
+  };
 
   function handleEditorDidMount(editor: any, monaco: Monaco) {
     editorRef.current = editor;

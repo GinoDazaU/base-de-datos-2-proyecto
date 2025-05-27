@@ -1,0 +1,8 @@
+rtree
+pandas
+faker
+fastapi
+pydantic
+uvicorn
+mo_sql_parsing
+fancytypes
