@@ -414,15 +414,12 @@ Los **resultados experimentales** han validado nuestras hipótesis teóricas, mo
 
 </details>
 
-## 4.3. Video Demostrativo de Funcionalidad
+## 4.3. Aplicación Gráfica (Por terminar)
 
-En última instancia, este proyecto proporciona una **plataforma educativa y práctica** invaluable, que permite a los usuarios comprender de primera mano cómo la elección estratégica de una técnica de indexación puede optimizar drásticamente las operaciones de bases de datos, un conocimiento fundamental en el diseño y la administración de sistemas de información eficientes.
-
-Hemos preparado un **video demostrativo** que muestra la funcionalidad completa de la aplicación.
+Frontend web desployeado que conecta con el backend y la base de datos, permite usar SQL.
 
 **Pulsar en la imagen**
-[![Ver video](./images/04.png)](https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=sharing)
-https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=sharing
+[![Ver video](./images/04.png)](http://54.84.175.94:3000)
 
 ---
 
@@ -434,8 +431,4 @@ https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=shari
 
 ---
 
-# Oveview - Pasos de implementación del proyecto
-<details>
-<summary><strong>Ver más</strong></summary>
-
-</details>
+![](https://media1.tenor.com/m/jRaSFSY9f78AAAAC/postgresql-heart-locket.gif)
