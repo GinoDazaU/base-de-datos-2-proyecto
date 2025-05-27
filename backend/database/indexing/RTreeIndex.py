@@ -8,21 +8,21 @@ from . import utils
 from storage.HeapFile import HeapFile
 
 class RTreeIndex:
-    def __init__(self, table_name: str, indexed_field: str):
-        # Save table_name and indexed_field
-        self.table_name = table_name
+    def __init__(self, table_path: str, indexed_field: str):
+        # Save table_path and indexed_field
+        self.table_path = table_path
         self.indexed_field = indexed_field
 
         # Validate schema and field
-        self.schema = utils.load_schema(table_name)
+        self.schema = utils.load_schema(table_path)
         if indexed_field not in [f["name"] for f in self.schema["fields"]]:
-            raise ValueError(f"Campo {indexed_field} no existe en el schema de {table_name}")
+            raise ValueError(f"Campo {indexed_field} no existe en el schema de {table_path}")
     
-        self.filename = f"{table_name}.{indexed_field}.rtree.idx"
+        self.filename = f"{table_path}.{indexed_field}.rtree"
 
         # Validate if index file exists
-        if not os.path.exists(self.filename):
-            raise FileNotFoundError(f"El índice RTree para {table_name} en el campo {indexed_field} no existe. Crea el índice primero.")
+        if not (os.path.exists(self.filename + ".idx") and os.path.exists(self.filename + ".dat")):
+            raise FileNotFoundError(f"El índice RTree para {table_path} en el campo {indexed_field} no existe. Crea el índice primero.")
         
         self.key_format = utils.get_key_format_from_schema(self.schema, indexed_field)
         self.dims = int(self.key_format[:-1])
@@ -33,15 +33,19 @@ class RTreeIndex:
         self.idx = index.Index(self.filename, properties = props)
 
     @staticmethod
-    def build_index(heap_filename: str, extract_index_fn, key_field: str) -> bool:
+    def build_index(heap_path: str, extract_index_fn, key_field: str) -> bool:
         # Load schema
-        schema = utils.load_schema(heap_filename)
+        schema = utils.load_schema(heap_path)
         # Get key format
         key_format: str = utils.get_key_format_from_schema(schema, key_field)
         
         # Generate index filename
-        base, _ = os.path.splitext(heap_filename)
-        idx_filename = f"{base}.{key_field}.rtree.idx"
+        base, _ = os.path.splitext(heap_path)
+        idx_filename = f"{base}.{key_field}.rtree"
+
+        for ext in [".idx", ".dat"]:
+            if os.path.exists(idx_filename + ext):
+                os.remove(idx_filename + ext)
 
         # Extract and validate entries
         entries = extract_index_fn(key_field)
@@ -134,14 +138,14 @@ class RTreeIndex:
         if not isinstance(record.offset, int):
             raise TypeError(f"Offset inválido (debe ser int), se recibió {type(record.offset)}")
         
-        bounds = RTreeIndex.to_mbr(record.key)
+        bounds = self.to_mbr(record.key)
         self.idx.insert(record.offset, bounds)
     
     def search_record(self, point: Tuple[Union[int, float], ...]) -> List[IndexRecord]:
         if not self.validate_type(point, self.key_format):
             raise TypeError(f"La clave debe ser tupla de números con formato {self.key_format}")
 
-        bounds = RTreeIndex.to_mbr(point)
+        bounds = self.to_mbr(point)
         offsets = list(self.idx.intersection(bounds))
         return [IndexRecord(self.key_format, point, offset) for offset in offsets]
 
@@ -154,7 +158,7 @@ class RTreeIndex:
 
         offsets = list(self.idx.intersection(bounds))
 
-        heap_file = HeapFile(self.table_name)
+        heap_file = HeapFile(self.table_path)
         field_names = [name for name, _ in heap_file.schema]
         key_pos = field_names.index(self.indexed_field)
 
@@ -185,7 +189,7 @@ class RTreeIndex:
 
         offsets = list(self.idx.intersection(bounds))
 
-        heap_file = HeapFile(self.table_name)
+        heap_file = HeapFile(self.table_path)
         field_names = [name for name, _ in heap_file.schema]
         key_pos = field_names.index(self.indexed_field)
 
@@ -200,11 +204,10 @@ class RTreeIndex:
 
     def search_knn(self, point: Tuple[Union[int, float], ...], k: int) -> List[IndexRecord]:
         self.validate_point(point)
-        point = tuple(float(c) for c in point)
-
+        point = self.to_mbr(point)
         offsets = self.idx.nearest(point, num_results = k)
 
-        heap_file = HeapFile(self.table_name)
+        heap_file = HeapFile(self.table_path)
         field_names = [name for name, _ in heap_file.schema]
         key_pos = field_names.index(self.indexed_field)
 
@@ -232,8 +235,8 @@ class RTreeIndex:
             return False
         
     def print_all(self):
-        offsets = self.idx.intersection((float('-inf'),) * self.dims + (float('inf'),) * self.dims)
-        heap_file = HeapFile(self.table_name)
+        offsets = self.idx.intersection(tuple((float('-inf'),) * self.dims + (float('inf'),) * self.dims))
+        heap_file = HeapFile(self.table_path)
         field_names = [name for name, _ in heap_file.schema]
         key_pos = field_names.index(self.indexed_field)
 
