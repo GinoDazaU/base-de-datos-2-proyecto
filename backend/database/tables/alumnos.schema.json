@@ -1,0 +1,30 @@
+{
+    "table_name": "alumnos",
+    "fields": [
+        {
+            "name": "codigo",
+            "type": "i",
+            "is_primary_key": true
+        },
+        {
+            "name": "nombre",
+            "type": "20s",
+            "is_primary_key": false
+        },
+        {
+            "name": "pension",
+            "type": "f",
+            "is_primary_key": false
+        },
+        {
+            "name": "ciclo",
+            "type": "i",
+            "is_primary_key": false
+        },
+        {
+            "name": "especialidad",
+            "type": "15s",
+            "is_primary_key": false
+        }
+    ]
+}
