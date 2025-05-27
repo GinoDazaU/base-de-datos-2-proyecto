@@ -31,21 +31,22 @@ class IndexRecord:
         self._validate_types()
         
     def _validate_types(self):
-        """Valida que los tipos coincidan con el formato especificado."""
-        if self.format == 'i' and not isinstance(self.key, int):
-            raise TypeError(f"Clave debe ser int para formato 'i', se recibió {type(self.key)}")
-        
-        elif self.format == 'f' and not isinstance(self.key, float):
-            raise TypeError(f"Clave debe ser float para formato 'f', se recibió {type(self.key)}")
-        
+        if self.format == 'i':
+            if not isinstance(self.key, int):
+                raise TypeError(f"Clave debe ser int para formato 'i', se recibió {type(self.key)}")
+
+        elif self.format == 'f':
+            if not isinstance(self.key, float):
+                raise TypeError(f"Clave debe ser float para formato 'f', se recibió {type(self.key)}")
+
         elif re_string.fullmatch(self.format):
             n = int(self.format[:-1])
             if not isinstance(self.key, str):
-               raise TypeError(f"Clave debe ser str para formato string, se recibió {type(self.key)}")
+                raise TypeError(f"Clave debe ser str para formato string, se recibió {type(self.key)}")
             raw = self.key.encode("utf-8")
             if len(raw) > n:
                 raise ValueError(f"Cadena demasiado larga: {len(raw)} bytes, máximo {n}")
-        
+
         elif re_tuple.fullmatch(self.format):
             n = int(self.format[:-1])
             type_char = self.format[-1]
@@ -53,13 +54,13 @@ class IndexRecord:
                 raise TypeError(f"Clave debe ser tupla de tamaño {n} para el formato {self.format}")
             
             if type_char == 'i' and not all(isinstance(x, int) for x in self.key):
-                raise TypeError(f"Todos los elementos de la tupla deben ser int para formato {self.format}")
-            
+                raise TypeError(f"Todos los elementos deben ser int para formato {self.format}")
             elif type_char in ('f', 'd') and not all(isinstance(x, float) for x in self.key):
-                raise TypeError(f"Todos los elementos de la tupla deben ser float para formato {self.format}")
-        
+                raise TypeError(f"Todos los elementos deben ser float para formato {self.format}")
+
         else:
             raise TypeError(f"Formato no soportado: {self.format}")
+
     
     def pack(self) -> bytes:
         """Serializa el registro a bytes."""

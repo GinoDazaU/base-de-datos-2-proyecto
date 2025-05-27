@@ -492,4 +492,4 @@ class BPlusTreeIndexWrapper:
         return self.tree.delete(key, offset)
 
     def print_all(self):
-        pass
+        return self.tree.scan_all()

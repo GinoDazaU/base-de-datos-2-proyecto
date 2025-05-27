@@ -44,7 +44,7 @@ def get_key_format_from_schema(schema: Dict[str, Any], key_field: str) -> str:
     available_fields = [f["name"] for f in schema["fields"]]
     raise ValueError(f"Campo '{key_field}' no encontrado en el schema. Campos disponibles: {available_fields}")
 
-def get_default_key(key_format: str) -> Union[int, float, str]:
+def get_default_key(fmt):
     """Devuelve un valor por defecto según el tipo de clave
     
     Args:
@@ -56,13 +56,14 @@ def get_default_key(key_format: str) -> Union[int, float, str]:
     Raises:
         ValueError: Si el formato no es soportado
     """
-    if key_format == 'i':
+    if fmt == 'i':
         return 0
-    elif key_format == 'f':
+    elif fmt == 'f':
         return 0.0
-    elif 's' in key_format:
-        return ""
-    raise ValueError(f"Formato de clave no soportado: '{key_format}'. Use 'i', 'f' o 'Ns' (ej: '10s')")
+    elif fmt.endswith('s'):
+        return ''
+    else:
+        raise ValueError("Formato no soportado")
 
 def get_empty_record(key_format: str) -> IndexRecord:
     """Crea un registro vacío según el tipo de clave
