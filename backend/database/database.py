@@ -48,6 +48,9 @@ def create_table_with_hash_pk(table_name: str, schema: List[Tuple[str, str]], pr
 # =============================================================================
 
 def drop_table(table_name: str) -> None:
+    # Eliminar todos los índices asociados
+    drop_all_indexes(table_name)
+
     table_path = _table_path(table_name)
     if not os.path.exists(f"{table_path}.dat"):
         raise FileNotFoundError(f"La tabla '{table_name}' no existe.")
@@ -60,8 +63,7 @@ def drop_table(table_name: str) -> None:
 
     os.remove(f"{table_path}.schema.json")
 
-    # Eliminar todos los índices asociados
-    drop_all_indexes(table_name)
+    print(f"Tabla '{table_name}' eliminada correctamente.")
 
 # =============================================================================
 # ✏️ Inserción y eliminación de registros
