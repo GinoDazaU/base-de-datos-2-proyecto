@@ -49,6 +49,7 @@ def get_table_schema(table_name: str):
 
 def create_table(table_name: str, schema: List[Tuple[str, str]], primary_key: str) -> None:
     HeapFile.build_file(_table_path(table_name), schema, primary_key)
+    print(f"Tabla '{table_name}' creada con éxito.")
 
 def create_table_with_btree_pk(table_name: str, schema: List[Tuple[str, str]], primary_key: str,) -> None:
     create_table(table_name, schema, primary_key)
@@ -254,7 +255,6 @@ def _update_secondary_indexes(table_path: str, record: Record, offset: int) -> N
             start = time.time()
             BPlusTreeIndexWrapper(table_path, field_name).insert_record(idx_rec)
             end = time.time()
-            print(f"[DEBUG Tiempo B+Tree Insert] {field_name}: {end - start:.6f} s")
         elif idx_type == "rtree":
             RTreeIndex(table_path, field_name).insert_record(idx_rec)
 
@@ -287,18 +287,22 @@ def _remove_from_secondary_indexes(table_path: str, record: Optional[Record], of
 def create_seq_idx(table_name: str, field_name: str):
     path = _table_path(table_name)
     SequentialIndex.build_index(path, HeapFile(path).extract_index, field_name)
+    print(f"Índice secuencial creado para '{field_name}' en la tabla '{table_name}'.")
 
 def create_btree_idx(table_name: str, field_name: str):
     path = _table_path(table_name)
     BPlusTreeIndex.build_index(path, HeapFile(path).extract_index, field_name)
+    print(f"Índice B+ Tree creado para '{field_name}' en la tabla '{table_name}'.")
 
 def create_hash_idx(table_name: str, field_name: str):
     path = _table_path(table_name)
     ExtendibleHashIndex.build_index(path, HeapFile(path).extract_index, field_name)
+    print(f"Índice Extendible Hash creado para '{field_name}' en la tabla '{table_name}'.")
 
 def create_rtree_idx(table_name: str, field_name: str):
     path = _table_path(table_name)
     RTreeIndex.build_index(path, HeapFile(path).extract_index, field_name)
+    print(f"Índice R-Tree creado para '{field_name}' en la tabla '{table_name}'.")
 
 # =============================================================================
 # 🛠️ Eliminación de índices secundarios
