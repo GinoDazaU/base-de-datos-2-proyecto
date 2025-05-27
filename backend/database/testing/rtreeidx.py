@@ -5,8 +5,7 @@ import random
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database import *
 
-def _test_rtreeidx(n: int):
-    table_name = "RTreeTest"
+def _test_create_rtreeidx(table_name: str, n: int):
     schema = [("id", "i"), ("coord", "2f")]
     create_table(table_name, schema, primary_key="id")
 
@@ -21,4 +20,4 @@ def _test_rtreeidx(n: int):
     print(f"RTree index created for {table_name} on 'coord' field.")
 
 if __name__ == "__main__":
-    _test_rtreeidx(1)
+    _test_create_rtreeidx("Hola", 1000)
