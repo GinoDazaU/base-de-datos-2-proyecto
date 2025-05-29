@@ -23,7 +23,23 @@ class OperationType(Enum):
     BETWEEN = auto()  # BETWEEN
 
     def __str__(self):
-        return self.name.replace("_", " ").lower()
+        match self:
+            case OperationType.EQUAL:
+                return "="
+            case OperationType.NOT_EQUAL:
+                return "!="
+            case OperationType.GREATER_THAN:
+                return ">"
+            case OperationType.LESS_THAN:
+                return "<"
+            case OperationType.GREATER__EQUAL:
+                return ">="
+            case OperationType.LESS__EQUAL:
+                return "<="
+            case OperationType.IN:
+                return "IN"
+            case OperationType.BETWEEN:
+                return "BETWEEN"
 
 
 class IndexType(Enum):
@@ -34,3 +50,13 @@ class IndexType(Enum):
 
     def __str__(self):
         return self.name
+
+
+class QueryResult:
+    def __init__(self, success: bool, message: str = "", data=None):
+        self.success = success
+        self.message = message
+        self.data = data
+
+    def __repr__(self):
+        return f"QueryResult(success={self.success}, message='{self.message}', data={self.data})"

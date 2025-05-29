@@ -1,18 +1,23 @@
-from column_types import ColumnType, IndexType, OperationType
+from column_types import ColumnType, IndexType, OperationType, QueryResult
 from scanner import TokenType
 
 
 class Visitable:
     """Base class for all SQL statements"""
 
-    def accept(self, visitor):
+    def accept(self, visitor) -> QueryResult:
         method_name = f"visit_{self.__class__.__name__.lower()}"
         method = getattr(visitor, method_name, visitor.generic_visit)
         return method(self)
 
 
+class ValueExpression(Visitable):
+    def __init__(self):
+        pass
+
+
 # region Expression Classes
-class ConstantExpression(Visitable):
+class ConstantExpression(ValueExpression):
     def __init__(self):
         pass
 
@@ -43,7 +48,7 @@ class StringExpression(ConstantExpression):
 # endregion
 
 
-class ColumnExpression(Visitable):
+class ColumnExpression(ValueExpression):
     def __init__(self, column_name: str, table_name: str = None):
         self.column_name = column_name
         self.table_name = table_name
@@ -52,6 +57,69 @@ class ColumnExpression(Visitable):
         if self.table_name:
             return f"{self.table_name}.{self.column_name}"
         return self.column_name
+
+
+# region Conditions
+class Condition(Visitable):
+    def __init__(self):
+        pass
+
+
+class OrCondition(Condition):
+    def __init__(self, and_condition, or_condition=None):
+        self.and_condition = and_condition
+        self.or_condition = or_condition
+
+
+class AndCondition(Condition):
+    def __init__(
+        self, not_condition: "NotCondition", and_condition: "AndCondition" = None
+    ):
+        self.not_condition = not_condition
+        self.and_condition = and_condition
+
+
+class NotCondition(Condition):
+    def __init__(self, is_not: bool, primary_condition: "PrimaryCondition"):
+        self.is_not = is_not
+        self.primary_condition = primary_condition
+
+
+class PrimaryCondition(Condition):
+    def __init__(self, condition: Condition):
+        self.condition = condition  # can be a LeafCondition or a nested Condition
+
+
+class ConstantCondition(Condition):
+    def __init__(self, bool_constant: BoolExpression):
+        self.bool_constant = bool_constant
+
+
+class SimpleComparison(Condition):
+    def __init__(
+        self,
+        left_expression: ValueExpression,
+        operator: OperationType,
+        right_expression: ValueExpression,
+    ):
+        self.left_expression = left_expression
+        self.operator = operator
+        self.right_expression = right_expression
+
+
+class BetweenComparison(Condition):
+    def __init__(
+        self,
+        left_expression: ValueExpression,
+        lower_bound: ValueExpression,
+        upper_bound: ValueExpression,
+    ):
+        self.left_expression = left_expression
+        self.lower_bound = lower_bound
+        self.upper_bound = upper_bound
+
+
+# endregion
 
 
 # region Statement Classes
@@ -114,15 +182,8 @@ class InsertStatement(Statement):
 
 
 class WhereStatement(Visitable):
-    def __init__(
-        self,
-        left_expression: Visitable,
-        operator: OperationType,
-        right_expression: Visitable,
-    ):
-        self.left_expression = left_expression
-        self.operator = operator
-        self.right_expression = right_expression
+    def __init__(self, or_condition: OrCondition = None):
+        self.or_condition = or_condition
 
 
 class SelectStatement(Statement):

@@ -33,23 +33,20 @@ SelectList -> {* | SelectElement[,SelectList]}
 SelectElement -> ColumnReference [AS UserIdentifier] | FunctionCall [AS UserIdentifier]
 TableList -> {UserIdentifier | (SelectStatement)} [AS UserIdentifier][,TableList]
 
-WhereStatement -> WHERE Condition
-Condition -> OrCondition
+WhereStatement -> WHERE OrCondition
 OrCondition -> AndCondition [OR OrCondition]
 AndCondition -> NotCondition [AND AndCondition]
 NotCondition -> [NOT] PrimaryCondition
-PrimaryCondition -> BoolExp | (Condition)
-BoolExp -> SimpleComparison | BetweenComparison | InComparison
+PrimaryCondition -> ConstantCondition | SimpleComparison | BetweenComparison | (OrCondition)
+ConstantCondition -> TRUE | FALSE
 
 SimpleComparison -> ValueExp {== | < | > | <= | >= | !=} ValueExp
 BetweenComparison -> ValueExp BETWEEN ValueExp AND ValueExp
-InComparison -> ValueExp [NOT] IN (ValueList | SelectStatement)
-ValueList -> ValueExp[, ValueList]
+#NOT IMPLEMENTED# InComparison -> ValueExp [NOT] IN (ValueList | SelectStatement)
+#NOT IMPLEMENTED# ValueList -> ValueExp[, ValueList]
 
-ValueExp -> Constant | ColumnReference | FunctionCall
+ValueExp -> Constant | ColumnReference
 ColumnReference -> [UserIdentifier.]UserIdentifier | (SelectStatement)
-FunctionCall -> UserIdentifier(FunctionArgumentList)
-FunctionArgumentList -> * | ValueExp [, FunctionArgumentList]
 
 GroupByStatement -> GROUP BY GroupByList
 GroupByList -> ColumnReference[,GroupByList]

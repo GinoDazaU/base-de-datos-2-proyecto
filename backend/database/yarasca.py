@@ -1,6 +1,6 @@
 from visitor import PrintVisitor, RunVisitor
 from scanner import Scanner, Token, TokenType
-from column_types import ColumnType
+from column_types import ColumnType, QueryResult, OperationType
 from statement import (
     Statement,
     Program,
@@ -18,8 +18,38 @@ from statement import (
     StringExpression,
     SelectStatement,
     WhereStatement,
+    ValueExpression,
+    ColumnExpression,
+    # sadsads
+    Condition,
+    OrCondition,
+    AndCondition,
+    NotCondition,
+    PrimaryCondition,
+    ConstantCondition,
+    SimpleComparison,
+    BetweenComparison,
 )
 import time
+
+
+def operation_token_to_type(token_type: TokenType) -> OperationType:
+    if (
+        token_type == TokenType.EQUAL or token_type == TokenType.ASSIGN
+    ):  # used interchangeably aadssadsadsa
+        return OperationType.EQUAL
+    elif token_type == TokenType.NOT_EQUAL:
+        return OperationType.NOT_EQUAL
+    elif token_type == TokenType.GREATER_THAN:
+        return OperationType.GREATER_THAN
+    elif token_type == TokenType.LESS_THAN:
+        return OperationType.LESS_THAN
+    elif token_type == TokenType.GREATER_EQUAL:
+        return OperationType.GREATER__EQUAL
+    elif token_type == TokenType.LESS_EQUAL:
+        return OperationType.LESS__EQUAL
+    else:
+        raise ValueError(f"Invalid operation token: {token_type}")
 
 
 class Parser:
@@ -302,9 +332,101 @@ class Parser:
 
         return InsertStatement(table_name, columns, constants)
 
-    def parse_where_statement(self) -> WhereStatement:
-        raise NotImplementedError("WHERE statement parsing is not implemented yet")
+    def parse_value_expression(self) -> ValueExpression:
+        # first, constants
+        if self.match(TokenType.INT_CONSTANT):
+            return IntExpression(int(self.prev.text))
+        elif self.match(TokenType.FLOAT_CONSTANT):
+            return FloatExpression(float(self.prev.text))
+        elif self.match(TokenType.TRUE) or self.match(TokenType.FALSE):
+            return BoolExpression(self.prev.text.lower() == "true")
+        elif self.match(TokenType.STRING_CONSTANT):
+            return StringExpression(self.prev.text.strip('"').strip("'"))
+        # then, column references
+        elif self.match(TokenType.USER_IDENTIFIER):
+            column_name = self.prev.text
+            table_name = None
+            if self.match(TokenType.DOT):
+                table_name = column_name
+                column_name = self.prev.text
+            return ColumnExpression(column_name, table_name)
+        else:
+            # TODO: handle function calls or nested subqueries (im not doing nested subqueries ty very much)
+            raise SyntaxError(
+                f"Expected constant value (INT, FLOAT, BOOL, STRING) or column reference, found {self.curr.text}"
+            )
 
+    # region Condition Parsing and Where
+    def parse_primary_condition(self) -> PrimaryCondition:
+        condition = None
+        # nested condition
+        if self.match(TokenType.LEFT_PARENTHESIS):
+            condition = self.parse_or_condition()
+            if not self.match(TokenType.RIGHT_PARENTHESIS):
+                raise SyntaxError(
+                    f"Expected ')' after condition, found {self.curr.text}"
+                )
+            return PrimaryCondition(condition)
+
+        # constant condition
+        if self.match(TokenType.TRUE) or self.match(TokenType.FALSE):
+            bool_value = self.prev.text.lower() == "true"
+            return PrimaryCondition(ConstantCondition(BoolExpression(bool_value)))
+
+        # else we got a simplecomp or between
+
+        value_expr: ValueExpression = self.parse_value_expression()
+        if (
+            self.match(TokenType.ASSIGN)
+            or self.match(TokenType.EQUAL)
+            or self.match(TokenType.NOT_EQUAL)
+            or self.match(TokenType.LESS_THAN)
+            or self.match(TokenType.LESS_EQUAL)
+            or self.match(TokenType.GREATER_THAN)
+            or self.match(TokenType.GREATER_EQUAL)
+        ):
+            op: OperationType = operation_token_to_type(self.prev.token_type)
+            right_expr = self.parse_value_expression()
+            return PrimaryCondition(SimpleComparison(value_expr, op, right_expr))
+
+        if self.match(TokenType.BETWEEN):
+            lower = self.parse_value_expression()
+            if not self.match(TokenType.AND):
+                raise SyntaxError("Expected AND after BETWEEN lower bound")
+            upper = self.parse_value_expression()
+            return PrimaryCondition(BetweenComparison(value_expr, lower, upper))
+        # run visitor handles invalid stuff, like string < 5 or 12.5 = "hello"
+        raise SyntaxError(
+            f"Expected condition (constant, simple comparison, or BETWEEN), found {self.curr.text}"
+        )
+
+    def parse_not_condition(self) -> NotCondition:
+        is_not = False
+        if self.match(TokenType.NOT):
+            is_not = True
+        primary_condition = self.parse_primary_condition()
+        return NotCondition(is_not, primary_condition)
+
+    def parse_and_condition(self) -> AndCondition:
+        not_condition = self.parse_not_condition()
+        and_condition = None
+        if self.match(TokenType.AND):
+            and_condition = self.parse_and_condition()
+        return AndCondition(not_condition, and_condition)
+
+    def parse_or_condition(self) -> OrCondition:
+        and_condition = self.parse_and_condition()
+        or_condition = None
+        if self.match(TokenType.OR):
+            or_condition = self.parse_or_condition()
+
+        return OrCondition(and_condition, or_condition)
+
+    def parse_where_statement(self) -> WhereStatement:
+        or_condition: OrCondition = self.parse_or_condition()
+        return WhereStatement(or_condition)
+
+    # endregion
     def parse_select_list(self) -> list[str]:
         select_columns: list[str] = []
 
@@ -347,6 +469,8 @@ class Parser:
         order_by_column: str = None
         ascending: bool = True
         limit: int = None
+
+        # * or list of columns
         if self.match(TokenType.ASTERISK):
             select_all = True
         elif self.check(TokenType.USER_IDENTIFIER):
@@ -423,7 +547,7 @@ class Parser:
         elif self.match(TokenType.INSERT):
             return self.parse_insert_statement()
         elif self.match(TokenType.SELECT):
-            return self.parse_select_statement()  # Placeholder for SELECT statement
+            return self.parse_select_statement()
         elif self.match(TokenType.UPDATE):
             return self.parse_update_statement()
         elif self.match(TokenType.DELETE):
@@ -472,7 +596,7 @@ if __name__ == "__main__":
     ]
 
     table_select = [
-        "SELECT users.id, users.age, name FROM users;",
+        "SELECT * FROM users WHERE id <= 2;",
     ]
 
     queries = [table_select]
@@ -481,9 +605,10 @@ if __name__ == "__main__":
     for queryset in queries:
         for query in queryset:
             scanner = Scanner(query)
-            scanner.test()
+            # scanner.test()
             parser = Parser(scanner, debug=False)
             program = parser.parse_program()
             printVisitor.visit_program(program)
-            # execVisitor.visit_program(program)
+            result: QueryResult = execVisitor.visit_program(program)
+            print(result.data)
             time.sleep(instruction_delay)
