@@ -1,5 +1,4 @@
 from column_types import ColumnType, IndexType, OperationType, QueryResult
-from scanner import TokenType
 
 
 class Visitable:

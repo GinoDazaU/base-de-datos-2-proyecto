@@ -73,6 +73,9 @@ class TokenType(Enum):
     END = auto()
     ERROR = auto()
 
+    POINT2D = auto()  # for RTREE
+    POINT3D = auto()  # for RTREE
+
 
 class Token:
     TYPE_TO_TEXT = {
@@ -245,6 +248,7 @@ class Scanner:
                     self.advance()
                     return Token(TokenType.LESS_EQUAL, "<=")
                 else:
+                    self.advance()
                     return Token(TokenType.LESS_THAN, "<")
             if self.current_char == ">":
                 if (
@@ -255,6 +259,7 @@ class Scanner:
                     self.advance()
                     return Token(TokenType.GREATER_EQUAL, ">=")
                 else:
+                    self.advance()
                     return Token(TokenType.GREATER_THAN, ">")
             if self.current_char == "!":
                 if (
@@ -265,6 +270,7 @@ class Scanner:
                     self.advance()
                     return Token(TokenType.NOT_EQUAL, "!=")
                 else:
+                    self.advance()
                     return Token(TokenType.ERROR, "Invalid character !")
             if self.current_char == ";":
                 self.advance()

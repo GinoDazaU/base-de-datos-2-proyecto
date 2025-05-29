@@ -596,7 +596,7 @@ if __name__ == "__main__":
     ]
 
     table_select = [
-        "SELECT * FROM users WHERE id <= 2;",
+        "SELECT * fRoM users WHERE id > 0 OR name == 'Alice';",
     ]
 
     queries = [table_select]
@@ -605,7 +605,7 @@ if __name__ == "__main__":
     for queryset in queries:
         for query in queryset:
             scanner = Scanner(query)
-            # scanner.test()
+            scanner.test()
             parser = Parser(scanner, debug=False)
             program = parser.parse_program()
             printVisitor.visit_program(program)

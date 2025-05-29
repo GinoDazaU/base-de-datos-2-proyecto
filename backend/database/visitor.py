@@ -333,44 +333,38 @@ class RunVisitor:
         result = []
         n, c = None, None
 
-        if st.select_all:
-            result = [rec.values for rec in records]
-            return QueryResult(
-                True,
-                f"Selected {len(result)} records from table '{st.from_table}'.",
-                result,
-            )
-
         for rec in records:
             self.current_record = rec
             if st.where_statement is not None:
                 if not st.where_statement.accept(self):
                     continue
             entry = []
+            if st.select_all:
+                entry = rec.values
+            else:
+                for col in st.select_columns:
+                    col_name = col
+                    if "." in col:
+                        n, c = col.split(".")
+                        col_name = c
+                        if n != table_name:
+                            raise ValueError(
+                                f"Table '{n}' does not match the table in the statement '{st.from_table}'."
+                            )
 
-            for col in st.select_columns:
-                col_name = col
-                if "." in col:
-                    n, c = col.split(".")
-                    col_name = c
-                    if n != table_name:
+                    if hasattr(rec, "schema") and hasattr(rec, "values"):
+                        schema_names = [name for name, _ in rec.schema]
+
+                        if col_name not in schema_names:
+                            raise ValueError(
+                                f"Column '{col_name}' does not exist in table '{st.from_table}'."
+                            )
+                        idx = schema_names.index(col_name)
+                        entry.append(rec.values[idx])
+                    else:
                         raise ValueError(
-                            f"Table '{n}' does not match the table in the statement '{st.from_table}'."
+                            "Record does not have a schema or values attribute???"
                         )
-
-                if hasattr(rec, "schema") and hasattr(rec, "values"):
-                    schema_names = [name for name, _ in rec.schema]
-
-                    if col_name not in schema_names:
-                        raise ValueError(
-                            f"Column '{col_name}' does not exist in table '{st.from_table}'."
-                        )
-                    idx = schema_names.index(col_name)
-                    entry.append(rec.values[idx])
-                else:
-                    raise ValueError(
-                        "Record does not have a schema or values attribute???"
-                    )
             result.append(entry)
         return QueryResult(
             True,
