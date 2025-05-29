@@ -16,6 +16,8 @@ from statement import (
     FloatExpression,
     BoolExpression,
     StringExpression,
+    SelectStatement,
+    WhereStatement,
 )
 import time
 
@@ -300,6 +302,105 @@ class Parser:
 
         return InsertStatement(table_name, columns, constants)
 
+    def parse_where_statement(self) -> WhereStatement:
+        raise NotImplementedError("WHERE statement parsing is not implemented yet")
+
+    def parse_select_list(self) -> list[str]:
+        select_columns: list[str] = []
+
+        while not self.check(TokenType.FROM):
+            table_name, column_name = None, None
+
+            if not self.match(TokenType.USER_IDENTIFIER):
+                raise SyntaxError(f"Expected column name, found {self.curr.text}")
+            column_name = self.prev.text
+
+            if self.match(TokenType.DOT):
+                if not self.match(TokenType.USER_IDENTIFIER):
+                    raise SyntaxError(
+                        f"Expected table name after '.', found {self.curr.text}"
+                    )
+                table_name = column_name
+                column_name = self.prev.text
+            select_columns.append(
+                f"{f'{table_name}.' if table_name is not None else ''}{column_name}"
+            )
+
+            # TODO: handle column aliases
+
+            if self.check(TokenType.COMMA):
+                self.advance()
+            elif not self.check(TokenType.FROM):
+                raise SyntaxError(
+                    f"Expected ',' or FROM after column name, found {self.curr.text}"
+                )
+
+        if len(select_columns) == 0:
+            raise SyntaxError("At least one column must be selected")
+        return select_columns
+
+    def parse_select_statement(self) -> Statement:
+        select_columns: list[str] = []
+        from_table: str = None
+        select_all = False
+        where_statement: WhereStatement = None
+        order_by_column: str = None
+        ascending: bool = True
+        limit: int = None
+        if self.match(TokenType.ASTERISK):
+            select_all = True
+        elif self.check(TokenType.USER_IDENTIFIER):
+            select_columns = self.parse_select_list()
+
+        if not self.match(TokenType.FROM):
+            raise SyntaxError(
+                f"Expected FROM after selected columns, found {self.curr.text}"
+            )
+
+        if not self.match(TokenType.USER_IDENTIFIER):
+            raise SyntaxError(f"Expected table name after FROM, found {self.curr.text}")
+        from_table = self.prev.text
+
+        # TODO: handle table alias
+
+        if self.match(TokenType.WHERE):
+            where_statement = self.parse_where_statement()
+
+        if self.match(TokenType.ORDER):
+            if not self.match(TokenType.BY):
+                raise SyntaxError(f"Expected BY after ORDER, found {self.curr.text}")
+            if not self.match(TokenType.USER_IDENTIFIER):
+                raise SyntaxError(
+                    f"Expected column name after ORDER BY, found {self.curr.text}"
+                )
+            order_by_column = self.prev.text
+            ascending = True
+            if self.match(TokenType.DESC):
+                ascending = False
+
+        if self.match(TokenType.LIMIT):
+            if not self.match(TokenType.INT_CONSTANT):
+                raise SyntaxError(
+                    f"Expected integer constant after LIMIT, found {self.curr.text}"
+                )
+            limit = int(self.prev.text)
+
+        return SelectStatement(
+            select_columns,
+            from_table,
+            select_all,
+            where_statement,
+            order_by_column,
+            ascending,
+            limit,
+        )
+
+    def parse_update_statement(self) -> Statement:
+        raise NotImplementedError("UPDATE statement parsing is not implemented yet")
+
+    def parse_delete_statement(self) -> Statement:
+        raise NotImplementedError("DELETE statement parsing is not implemented yet")
+
     def parse_statement(self) -> Statement:
         if self.match(TokenType.CREATE):
             if self.match(TokenType.TABLE):
@@ -321,6 +422,12 @@ class Parser:
                 )
         elif self.match(TokenType.INSERT):
             return self.parse_insert_statement()
+        elif self.match(TokenType.SELECT):
+            return self.parse_select_statement()  # Placeholder for SELECT statement
+        elif self.match(TokenType.UPDATE):
+            return self.parse_update_statement()
+        elif self.match(TokenType.DELETE):
+            return self.parse_delete_statement()
         else:
             raise SyntaxError(
                 f"Expected statement keyword (CREATE, DROP, etc.), found {self.curr.text}"
@@ -355,25 +462,28 @@ if __name__ == "__main__":
     printVisitor = PrintVisitor()
     execVisitor = RunVisitor()
 
-    table_create_drop = [
+    table_create_insert = [
         "CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(50), age INT);",
         "CREATE INDEX ON users(name) USING BPLUSTREE;",
         "INSERT INTO users(name, age, id) VALUES ('Alice', 30, 1);",
         "INSERT INTO users(name, id, age) VALUES ('Bob', 2, 20);",
         "INSERT INTO users(age, name, id) VALUES (25, 'Charlie', 3);",
         "INSERT INTO users(id, age, name) VALUES (4, 40, 'David');",
-        "DROP INDEX BPLUSTREE ON users(name);",
-        "DROP TABLE users;",
     ]
 
-    queries = [table_create_drop]
+    table_select = [
+        "SELECT users.id, users.age, name FROM users;",
+    ]
+
+    queries = [table_select]
     instruction_delay = 1  # seconds
 
     for queryset in queries:
         for query in queryset:
             scanner = Scanner(query)
+            scanner.test()
             parser = Parser(scanner, debug=False)
             program = parser.parse_program()
-            # printVisitor.visit_program(program)
-            execVisitor.visit_program(program)
+            printVisitor.visit_program(program)
+            # execVisitor.visit_program(program)
             time.sleep(instruction_delay)

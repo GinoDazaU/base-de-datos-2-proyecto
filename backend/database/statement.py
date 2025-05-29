@@ -1,4 +1,4 @@
-from column_types import ColumnType, IndexType
+from column_types import ColumnType, IndexType, OperationType
 from scanner import TokenType
 
 
@@ -11,6 +11,7 @@ class Visitable:
         return method(self)
 
 
+# region Expression Classes
 class ConstantExpression(Visitable):
     def __init__(self):
         pass
@@ -37,6 +38,20 @@ class StringExpression(ConstantExpression):
         value: str,
     ):
         self.value = value
+
+
+# endregion
+
+
+class ColumnExpression(Visitable):
+    def __init__(self, column_name: str, table_name: str = None):
+        self.column_name = column_name
+        self.table_name = table_name
+
+    def __str__(self):
+        if self.table_name:
+            return f"{self.table_name}.{self.column_name}"
+        return self.column_name
 
 
 # region Statement Classes
@@ -98,7 +113,42 @@ class InsertStatement(Statement):
         self.values = values
 
 
+class WhereStatement(Visitable):
+    def __init__(
+        self,
+        left_expression: Visitable,
+        operator: OperationType,
+        right_expression: Visitable,
+    ):
+        self.left_expression = left_expression
+        self.operator = operator
+        self.right_expression = right_expression
+
+
+class SelectStatement(Statement):
+    def __init__(
+        self,
+        select_columns: list[str],
+        from_table: str,  # for now we only support one table, we can expand it with joins later
+        select_all: bool = False,
+        where_statement: WhereStatement = None,
+        order_by_column: str = None,
+        ascending: bool = False,
+        limit: int = None,
+    ):
+        self.select_columns = select_columns
+        self.select_all = select_all
+        self.from_table = from_table
+        self.where_statement = where_statement
+        self.order_by_column = order_by_column
+        self.ascending = ascending
+        self.limit = limit
+
+
 # endregion
+
+
+# region Select Statement Stuff
 
 
 class Program(Visitable):

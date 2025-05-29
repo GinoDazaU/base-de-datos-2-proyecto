@@ -10,6 +10,8 @@ from statement import (
     IntExpression,
     FloatExpression,
     StringExpression,
+    SelectStatement,
+    WhereStatement,
     Program,
 )
 from connection import (
@@ -58,6 +60,12 @@ class RunVisitor:
     def visit_insertstatement(self, st: InsertStatement):
         INSERT(st)
 
+    def visit_selectstatement(self, st: SelectStatement):
+        raise NotImplementedError("Select statements are not implemented in RunVisitor")
+
+    def visit_wherestatement(self, st: WhereStatement):
+        raise NotImplementedError("Where statements are not implemented in RunVisitor")
+
 
 # endregion
 
@@ -78,9 +86,9 @@ class PrintVisitor(Visitor):
         finally:
             self.indent_level -= 1
 
-    def print_line(self, text: str):
+    def print_line(self, text: str, end: str = "\n"):
         indent = " " * (self.indent_level * self.indent_size)
-        print(f"{indent}{text}")
+        print(f"{indent}{text}", end=end)
 
     def visit_intexpression(self, expr: IntExpression):
         self.print_line(f"{expr.value}")
@@ -127,6 +135,21 @@ class PrintVisitor(Visitor):
                 value.accept(self)  # intexpression, floatexpression, stringexpression
                 self.print_line(f"{',' if value != st.values[-1] else ''}")
         self.print_line(");")
+
+    def visit_selectstatement(self, st: SelectStatement):
+        self.print_line(
+            f"SELECT {', '.join(st.select_columns)} FROM {st.from_table}", ""
+        )
+        if st.where_statement:
+            self.print_line("WHERE")
+            with self.indented():
+                st.where_statement.accept(self)
+        self.print_line(";")
+
+    def visit_wherestatement(self, st: WhereStatement):
+        self.print_line(
+            f"{st.left_expression.accept(self)} {st.operator} {st.right_expression.accept(self)}"
+        )
 
 
 # endregion

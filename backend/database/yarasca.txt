@@ -72,8 +72,6 @@ DeleteStatement -> DELETE FROM UserIdentifier WHERE Condition
 
 ==================================================================================
 
-If we don't receive a columnlist we assume user is sending all parameters
-
 InsertStatement -> INSERT INTO UserIdentifier[(ColumnList)] VALUES (ValueList)
 ColumnList -> UserIdentifier [, ColumnList]
 ValueList -> CONSTANT[, ValueList]
