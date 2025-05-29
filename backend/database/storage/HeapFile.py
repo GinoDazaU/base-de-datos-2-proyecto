@@ -9,16 +9,17 @@ from .Record import Record
 # --------------------------------------------------------
 #  Valores centinela para marcar registros eliminados
 # --------------------------------------------------------
-SENTINEL_INT: int = -1                 # Para campos int / long
-SENTINEL_FLOAT: float = float('-inf')  # Para campos float / double
-SENTINEL_STR: str = ''                 # Para campos string
+SENTINEL_INT: int = -1  # Para campos int / long
+SENTINEL_FLOAT: float = float("-inf")  # Para campos float / double
+SENTINEL_STR: str = ""  # Para campos string
 
 # --------------------------------------------------------
 #  Constantes internas
 # --------------------------------------------------------
-PTR_SIZE = 4                              # int32 para enlazar free‑list
-METADATA_FORMAT = "ii"                  # [heap_size, free_head]
-METADATA_SIZE   = struct.calcsize(METADATA_FORMAT)
+PTR_SIZE = 4  # int32 para enlazar free‑list
+METADATA_FORMAT = "ii"  # [heap_size, free_head]
+METADATA_SIZE = struct.calcsize(METADATA_FORMAT)
+
 
 class HeapFile:
     """Archivo heap con clave primaria opcional y free‑list interna.
@@ -33,13 +34,15 @@ class HeapFile:
     # Creación del archivo ---------------------------------------------
     # ------------------------------------------------------------------
     @staticmethod
-    def build_file(table_name: str,
-                   schema: List[Tuple[str, str]],
-                   primary_key: Optional[str] = None) -> None:
+    def build_file(
+        table_name: str,
+        schema: List[Tuple[str, str]],
+        primary_key: Optional[str] = None,
+    ) -> None:
         """Crea archivo <table_name>.dat y <table_name>.schema.json."""
         filename = table_name + ".dat"
         with open(filename, "wb") as f:
-            f.write(struct.pack(METADATA_FORMAT, 0, -1))   # heap_size=0, free_head=-1
+            f.write(struct.pack(METADATA_FORMAT, 0, -1))  # heap_size=0, free_head=-1
 
         schema_file = table_name + ".schema.json"
         fields = [
@@ -47,25 +50,33 @@ class HeapFile:
             for n, fmt in schema
         ]
         with open(schema_file, "w", encoding="utf-8") as jf:
-            json.dump({"table_name": os.path.basename(table_name), "fields": fields},
-                      jf, indent=4)
+            json.dump(
+                {"table_name": os.path.basename(table_name), "fields": fields},
+                jf,
+                indent=4,
+            )
 
     # ------------------------------------------------------------------
     # Inicialización ----------------------------------------------------
     # ------------------------------------------------------------------
     def __init__(self, table_name: str):
-        self.table_name = table_name.split("/")[-1] # saves table name for stuff in parser
+        self.table_name = table_name.split("/")[
+            -1
+        ]  # saves table name for stuff in parser
         self.filename = table_name + ".dat"
         self.schema, self.primary_key = self._load_schema(self.filename)
         self.rec_data_size = Record.get_size(self.schema)
-        self.slot_size     = self.rec_data_size + PTR_SIZE
+        self.slot_size = self.rec_data_size + PTR_SIZE
 
         if not os.path.exists(self.filename):
-            raise FileNotFoundError(f"{self.filename} no existe. Cree la tabla primero.")
+            raise FileNotFoundError(
+                f"{self.filename} no existe. Cree la tabla primero."
+            )
 
         with open(self.filename, "rb") as f:
-            self.heap_size, self.free_head = struct.unpack(METADATA_FORMAT,
-                                                           f.read(METADATA_SIZE))
+            self.heap_size, self.free_head = struct.unpack(
+                METADATA_FORMAT, f.read(METADATA_SIZE)
+            )
 
     # ------------------------------------------------------------------
     # Utilidades internas ----------------------------------------------
@@ -74,7 +85,9 @@ class HeapFile:
         with open(fname.replace(".dat", ".schema.json"), encoding="utf-8") as jf:
             js = json.load(jf)
         schema = [(fld["name"], fld["type"]) for fld in js["fields"]]
-        pk = next((fld["name"] for fld in js["fields"] if fld.get("is_primary_key")), None)
+        pk = next(
+            (fld["name"] for fld in js["fields"] if fld.get("is_primary_key")), None
+        )
         return schema, pk
 
     def _pk_idx_fmt(self) -> Tuple[int, str]:
@@ -111,7 +124,7 @@ class HeapFile:
             if pk_val == self._sentinel(pk_fmt):
                 raise ValueError("Valor centinela no permitido en PK.")
 
-            with open(self.filename, "rb") as fh:      # una sola apertura
+            with open(self.filename, "rb") as fh:  # una sola apertura
                 fh.seek(METADATA_SIZE)
                 for _ in range(self.heap_size):
                     buf = fh.read(self.rec_data_size)
@@ -119,17 +132,17 @@ class HeapFile:
                         break
                     if Record.unpack(buf, self.schema).values[pk_idx] == pk_val:
                         raise ValueError(f"PK duplicada: {pk_val}")
-                    fh.seek(PTR_SIZE, os.SEEK_CUR)     # saltar next_free
+                    fh.seek(PTR_SIZE, os.SEEK_CUR)  # saltar next_free
 
         # ── 2. Insertar (reciclar hueco o append) ─────────────────────
         with open(self.filename, "r+b") as fh:
-            if self.free_head == -1:                    # sin huecos → append
+            if self.free_head == -1:  # sin huecos → append
                 slot_off = self.heap_size
                 fh.seek(0, os.SEEK_END)
                 fh.write(record.pack())
-                fh.write(struct.pack("i", 0))           # next_free = 0
+                fh.write(struct.pack("i", 0))  # next_free = 0
                 self.heap_size += 1
-            else:                                      # reciclar hueco
+            else:  # reciclar hueco
                 slot_off = self.free_head
                 byte_off = METADATA_SIZE + slot_off * self.slot_size
                 fh.seek(byte_off + self.rec_data_size)
@@ -137,7 +150,7 @@ class HeapFile:
                 fh.seek(byte_off)
                 fh.write(record.pack())
                 fh.write(struct.pack("i", 0))
-            self._write_header(fh)                      # actualizar cabecera
+            self._write_header(fh)  # actualizar cabecera
             print("Registro:", record, " insertado correctamente")
             return slot_off
 
@@ -163,7 +176,12 @@ class HeapFile:
                 fh.write(struct.pack("i", 0))
 
             self._write_header(fh)
-            print("Registro (sin restricción PK):", record, "insertado en offset", slot_off)
+            print(
+                "Registro (sin restricción PK):",
+                record,
+                "insertado en offset",
+                slot_off,
+            )
             return slot_off
 
     # ------------------------------------------------------------------
@@ -191,10 +209,16 @@ class HeapFile:
                 fh.write(struct.pack("i", self.free_head))
                 self.free_head = pos
                 self._write_header(fh)
-                print("Registro con PK:", key, "con contenido:", old_rec, "borrado correctamente")
+                print(
+                    "Registro con PK:",
+                    key,
+                    "con contenido:",
+                    old_rec,
+                    "borrado correctamente",
+                )
                 return True, pos, old_rec
         return False, -1, None
-    
+
     # ------------------------------------------------------------------
     #  Búsqueda secuencial por cualquier campo --------------------------
     # ------------------------------------------------------------------
@@ -219,7 +243,7 @@ class HeapFile:
         if self.primary_key is not None:
             pk_idx, pk_fmt = self._pk_idx_fmt()
             pk_sentinel = self._sentinel(pk_fmt)
-            stop_early = (field == self.primary_key)
+            stop_early = field == self.primary_key
 
         resultados = []
 
@@ -238,7 +262,7 @@ class HeapFile:
 
                 if rec.values[fld_idx] == value:
                     resultados.append(rec)
-                    if stop_early:           # campo = PK → salir
+                    if stop_early:  # campo = PK → salir
                         break
 
                 fh.seek(PTR_SIZE, os.SEEK_CUR)
@@ -305,20 +329,71 @@ class HeapFile:
                 rec = Record.unpack(buf, self.schema)
                 print(rec)
                 fh.seek(PTR_SIZE, os.SEEK_CUR)
-    
+
     # ------------------------------------------------------------------
     # Utilidades de parser ---------------------------------------------
     # ------------------------------------------------------------------
+
+    def get_all_records(self) -> List[Record]:
+        """Devuelve todos los registros no eliminados en una lista."""
+        records = []
+        with open(self.filename, "rb") as f:
+            f.seek(METADATA_SIZE)
+            pk_idx, pk_sentinel = None, None
+
+            # get pk for deleted files
+            if self.primary_key is not None:
+                pk_idx, pk_fmt = self._pk_idx_fmt()
+                pk_sentinel = self._sentinel(pk_fmt)
+
+            for _ in range(self.heap_size):
+                buf = f.read(self.rec_data_size)
+                if len(buf) < self.rec_data_size:
+                    break
+
+                rec = Record.unpack(buf, self.schema)
+
+                # skips del records
+                if pk_idx is not None and rec.values[pk_idx] == pk_sentinel:
+                    f.seek(PTR_SIZE, os.SEEK_CUR)
+                    continue
+                records.append(rec)
+                f.seek(PTR_SIZE, os.SEEK_CUR)
+        return records
+
     @staticmethod
     def to_dataframe(heapfile: "HeapFile", alias=None) -> pd.DataFrame:
         with open(heapfile.filename, "rb") as f:
             f.seek(METADATA_SIZE)
-            headers = [(heapfile.table_name if alias is None else alias) + "." + column_name for column_name, _ in heapfile.schema] # explicit table name prefix
+            headers = [
+                (heapfile.table_name if alias is None else alias) + "." + column_name
+                for column_name, _ in heapfile.schema
+            ]
             rows = []
+
+            # get pk for deleted files
+            pk_idx, pk_sentinel = None, None
+            if heapfile.primary_key is not None:
+                pk_idx, pk_fmt = heapfile._pk_idx_fmt()
+                pk_sentinel = heapfile._sentinel(pk_fmt)
+
             for _ in range(heapfile.heap_size):
                 buf = f.read(heapfile.rec_data_size)
+                if len(buf) < heapfile.rec_data_size:
+                    break
+
                 rec = Record.unpack(buf, heapfile.schema)
+
+                # skips del records
+                if pk_idx is not None and rec.values[pk_idx] == pk_sentinel:
+                    f.seek(PTR_SIZE, os.SEEK_CUR)  # skips ptr
+                    continue
+
                 row = {name: value for name, value in zip(headers, rec.values)}
                 rows.append(row)
+
+                # skips next_free
+                f.seek(PTR_SIZE, os.SEEK_CUR)
+
             df = pd.DataFrame(rows, columns=headers)
         return df

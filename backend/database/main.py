@@ -4,7 +4,7 @@ import pandas as pd
 import json
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn  # Importar uvicorn para correr el servidor
-from  parser import Parser
+from  yarasca import *
 from catalog import build_json_structure
 import os
 # FastAPI App
@@ -21,11 +21,46 @@ app.add_middleware(
 class ConsultaSQL(BaseModel):
     consulta: str
 
+def parsejson(self, query:str,limit):
+    scanner = Scanner(query)
+    # scanner.test()
+    parser = Parser(scanner, debug=False)
+    program = parser.parse_program()
+    printVisitor.visit_program(program)
+    
+    queryresult: QueryResult = execVisitor.visit_program(program)
+    
+    if queryresult.success:
+        df=queryresult.data
+        if df is not None:
+            df=queryresult.data
+            df_limited_rows = df.head(limit) # Obtiene las primeras 10 filas
+            query_result = {
+                'columns': [{'key': col, 'name': col} for col in df_limited_rows.columns],
+                'rows': df_limited_rows.to_dict(orient='records'),
+                'count_rows':len(df) 
+            }
+            return query_result
+        else:
+            return {
+                        'columns': [],
+                        'rows': [],
+                        "message": "Consulta ejecutada correctamente.",
+                        'count_rows':0
+                        }
+    else:
+        return Exception(f"Error en la consulta:")
+        
 # Ejecutar cualquier consulta (SELECT o no SELECT)
 def ejecutar_consulta_sql(query: str, limit: int):
     try:
-        parse=Parser()
-        return parse.parsejson(query,limit)
+        scanner = Scanner(query)
+        # scanner.test()
+        parser = Parser(scanner, debug=False)
+        program = parser.parse_program()
+        printVisitor.visit_program(program)
+        result: QueryResult = execVisitor.visit_program(program)
+        return parsejson(query,limit)
     except Exception as e:
         raise Exception(f"Error en la consulta: {e}")
 
