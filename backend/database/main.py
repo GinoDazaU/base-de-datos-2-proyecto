@@ -21,19 +21,25 @@ app.add_middleware(
 class ConsultaSQL(BaseModel):
     consulta: str
 
-def parsejson(self, query:str,limit):
+def parsejson(query:str,limit):
+    printVisitor = PrintVisitor()
+    execVisitor = RunVisitor()
     scanner = Scanner(query)
     # scanner.test()
     parser = Parser(scanner, debug=False)
     program = parser.parse_program()
     printVisitor.visit_program(program)
-    
     queryresult: QueryResult = execVisitor.visit_program(program)
-    
+
+    print(queryresult.data)
     if queryresult.success:
         df=queryresult.data
         if df is not None:
-            df=queryresult.data
+            data=queryresult.data
+            num_columnas = len(data[0])
+            columnas = [f'col_{i+1}' for i in range(num_columnas)]
+            df = pd.DataFrame(data, columns=columnas)
+            
             df_limited_rows = df.head(limit) # Obtiene las primeras 10 filas
             query_result = {
                 'columns': [{'key': col, 'name': col} for col in df_limited_rows.columns],
@@ -54,12 +60,6 @@ def parsejson(self, query:str,limit):
 # Ejecutar cualquier consulta (SELECT o no SELECT)
 def ejecutar_consulta_sql(query: str, limit: int):
     try:
-        scanner = Scanner(query)
-        # scanner.test()
-        parser = Parser(scanner, debug=False)
-        program = parser.parse_program()
-        printVisitor.visit_program(program)
-        result: QueryResult = execVisitor.visit_program(program)
         return parsejson(query,limit)
     except Exception as e:
         raise Exception(f"Error en la consulta: {e}")

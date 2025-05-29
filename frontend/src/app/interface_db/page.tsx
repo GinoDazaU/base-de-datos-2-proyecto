@@ -20,8 +20,8 @@ export default function DataQuillPage() {
   const [isLoadingQuery, setIsLoadingQuery] = useState<boolean>(false);
   const [executionTime, setExecutionTime] = useState<number | undefined>(undefined);
   const [rowCount, setRowCount] = useState<number | undefined>(undefined);
-  const apiBaseUrl = process.env.NEXT_PUBLIC_BACK_API_URL
-  //const apiBaseUrl = "http://localhost:8000"
+  //const apiBaseUrl = process.env.NEXT_PUBLIC_BACK_API_URL
+  const apiBaseUrl = "http://localhost:8000"
 
   const { toast } = useToast();
 

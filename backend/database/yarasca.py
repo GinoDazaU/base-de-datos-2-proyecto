@@ -612,3 +612,11 @@ if __name__ == "__main__":
             result: QueryResult = execVisitor.visit_program(program)
             print(result.data)
             time.sleep(instruction_delay)
+
+    scanner = Scanner("SELECT * FROM users WHERE id <= 2;")
+    # scanner.test()
+    parser = Parser(scanner, debug=False)
+    program = parser.parse_program()
+    printVisitor.visit_program(program)
+    result: QueryResult = execVisitor.visit_program(program)
+    print(result.data)
