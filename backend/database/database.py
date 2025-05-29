@@ -39,7 +39,7 @@ def get_table_schema(table_name: str):
     if not check_table_exists(table_name):
         raise Exception(f"Table {table_name} does not exist")
     table_path = _table_path(table_name)
-    heap = HeapFile(table_path)
+    heap = HeapFile(table_path) # TODO: load schema from file instead of creating heapfile
     return heap.schema
 
 
@@ -284,6 +284,7 @@ def _remove_from_secondary_indexes(table_path: str, record: Optional[Record], of
 # 🛠️ Creación de índices secundarios
 # =============================================================================
 
+# TODO: allow for index_name
 def create_seq_idx(table_name: str, field_name: str):
     path = _table_path(table_name)
     SequentialIndex.build_index(path, HeapFile(path).extract_index, field_name)
