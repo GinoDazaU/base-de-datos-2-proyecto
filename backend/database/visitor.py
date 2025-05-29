@@ -1,11 +1,39 @@
 from contextlib import contextmanager
-from column_types import ColumnType, IndexType
+from column_types import ColumnType
 
-from statement import *
-from connection import *
+from statement import (
+    CreateTableStatement,
+    CreateIndexStatement,
+    InsertStatement,
+    DropIndexStatement,
+    DropTableStatement,
+    IntExpression,
+    FloatExpression,
+    StringExpression,
+    Program,
+)
+from connection import (
+    CREATE_TABLE,
+    CREATE_INDEX,
+    INSERT,
+    DROP_INDEX,
+    DROP_TABLE,
+)
 
+
+class Visitor:
+    """Base visitor class with default behavior"""
+
+    def generic_visit(self, node):
+        """Called if no explicit visitor function exists for a node."""
+        print("GENERIC VISIT CALLED ON ", node.__class__.__name__)
+        pass
+
+
+# region RunVisitor
 class RunVisitor:
     """Base visitor class for executing statements"""
+
     def generic_visit(self, node):
         """Called if no explicit visitor function exists for a node."""
         print("GENERIC VISIT CALLED ON ", node.__class__.__name__)
@@ -30,13 +58,12 @@ class RunVisitor:
     def visit_insertstatement(self, st: InsertStatement):
         INSERT(st)
 
+
+# endregion
+
+
 # region PrintVisitor
-class Visitor:
-    """Base visitor class with default behavior"""
-    def generic_visit(self, node):
-        """Called if no explicit visitor function exists for a node."""
-        print("GENERIC VISIT CALLED ON ", node.__class__.__name__)
-        pass
+
 
 class PrintVisitor(Visitor):
     def __init__(self, indent_size: int = 2):
@@ -50,14 +77,14 @@ class PrintVisitor(Visitor):
             yield
         finally:
             self.indent_level -= 1
-    
+
     def print_line(self, text: str):
-        indent = ' ' * (self.indent_level * self.indent_size)
+        indent = " " * (self.indent_level * self.indent_size)
         print(f"{indent}{text}")
 
     def visit_intexpression(self, expr: IntExpression):
         self.print_line(f"{expr.value}")
-        
+
     def visit_floatexpression(self, expr: FloatExpression):
         self.print_line(f"{expr.value}")
 
@@ -68,30 +95,38 @@ class PrintVisitor(Visitor):
         for st in program.statement_list:
             st.accept(self)
 
-    def visit_createtablestatement(self, st:CreateTableStatement):
+    def visit_createtablestatement(self, st: CreateTableStatement):
         self.print_line(f"CREATE TABLE {st.table_name}(")
         with self.indented():
             for column in st.columns:
                 column_def = f"{column.column_name} {column.column_type} {'PRIMARY KEY' if column.is_pk else ''}"
                 if column.column_type == ColumnType.VARCHAR:
                     column_def += f"({column.varchar_length})"
-                self.print_line(f"{column_def}{"," if column != st.columns[-1] else ""}")
+                self.print_line(
+                    f"{column_def}{',' if column != st.columns[-1] else ''}"
+                )
         self.print_line(");")
 
-    def visit_droptablestatement(self, statement:DropTableStatement):
+    def visit_droptablestatement(self, statement: DropTableStatement):
         self.print_line(f"DROP TABLE {statement.table_name}")
 
     def visit_createindexstatement(self, st: CreateIndexStatement):
-        self.print_line(f"CREATE INDEX ON {st.table_name}({st.column_name}) USING {st.index_type};")
+        self.print_line(
+            f"CREATE INDEX ON {st.table_name}({st.column_name}) USING {st.index_type};"
+        )
 
     def visit_dropindexstatement(self, st: DropIndexStatement):
-        self.print_line(f"DROP INDEX {st.index_name}")
+        self.print_line(
+            f"DROP INDEX {st.index_type} ON {st.table_name}({st.column_name});"
+        )
 
     def visit_insertstatement(self, st: InsertStatement):
         self.print_line(f"INSERT INTO {st.table_name} VALUES (")
         with self.indented():
             for value in st.values:
-                value.accept(self) # intexpression, floatexpression, stringexpression
-                self.print_line(f"{"," if value != st.values[-1] else ""}")
+                value.accept(self)  # intexpression, floatexpression, stringexpression
+                self.print_line(f"{',' if value != st.values[-1] else ''}")
         self.print_line(");")
+
+
 # endregion
