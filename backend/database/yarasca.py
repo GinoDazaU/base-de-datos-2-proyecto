@@ -613,7 +613,7 @@ if __name__ == "__main__":
             print(result.data)
             time.sleep(instruction_delay)
 
-    scanner = Scanner("SELECT * FROM users WHERE id <= 2;")
+    scanner = Scanner("SELECT id,name FROM alumnos WHERE name==diego;")
     # scanner.test()
     parser = Parser(scanner, debug=False)
     program = parser.parse_program()

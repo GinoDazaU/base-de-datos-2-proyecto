@@ -16,3 +16,7 @@ Búsqueda Lineal→ 89 resultados en 0.004526 s
 
 ============================================================
 
+🔢 Insertados 1000 registros con índices (btree + hash + seq) en 98.3973 segundos.
+
+🔢 Insertados 10000 registros con índices (btree + hash + seq) en 951.0044 segundos.
+

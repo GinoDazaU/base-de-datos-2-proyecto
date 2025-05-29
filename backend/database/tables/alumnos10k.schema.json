@@ -1,5 +1,5 @@
 {
-    "table_name": "alumnos",
+    "table_name": "alumnos10k",
     "fields": [
         {
             "name": "codigo",
@@ -24,6 +24,21 @@
         {
             "name": "especialidad",
             "type": "15s",
+            "is_primary_key": false
+        },
+        {
+            "name": "codigo_hash",
+            "type": "i",
+            "is_primary_key": false
+        },
+        {
+            "name": "codigo_btree",
+            "type": "i",
+            "is_primary_key": false
+        },
+        {
+            "name": "codigo_seq",
+            "type": "i",
             "is_primary_key": false
         }
     ]
