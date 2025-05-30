@@ -43,8 +43,9 @@ from statement import (
     SelectStatement,
     WhereStatement,
     Program,
+    Point2DExpression,
+    Point3DExpression,
     # xd,
-    Condition,
     OrCondition,
     AndCondition,
     NotCondition,
@@ -55,9 +56,6 @@ from statement import (
 )
 
 
-env = {}
-
-
 def fmt_to_column_type(fmt: str) -> ColumnType:
     match fmt:
         case "i":
@@ -66,11 +64,33 @@ def fmt_to_column_type(fmt: str) -> ColumnType:
             return ColumnType.FLOAT
         case "?":
             return ColumnType.BOOL
+        case "2f":
+            return ColumnType.POINT2D
+        case "3f":
+            return ColumnType.POINT3D
         case _:
-            pass
+            pass  # TODO: implement dates
     if fmt.endswith("s"):
         return ColumnType.VARCHAR
     raise ValueError(f"Unsupported format: {fmt}")
+
+
+def column_type_to_fmt(column_type: ColumnType, varchar_length: int) -> str:
+    match column_type:
+        case ColumnType.INT:
+            return "i"
+        case ColumnType.FLOAT:
+            return "f"
+        case ColumnType.VARCHAR:
+            return f"{varchar_length}s"
+        case ColumnType.BOOL:
+            return "?"
+        case ColumnType.POINT2D:
+            return "2f"
+        case ColumnType.POINT3D:
+            return "3f"
+        case _:
+            raise ValueError(f"Unsupported column type: {column_type}")
 
 
 class Visitor:
@@ -106,6 +126,12 @@ class RunVisitor:
     def visit_boolexpression(self, expr: BoolExpression):
         return expr.value
 
+    def visit_point2dexpression(self, expr: Point2DExpression):
+        return (expr.x, expr.y)
+
+    def visit_point3dexpression(self, expr: Point3DExpression):
+        return (expr.x, expr.y, expr.z)
+
     def visit_columnexpression(self, expr: ColumnExpression):
         # resolves colExp yeehaw
         if self.current_record is None:
@@ -137,18 +163,7 @@ class RunVisitor:
         pk: str = None
         schema: SchemaType = []
         for col in st.columns:
-            fmt: str = ""
-            match col.column_type:
-                case ColumnType.INT:
-                    fmt = "i"
-                case ColumnType.FLOAT:
-                    fmt = "f"
-                case ColumnType.VARCHAR:
-                    fmt = f"{col.varchar_length}s"
-                case ColumnType.BOOL:
-                    fmt = "?"
-                case _:
-                    raise ValueError(f"Unsupported column type: {col.column_type}")
+            fmt: str = column_type_to_fmt(col.column_type, col.varchar_length)
             if col.is_pk:
                 if pk is not None:
                     raise ValueError("Multiple primary keys are not allowed.")
@@ -199,7 +214,11 @@ class RunVisitor:
                 )
             create_hash_idx(st.table_name, st.column_name)
         elif st.index_type == IndexType.RTREE:
-            raise NotImplementedError("R-Tree index is not implemented yet.")
+            if actual_type not in (ColumnType.POINT2D, ColumnType.POINT3D):
+                raise ValueError(
+                    f"R-Tree index can only be created on POINT2D or POINT3D columns, not {actual_type}."
+                )
+            create_rtree_idx(st.table_name, st.column_name)
         elif st.index_type == IndexType.SEQUENTIAL:
             if actual_type not in (
                 ColumnType.INT,
@@ -260,7 +279,7 @@ class RunVisitor:
                 f"Number of column names ({len(st.column_names)}) does not match number of values ({len(st.values)})."
             )
 
-        # now we gotta check thattypes match the table schema
+        # now we gotta check that types match the table schema
         # we must also follow the order of the column names
         # :(
 
@@ -276,26 +295,38 @@ class RunVisitor:
             fmt = schema_dict[col_name]
             actual_type = fmt_to_column_type(fmt)
 
-            if isinstance(const_exp, IntExpression) and actual_type != ColumnType.INT:
+            if actual_type == ColumnType.INT and not isinstance(
+                const_exp, IntExpression
+            ):
                 raise ValueError(f"Value for column '{col_name}' must be of type INT.")
-            elif (
-                isinstance(const_exp, FloatExpression)
-                and actual_type != ColumnType.FLOAT
+            elif actual_type == ColumnType.FLOAT and not isinstance(
+                const_exp, (IntExpression | FloatExpression)
             ):
                 raise ValueError(
-                    f"Value for column '{col_name}' must be of type FLOAT."
+                    f"Value for column '{col_name}' must be of type FLOAT or INT."
                 )
-            elif (
-                isinstance(const_exp, StringExpression)
-                and actual_type != ColumnType.VARCHAR
+            elif actual_type == ColumnType.VARCHAR and not isinstance(
+                const_exp, StringExpression
             ):
                 raise ValueError(
                     f"Value for column '{col_name}' must be of type VARCHAR."
                 )
-            elif (
-                isinstance(const_exp, BoolExpression) and actual_type != ColumnType.BOOL
+            elif actual_type == ColumnType.BOOL and not isinstance(
+                const_exp, BoolExpression
             ):
                 raise ValueError(f"Value for column '{col_name}' must be of type BOOL.")
+            elif actual_type == ColumnType.POINT2D and not isinstance(
+                const_exp, Point2DExpression
+            ):
+                raise ValueError(
+                    f"Value for column '{col_name}' must be of type POINT2D."
+                )
+            elif actual_type == ColumnType.POINT3D and not isinstance(
+                const_exp, Point3DExpression
+            ):
+                raise ValueError(
+                    f"Value for column '{col_name}' must be of type POINT3D."
+                )
 
             # else: it's fine, we can insert it
             # but first we check for length of VARCHAR
@@ -312,7 +343,9 @@ class RunVisitor:
         record_values = []
         for name, fmt in schema:
             if name in value_dict:
-                record_values.append(value_dict[name].value)
+                record_values.append(
+                    value_dict[name].value
+                )  # TODO: correctly pass point2d or point3d values as tuple
             else:
                 raise ValueError(
                     f"Column '{name}' is missing in the insert statement. NULL is not supported yet."
@@ -482,6 +515,12 @@ class PrintVisitor(Visitor):
     def visit_boolexpression(self, expr: BoolExpression):
         self.print_line("TRUE" if expr.value else "FALSE", "")
 
+    def visit_point2dexpression(self, expr: Point2DExpression):
+        self.print_line(f"POINT2D({expr.x}, {expr.y})", "")
+
+    def visit_point3dexpression(self, expr: Point3DExpression):
+        self.print_line(f"POINT3D({expr.x}, {expr.y}, {expr.z})", "")
+
     def visit_columnexpression(self, expr: ColumnExpression):
         if expr.table_name:
             self.print_line(f"{expr.table_name}.{expr.column_name}", "")
@@ -496,7 +535,7 @@ class PrintVisitor(Visitor):
         self.print_line(f"CREATE TABLE {st.table_name}(")
         with self.indented():
             for column in st.columns:
-                column_def = f"{column.column_name} {column.column_type} {'PRIMARY KEY' if column.is_pk else ''}"
+                column_def = f"{column.column_name} {column.column_type}{' PRIMARY KEY' if column.is_pk else ''}"
                 if column.column_type == ColumnType.VARCHAR:
                     column_def += f"({column.varchar_length})"
                 self.print_line(
@@ -518,11 +557,11 @@ class PrintVisitor(Visitor):
         )
 
     def visit_insertstatement(self, st: InsertStatement):
-        self.print_line(f"INSERT INTO {st.table_name} VALUES (")
-        with self.indented():
-            for value in st.values:
+        self.print_line(f"INSERT INTO {st.table_name} VALUES(")
+        for value in st.values:
+            with self.indented():
                 value.accept(self)  # intexpression, floatexpression, stringexpression
-                self.print_line(f"{',' if value != st.values[-1] else ''}")
+            self.print_line(f"{',' if value != st.values[-1] else ''}")
         self.print_line(");")
 
     def visit_selectstatement(self, st: SelectStatement):

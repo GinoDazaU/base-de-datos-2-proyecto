@@ -20,8 +20,9 @@ from statement import (
     WhereStatement,
     ValueExpression,
     ColumnExpression,
+    Point2DExpression,
+    Point3DExpression,
     # sadsads
-    Condition,
     OrCondition,
     AndCondition,
     NotCondition,
@@ -31,6 +32,8 @@ from statement import (
     BetweenComparison,
 )
 import time
+import random
+from faker import Faker
 
 
 def operation_token_to_type(token_type: TokenType) -> OperationType:
@@ -105,6 +108,10 @@ class Parser:
             column_type = ColumnType.BOOL
         elif self.match(TokenType.DATE):
             column_type = ColumnType.DATE
+        elif self.match(TokenType.POINT2D):
+            column_type = ColumnType.POINT2D  # TODO: integrate rtree
+        elif self.match(TokenType.POINT3D):
+            column_type = ColumnType.POINT3D  # TODO: integrate rtree
         elif self.match(TokenType.VARCHAR):
             if not self.match(TokenType.LEFT_PARENTHESIS):
                 raise SyntaxError(f"Expected '(' after VARCHAR, found {self.curr.text}")
@@ -129,6 +136,8 @@ class Parser:
             ColumnType.VARCHAR,
             ColumnType.DATE,
             ColumnType.BOOL,
+            ColumnType.POINT2D,
+            ColumnType.POINT3D,
         ):
             raise SyntaxError(
                 f"Invalid column type {self.prev.text} for column {column_name}"
@@ -265,17 +274,7 @@ class Parser:
 
         return DropIndexStatement(index_type, table_name, column_name)
 
-    def parse_insert_statement(self) -> InsertStatement:
-        if not self.match(TokenType.INTO):
-            raise SyntaxError(f"Expected INTO after INSERT, found {self.curr.text}")
-
-        if not self.match(TokenType.USER_IDENTIFIER):
-            raise SyntaxError(f"Expected table name after INTO, found {self.curr.text}")
-        table_name = self.prev.text
-
-        if not self.match(TokenType.LEFT_PARENTHESIS):
-            raise SyntaxError(f"Expected '(' after table name, found {self.curr.text}")
-
+    def parse_insert_statement_columns(self) -> list[str]:
         columns: list[str] = []
         while not self.check(TokenType.RIGHT_PARENTHESIS):
             if not self.match(TokenType.USER_IDENTIFIER):
@@ -288,6 +287,112 @@ class Parser:
                 raise SyntaxError(
                     f"Expected ',' or ')' after column name, found {self.curr.text}"
                 )
+        return columns
+
+    def parse_point_2d_expression(self) -> Point2DExpression:
+        if not self.match(TokenType.LEFT_PARENTHESIS):
+            raise SyntaxError(f"Expected '(' after POINT3D, found {self.curr.text}")
+        if not (
+            self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)
+        ):
+            raise SyntaxError(
+                f"Expected x coordinate (FLOAT or INT) after '(', found {self.curr.text}"
+            )
+        point_x = float(self.prev.text)
+        if not self.match(TokenType.COMMA):
+            raise SyntaxError(
+                f"Expected ',' after x coordinate, found {self.curr.text}"
+            )
+        if not (
+            self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)
+        ):
+            raise SyntaxError(
+                f"Expected y coordinate (FLOAT or INT) after ',', found {self.curr.text}"
+            )
+        point_y = float(self.prev.text)
+        if not self.match(TokenType.RIGHT_PARENTHESIS):
+            raise SyntaxError(
+                f"Expected ')' after y coordinate, found {self.curr.text}"
+            )
+        return Point2DExpression(point_x, point_y)
+
+    def parse_point_3d_expression(self) -> Point3DExpression:
+        if not self.match(TokenType.LEFT_PARENTHESIS):
+            raise SyntaxError(f"Expected '(' after POINT3D, found {self.curr.text}")
+        if not (
+            self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)
+        ):
+            raise SyntaxError(
+                f"Expected x coordinate (FLOAT or INT) after '(', found {self.curr.text}"
+            )
+        point_x = float(self.prev.text)
+        if not self.match(TokenType.COMMA):
+            raise SyntaxError(
+                f"Expected ',' after x coordinate, found {self.curr.text}"
+            )
+        if not (
+            self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)
+        ):
+            raise SyntaxError(
+                f"Expected y coordinate (FLOAT or INT) after ',', found {self.curr.text}"
+            )
+        point_y = float(self.prev.text)
+        if not self.match(TokenType.COMMA):
+            raise SyntaxError(
+                f"Expected ',' after y coordinate, found {self.curr.text}"
+            )
+        if not (
+            self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)
+        ):
+            raise SyntaxError(
+                f"Expected z coordinate (FLOAT or INT) after ',', found {self.curr.text}"
+            )
+        point_z = float(self.prev.text)
+        if not self.match(TokenType.RIGHT_PARENTHESIS):
+            raise SyntaxError(
+                f"Expected ')' after z coordinate, found {self.curr.text}"
+            )
+        return Point3DExpression(point_x, point_y, point_z)
+
+    def parse_insert_statement_values(self) -> list[ConstantExpression]:
+        constants: list[ConstantExpression] = []
+        while not self.check(TokenType.RIGHT_PARENTHESIS):
+            if self.match(TokenType.INT_CONSTANT):
+                constants.append(IntExpression(int(self.prev.text)))
+            elif self.match(TokenType.FLOAT_CONSTANT):
+                constants.append(FloatExpression(float(self.prev.text)))
+            elif self.match(TokenType.TRUE) or self.match(TokenType.FALSE):
+                constants.append(BoolExpression(self.prev.text.lower() == "true"))
+            elif self.match(TokenType.STRING_CONSTANT):
+                constants.append(StringExpression(self.prev.text.strip('"').strip("'")))
+            elif self.match(TokenType.POINT2D):
+                constants.append(self.parse_point_2d_expression())
+            elif self.match(TokenType.POINT3D):
+                constants.append(self.parse_point_3d_expression())
+            else:
+                raise SyntaxError(
+                    f"Expected constant value (INT, FLOAT, BOOL, STRING, POINT2D(x,y), POINT3D(x,y,z)), found {self.curr.text}"
+                )
+            if self.check(TokenType.COMMA):
+                self.advance()
+            elif not self.check(TokenType.RIGHT_PARENTHESIS):
+                raise SyntaxError(
+                    f"Expected ',' or ')' after constant value, found {self.curr.text}"
+                )
+        return constants
+
+    def parse_insert_statement(self) -> InsertStatement:
+        if not self.match(TokenType.INTO):
+            raise SyntaxError(f"Expected INTO after INSERT, found {self.curr.text}")
+
+        if not self.match(TokenType.USER_IDENTIFIER):
+            raise SyntaxError(f"Expected table name after INTO, found {self.curr.text}")
+        table_name = self.prev.text
+
+        if not self.match(TokenType.LEFT_PARENTHESIS):
+            raise SyntaxError(f"Expected '(' after table name, found {self.curr.text}")
+
+        columns: list[str] = self.parse_insert_statement_columns()
 
         if not self.match(TokenType.RIGHT_PARENTHESIS):
             raise SyntaxError(
@@ -302,28 +407,7 @@ class Parser:
         if not self.match(TokenType.LEFT_PARENTHESIS):
             raise SyntaxError(f"Expected '(' after VALUES, found {self.curr.text}")
 
-        constants: list[ConstantExpression] = []
-
-        while not self.check(TokenType.RIGHT_PARENTHESIS):
-            if self.match(TokenType.INT_CONSTANT):
-                constants.append(IntExpression(int(self.prev.text)))
-            elif self.match(TokenType.FLOAT_CONSTANT):
-                constants.append(FloatExpression(float(self.prev.text)))
-            elif self.match(TokenType.TRUE) or self.match(TokenType.FALSE):
-                constants.append(BoolExpression(self.prev.text.lower() == "true"))
-            elif self.match(TokenType.STRING_CONSTANT):
-                constants.append(StringExpression(self.prev.text.strip('"').strip("'")))
-            else:
-                raise SyntaxError(
-                    f"Expected constant value (INT, FLOAT, BOOL, STRING), found {self.curr.text}"
-                )
-
-            if self.check(TokenType.COMMA):
-                self.advance()
-            elif not self.check(TokenType.RIGHT_PARENTHESIS):
-                raise SyntaxError(
-                    f"Expected ',' or ')' after constant value, found {self.curr.text}"
-                )
+        constants: list[ConstantExpression] = self.parse_insert_statement_values()
 
         if not self.match(TokenType.RIGHT_PARENTHESIS):
             raise SyntaxError(
@@ -342,6 +426,10 @@ class Parser:
             return BoolExpression(self.prev.text.lower() == "true")
         elif self.match(TokenType.STRING_CONSTANT):
             return StringExpression(self.prev.text.strip('"').strip("'"))
+        elif self.match(TokenType.POINT2D):
+            return self.parse_point_2d_expression()
+        elif self.match(TokenType.POINT3D):
+            return self.parse_point_3d_expression()
         # then, column references
         elif self.match(TokenType.USER_IDENTIFIER):
             column_name = self.prev.text
@@ -582,33 +670,53 @@ class Parser:
 
 # endregion
 
+
+def generate_random_inserts(num_records: int = 10) -> list[str]:
+    fake = Faker()
+    queries = []
+
+    for i in range(num_records):
+        # Generate random data
+        user_id = i
+        name = fake.name().replace("'", "''")  # Escape single quotes
+        age = random.randint(18, 80)
+        email = fake.email()
+
+        query = f"INSERT INTO users (id, name, age, email) VALUES ({user_id}, '{name}', {age}, '{email}');"
+        queries.append(query)
+
+    return queries
+
+
 if __name__ == "__main__":
+    basic_creation_insertion_selection_test = [
+        "CREATE TABLE student(id INT PRIMARY KEY, name VARCHAR(128), age INT, grade FLOAT)",
+        "INSERT INTO student(name, grade, age, id) VALUES('Alice', 16.5, 19, 1)",
+        "INSERT INTO student(id, age, grade, name) VALUES(2, 20, 12, 'Bob')",
+        "INSERT INTO student(grade, id, age, name) VALUES(18, 3, 20, 'Charlie')",
+        "INSERT INTO student(id, name, age, grade) VALUES(4, 'David', 21, 15.5)",
+        "INSERT INTO student(id, name, age, grade) VALUES(5, 'Eve', 22, 17.0)",
+        "SELECT * FROM student",
+        "SELECT id, name FROM student",
+        "SELECT id, name, grade FROM student WHERE age > 20",
+        "SELECT id, name FROM student WHERE grade > 16",
+        "DROP TABLE student",
+    ]
+
+    test_query_sets = [basic_creation_insertion_selection_test]
+
     printVisitor = PrintVisitor()
-    execVisitor = RunVisitor()
+    runVisitor = RunVisitor()
+    instruction_delay = 0.1
 
-    table_create_insert = [
-        "CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(50), age INT);",
-        "CREATE INDEX ON users(name) USING BPLUSTREE;",
-        "INSERT INTO users(name, age, id) VALUES ('Alice', 30, 1);",
-        "INSERT INTO users(name, id, age) VALUES ('Bob', 2, 20);",
-        "INSERT INTO users(age, name, id) VALUES (25, 'Charlie', 3);",
-        "INSERT INTO users(id, age, name) VALUES (4, 40, 'David');",
-    ]
-
-    table_select = [
-        "SELECT * fRoM users WHERE id between 1 and 2 OR (1=1 and 2>3)",
-    ]
-
-    queries = [table_select]
-    instruction_delay = 1  # seconds
-
-    for queryset in queries:
+    for queryset in test_query_sets:
         for query in queryset:
             scanner = Scanner(query)
-            scanner.test()
+            # scanner.test()
             parser = Parser(scanner, debug=False)
             program = parser.parse_program()
-            printVisitor.visit_program(program)
-            result: QueryResult = execVisitor.visit_program(program)
-            print(result.data)
+            # printVisitor.visit_program(program)
+            result: QueryResult = runVisitor.visit_program(program)
+            if result.data is not None:
+                print(f"Query Result: {result.data}")
             time.sleep(instruction_delay)

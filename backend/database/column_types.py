@@ -11,7 +11,7 @@ class ColumnType(Enum):
     POINT3D = auto()
 
     def __str__(self):
-        return self.name.lower()
+        return self.name
 
 
 class OperationType(Enum):

@@ -44,6 +44,21 @@ class StringExpression(ConstantExpression):
         self.value = value
 
 
+class Point2DExpression(ConstantExpression):
+    def __init__(self, x: float, y: float):
+        self.x = x
+        self.y = y
+        self.value = (self.x, self.y)
+
+
+class Point3DExpression(ConstantExpression):
+    def __init__(self, x: float, y: float, z: float):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.value = (self.x, self.y, self.z)
+
+
 # endregion
 
 

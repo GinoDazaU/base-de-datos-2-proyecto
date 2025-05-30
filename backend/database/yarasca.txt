@@ -4,7 +4,6 @@ Te quiero mucho profe Yarasca
 
 [X] means X is optional
 {X | Y} means choice between X or Y
-Tokens: INT | FLOAT | VARCHAR[(INT)] | DATE | BOOL
 
 StatementList -> Statement[;StatementList]
 Statement -> CreateStatement | SelectStatement | DropStatement | DeleteStatement | InsertStatement | UpdateStatement
@@ -19,7 +18,7 @@ CreateStatement -> CreateTableStatement | CreateIndexStatement
 CreateTableStatement -> CREATE TABLE UserIdentifier(CreateTableColumns)
 CreateTableColumns -> CreateTableColumnDefinition[,CreateTableColumns]
 CreateTableColumnDefinition -> UserIdentifier DataType ArgumentList
-DataType- > INT | FLOAT | VARCHAR[(INT_CONSTANT)] | DATE | BOOL
+DataType- > INT | FLOAT | VARCHAR | DATE | BOOL | POINT2D | POINT3D | DATE
 ArgumentList -> [PRIMARY KEY] [USING Method]
 
 CreateIndexStatement -> CREATE INDEX UserIdentifier ON UserIdentifier(UserIdentifier) [USING Method]
@@ -40,12 +39,17 @@ NotCondition -> [NOT] PrimaryCondition
 PrimaryCondition -> ConstantCondition | SimpleComparison | BetweenComparison | (OrCondition)
 ConstantCondition -> TRUE | FALSE
 
-SimpleComparison -> ValueExp {== | < | > | <= | >= | !=} ValueExp
+SimpleComparison -> ValueExp ComparisonOp ValueExp
+ComparisonOp -> == | < | > | <= | >= | !=
+ArithmeticOp -> + | - | / | *
 BetweenComparison -> ValueExp BETWEEN ValueExp AND ValueExp
 #NOT IMPLEMENTED# InComparison -> ValueExp [NOT] IN (ValueList | SelectStatement)
 #NOT IMPLEMENTED# ValueList -> ValueExp[, ValueList]
 
-ValueExp -> Constant | ColumnReference
+ValueExp -> ConstantExp | ColumnReference
+ConstantExp -> [-]INT_CONSTANT | [-]FLOAT_CONSTANT | STRING_CONSTANT | TRUE | FALSE | DATE_CONSTANT |
+                POINT2D({INT_CONSTANT | FLOAT_CONSTANT}, {INT_CONSTANT | FLOAT_CONSTANT}) |
+                POINT3D({INT_CONSTANT | FLOAT_CONSTANT}, {INT_CONSTANT | FLOAT_CONSTANT}, {INT_CONSTANT | FLOAT_CONSTANT})
 ColumnReference -> [UserIdentifier.]UserIdentifier | (SelectStatement)
 
 GroupByStatement -> GROUP BY GroupByList
@@ -71,7 +75,7 @@ DeleteStatement -> DELETE FROM UserIdentifier WHERE Condition
 
 InsertStatement -> INSERT INTO UserIdentifier[(ColumnList)] VALUES (ValueList)
 ColumnList -> UserIdentifier [, ColumnList]
-ValueList -> CONSTANT[, ValueList]
+ValueList -> Constant[, ValueList]
 
 ==================================================================================
 
