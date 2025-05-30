@@ -139,6 +139,9 @@ class Token:
         TokenType.DATE_CONSTANT: "DATE_CONSTANT",
         TokenType.END: "END",
         TokenType.ERROR: "ERROR",
+        # aaaa
+        TokenType.POINT2D: "POINT2D",
+        TokenType.POINT3D: "POINT3D",
     }
 
     TEXT_TO_TYPE = {text: key for key, text in TYPE_TO_TEXT.items()}

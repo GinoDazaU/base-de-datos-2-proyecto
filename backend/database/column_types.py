@@ -7,6 +7,8 @@ class ColumnType(Enum):
     VARCHAR = auto()
     DATE = auto()
     BOOL = auto()
+    POINT2D = auto()
+    POINT3D = auto()
 
     def __str__(self):
         return self.name.lower()

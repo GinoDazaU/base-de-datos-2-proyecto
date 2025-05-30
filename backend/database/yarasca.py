@@ -596,7 +596,7 @@ if __name__ == "__main__":
     ]
 
     table_select = [
-        "SELECT * fRoM users WHERE id > 0 OR name == 'Alice';",
+        "SELECT * fRoM users WHERE id between 1 and 2 OR (1=1 and 2>3)",
     ]
 
     queries = [table_select]

@@ -366,6 +366,10 @@ class RunVisitor:
                             "Record does not have a schema or values attribute???"
                         )
             result.append(entry)
+        if st.limit is not None:
+            if st.limit < 0:
+                raise ValueError("Limit cannot be negative.")
+            result = result[: st.limit]
         return QueryResult(
             True,
             f"Selected {len(result)} records from table '{st.from_table}'.",
@@ -527,6 +531,8 @@ class PrintVisitor(Visitor):
         )
         if st.where_statement:
             st.where_statement.accept(self)
+        if st.limit is not None:
+            self.print_line(f" LIMIT {st.limit}", "")
         self.print_line(";")
 
     # region PrintVisitor Conditions
