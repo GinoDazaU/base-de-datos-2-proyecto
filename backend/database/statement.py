@@ -44,6 +44,14 @@ class StringExpression(ConstantExpression):
         self.value = value
 
 
+class DateExpression(ConstantExpression):
+    def __init__(self, year, month, day):
+        self.year = year
+        self.month = month
+        self.day = day
+        self.value = (self.year, self.month, self.day)
+
+
 class Point2DExpression(ConstantExpression):
     def __init__(self, x: float, y: float):
         self.x = x
@@ -80,7 +88,9 @@ class Condition(Visitable):
 
 
 class OrCondition(Condition):
-    def __init__(self, and_condition, or_condition=None):
+    def __init__(
+        self, and_condition: "AndCondition", or_condition: "OrCondition" = None
+    ):
         self.and_condition = and_condition
         self.or_condition = or_condition
 
@@ -159,9 +169,15 @@ class CreateColumnDefinition:
 
 
 class CreateTableStatement(Statement):
-    def __init__(self, table_name: str, columns: list[CreateColumnDefinition]):
+    def __init__(
+        self,
+        table_name: str,
+        columns: list[CreateColumnDefinition],
+        if_not_exists: bool,
+    ):
         self.table_name = table_name
         self.columns = columns
+        self.if_not_exists = if_not_exists
 
 
 class DropTableStatement(Statement):

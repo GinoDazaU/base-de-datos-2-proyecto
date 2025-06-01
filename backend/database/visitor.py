@@ -5,6 +5,7 @@ from storage.HeapFile import HeapFile
 from storage.Record import Record
 
 import os
+from datetime import date
 
 from fancytypes.schema import SchemaType
 
@@ -45,6 +46,7 @@ from statement import (
     Program,
     Point2DExpression,
     Point3DExpression,
+    DateExpression,
     # xd,
     OrCondition,
     AndCondition,
@@ -68,8 +70,10 @@ def fmt_to_column_type(fmt: str) -> ColumnType:
             return ColumnType.POINT2D
         case "3f":
             return ColumnType.POINT3D
+        case "3i":
+            return ColumnType.DATE  # yyyy-mm-dd, uses an int for each part
         case _:
-            pass  # TODO: implement dates
+            pass
     if fmt.endswith("s"):
         return ColumnType.VARCHAR
     raise ValueError(f"Unsupported format: {fmt}")
@@ -89,6 +93,8 @@ def column_type_to_fmt(column_type: ColumnType, varchar_length: int) -> str:
             return "2f"
         case ColumnType.POINT3D:
             return "3f"
+        case ColumnType.DATE:
+            return "3i"
         case _:
             raise ValueError(f"Unsupported column type: {column_type}")
 
@@ -132,6 +138,9 @@ class RunVisitor:
     def visit_point3dexpression(self, expr: Point3DExpression):
         return (expr.x, expr.y, expr.z)
 
+    def visit_dateexpression(self, expr: DateExpression):
+        return (expr.year, expr.month, expr.day)
+
     def visit_columnexpression(self, expr: ColumnExpression):
         # resolves colExp yeehaw
         if self.current_record is None:
@@ -159,7 +168,12 @@ class RunVisitor:
 
     def visit_createtablestatement(self, st: CreateTableStatement):
         if check_table_exists(st.table_name):
-            raise ValueError(f"Table '{st.table_name}' already exists.")
+            if not st.if_not_exists:
+                raise ValueError(f"Table '{st.table_name}' already exists.")
+            else:
+                return QueryResult(
+                    True, f"Table '{st.table_name}' already exists, skipping creation."
+                )
         pk: str = None
         schema: SchemaType = []
         for col in st.columns:
@@ -327,6 +341,10 @@ class RunVisitor:
                 raise ValueError(
                     f"Value for column '{col_name}' must be of type POINT3D."
                 )
+            elif actual_type == ColumnType.DATE and not isinstance(
+                const_exp, DateExpression
+            ):
+                raise ValueError(f"Value for column '{col_name}' must be of type DATE.")
 
             # else: it's fine, we can insert it
             # but first we check for length of VARCHAR
@@ -521,6 +539,9 @@ class PrintVisitor(Visitor):
     def visit_point3dexpression(self, expr: Point3DExpression):
         self.print_line(f"POINT3D({expr.x}, {expr.y}, {expr.z})", "")
 
+    def visit_dateexpression(self, expr: DateExpression):
+        self.print_line(date(expr.year, expr.month, expr.day), "")
+
     def visit_columnexpression(self, expr: ColumnExpression):
         if expr.table_name:
             self.print_line(f"{expr.table_name}.{expr.column_name}", "")
@@ -532,7 +553,9 @@ class PrintVisitor(Visitor):
             st.accept(self)
 
     def visit_createtablestatement(self, st: CreateTableStatement):
-        self.print_line(f"CREATE TABLE {st.table_name}(")
+        self.print_line(
+            f"CREATE TABLE {'IF NOT EXISTS ' if st.if_not_exists else ''}{st.table_name}("
+        )
         with self.indented():
             for column in st.columns:
                 column_def = f"{column.column_name} {column.column_type}{' PRIMARY KEY' if column.is_pk else ''}"

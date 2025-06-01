@@ -22,6 +22,7 @@ from statement import (
     ColumnExpression,
     Point2DExpression,
     Point3DExpression,
+    DateExpression,
     # sadsads
     OrCondition,
     AndCondition,
@@ -169,6 +170,18 @@ class Parser:
     # TODO: primary key
     def parse_create_table_statement(self) -> CreateTableStatement:
         self.print_debug("Parsing CREATE TABLE statement")
+
+        if_not_exists = False
+
+        if self.match(TokenType.IF):
+            if not self.match(TokenType.NOT):
+                raise SyntaxError(f"Expected NOT after IF, found {self.curr.text}")
+            if not self.match(TokenType.EXISTS):
+                raise SyntaxError(
+                    f"Expected EXISTS after IF NOT, found {self.curr.text}"
+                )
+            if_not_exists = True
+
         table_name = None
         if not self.match(TokenType.USER_IDENTIFIER):
             raise SyntaxError(
@@ -183,7 +196,7 @@ class Parser:
             raise SyntaxError(
                 f"Expected ')' after column definitions, found {self.curr.text}"
             )
-        return CreateTableStatement(table_name, columns)
+        return CreateTableStatement(table_name, columns, if_not_exists)
 
     def parse_drop_table_statement(self) -> DropTableStatement:
         self.print_debug("Parsing DROP TABLE statement")
@@ -364,14 +377,17 @@ class Parser:
             elif self.match(TokenType.TRUE) or self.match(TokenType.FALSE):
                 constants.append(BoolExpression(self.prev.text.lower() == "true"))
             elif self.match(TokenType.STRING_CONSTANT):
-                constants.append(StringExpression(self.prev.text.strip('"').strip("'")))
+                constants.append(StringExpression(self.prev.text))
+            elif self.match(TokenType.DATE_CONSTANT):
+                year, month, day = self.prev.text.split("-")
+                constants.append(DateExpression(int(year), int(month), int(day)))
             elif self.match(TokenType.POINT2D):
                 constants.append(self.parse_point_2d_expression())
             elif self.match(TokenType.POINT3D):
                 constants.append(self.parse_point_3d_expression())
             else:
                 raise SyntaxError(
-                    f"Expected constant value (INT, FLOAT, BOOL, STRING, POINT2D(x,y), POINT3D(x,y,z)), found {self.curr.text}"
+                    f"Expected constant value (INT, FLOAT, BOOL, STRING, DATE(yyyy-mm-dd), POINT2D(x,y), POINT3D(x,y,z)), found {self.curr.text}"
                 )
             if self.check(TokenType.COMMA):
                 self.advance()
@@ -425,7 +441,10 @@ class Parser:
         elif self.match(TokenType.TRUE) or self.match(TokenType.FALSE):
             return BoolExpression(self.prev.text.lower() == "true")
         elif self.match(TokenType.STRING_CONSTANT):
-            return StringExpression(self.prev.text.strip('"').strip("'"))
+            return StringExpression(self.prev.text)
+        elif self.match(TokenType.DATE_CONSTANT):
+            year, month, day = self.prev.text.split("-")
+            return DateExpression(int(year), int(month), int(day))
         elif self.match(TokenType.POINT2D):
             return self.parse_point_2d_expression()
         elif self.match(TokenType.POINT3D):
@@ -691,19 +710,25 @@ def generate_random_inserts(num_records: int = 10) -> list[str]:
 if __name__ == "__main__":
     basic_creation_insertion_selection_test = [
         "CREATE TABLE student(id INT PRIMARY KEY, name VARCHAR(128), age INT, grade FLOAT)",
-        "INSERT INTO student(name, grade, age, id) VALUES('Alice', 16.5, 19, 1)",
+        'INSERT INTO student(name, grade, age, id) VALUES("Alice", 16.5, 19, 1)',  # works with both kinds of quotes :)
         "INSERT INTO student(id, age, grade, name) VALUES(2, 20, 12, 'Bob')",
         "INSERT INTO student(grade, id, age, name) VALUES(18, 3, 20, 'Charlie')",
-        "INSERT INTO student(id, name, age, grade) VALUES(4, 'David', 21, 15.5)",
+        'INSERT INTO student(id, name, age, grade) VALUES(4, "David", 21, 15.5)',
         "INSERT INTO student(id, name, age, grade) VALUES(5, 'Eve', 22, 17.0)",
         "SELECT * FROM student",
         "SELECT id, name FROM student",
         "SELECT id, name, grade FROM student WHERE age > 20",
         "SELECT id, name FROM student WHERE grade > 16",
+        "SELECT id, name, FROM student WHERE name > '2';",  # uses python string comparison
         "DROP TABLE student",
     ]
 
-    test_query_sets = [basic_creation_insertion_selection_test]
+    date_test_ifnotexists = [
+        "CREATE TABLE IF NOT EXISTS events(id int primary key, name VARCHAR(128), fecha DATE);",
+        "INSERT INTO events(id, fecha, name) VALUES(1, '2004-08-21', 'Cumple Danee');",
+    ]
+
+    test_query_sets = [date_test_ifnotexists]
 
     printVisitor = PrintVisitor()
     runVisitor = RunVisitor()
@@ -715,7 +740,7 @@ if __name__ == "__main__":
             # scanner.test()
             parser = Parser(scanner, debug=False)
             program = parser.parse_program()
-            # printVisitor.visit_program(program)
+            printVisitor.visit_program(program)
             result: QueryResult = runVisitor.visit_program(program)
             if result.data is not None:
                 print(f"Query Result: {result.data}")

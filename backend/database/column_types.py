@@ -5,7 +5,7 @@ class ColumnType(Enum):
     INT = auto()
     FLOAT = auto()
     VARCHAR = auto()
-    DATE = auto()
+    DATE = auto()  # yyyy-mm-dd
     BOOL = auto()
     POINT2D = auto()
     POINT3D = auto()

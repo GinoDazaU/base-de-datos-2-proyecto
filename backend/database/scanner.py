@@ -1,4 +1,5 @@
 from enum import Enum, auto
+import re
 
 
 # region Token and Scanner
@@ -76,6 +77,9 @@ class TokenType(Enum):
     POINT2D = auto()  # for RTREE
     POINT3D = auto()  # for RTREE
 
+    IF = auto()
+    EXISTS = auto()
+
 
 class Token:
     TYPE_TO_TEXT = {
@@ -142,6 +146,9 @@ class Token:
         # aaaa
         TokenType.POINT2D: "POINT2D",
         TokenType.POINT3D: "POINT3D",
+        # if not exists
+        TokenType.IF: "IF",
+        TokenType.EXISTS: "EXISTS",
     }
 
     TEXT_TO_TYPE = {text: key for key, text in TYPE_TO_TEXT.items()}
@@ -164,8 +171,6 @@ class Scanner:
         self.current_char = self.source[self.position] if self.source else None
 
     def is_postgres_date(self, text: str) -> bool:
-        import re
-
         # Pattern: exactly 4 digits, dash, 2 digits, dash, 2 digits
         date_pattern = r"^\d{4}-\d{2}-\d{2}$"
 
@@ -293,26 +298,19 @@ class Scanner:
             if self.current_char == "*":
                 self.advance()
                 return Token(TokenType.ASTERISK, "*")
-            if self.current_char == "'":  # for single quote strings
+            if (
+                self.current_char == "'" or self.current_char == '"'
+            ):  # for strings or dates
+                quote_type = self.current_char
                 self.advance()
                 start_pos = self.position
-                while self.current_char is not None and self.current_char != "'":
+
+                while (
+                    self.current_char is not None and self.current_char != quote_type
+                ):  # while string not terminated
                     self.advance()
-                if self.current_char == "'":
-                    text = self.source[start_pos : self.position]
-                    self.advance()
-                    if self.is_postgres_date(text):
-                        return Token(TokenType.DATE_CONSTANT, text)
-                    else:
-                        return Token(TokenType.STRING_CONSTANT, text)
-                else:
-                    return Token(TokenType.ERROR, "Unterminated string constant")
-            if self.current_char == '"':  # double quote strings just in case
-                self.advance()
-                start_pos = self.position
-                while self.current_char is not None and self.current_char != '"':
-                    self.advance()
-                if self.current_char == '"':
+
+                if self.current_char == quote_type:  # if string terminated
                     text = self.source[start_pos : self.position]
                     self.advance()
                     if self.is_postgres_date(text):
