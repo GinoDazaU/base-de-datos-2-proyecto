@@ -5,6 +5,7 @@ from typing import Optional, Tuple, List
 import pandas as pd
 
 from .Record import Record
+from .TextFile import TextFile
 
 # --------------------------------------------------------
 #  Valores centinela para marcar registros eliminados
@@ -55,6 +56,11 @@ class HeapFile:
                 jf,
                 indent=4,
             )
+
+        # Crear archivo .text por cada campo tipo "text"
+        for field_name, fmt in schema:
+            if fmt == "text":
+                TextFile.build_file(table_name, field_name)
 
     # ------------------------------------------------------------------
     # Inicialización ----------------------------------------------------
@@ -113,6 +119,15 @@ class HeapFile:
     # ------------------------------------------------------------------
     # Inserción ---------------------------------------------------------
     # ------------------------------------------------------------------
+
+    def _process_text_fields(self, record: Record) -> None:
+        for idx, (field_name, fmt) in enumerate(record.schema):
+            if fmt == "text":
+                text_value = record.values[idx]
+                text_file = TextFile(self.table_name, field_name)
+                offset = text_file.insert(text_value)
+                record.values[idx] = offset  # reemplazar texto por offset
+
     def insert_record(self, record: Record) -> int:
         if record.schema != self.schema:
             raise ValueError("Esquema del registro no coincide.")
@@ -133,6 +148,8 @@ class HeapFile:
                     if Record.unpack(buf, self.schema).values[pk_idx] == pk_val:
                         raise ValueError(f"PK duplicada: {pk_val}")
                     fh.seek(PTR_SIZE, os.SEEK_CUR)  # saltar next_free
+
+        self._process_text_fields(record)
 
         # ── 2. Insertar (reciclar hueco o append) ─────────────────────
         with open(self.filename, "r+b") as fh:
@@ -158,6 +175,8 @@ class HeapFile:
         """Inserta un registro sin verificar unicidad de PK. Usa free-list si hay huecos."""
         if record.schema != self.schema:
             raise ValueError("Esquema del registro no coincide.")
+
+        self._process_text_fields(record)
 
         with open(self.filename, "r+b") as fh:
             if self.free_head == -1:  # sin huecos → append

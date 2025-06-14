@@ -17,7 +17,7 @@ class Record:
     def __init__(self, schema, values):
         self.schema = schema
         self.values = values
-        self.format = ''.join(fmt for _, fmt in schema)
+        self.format = ''.join('i' if fmt == 'text' else fmt for _, fmt in schema)
         self.size = struct.calcsize(self.format)
 
     def pack(self) -> bytes:
@@ -34,10 +34,9 @@ class Record:
                 processed.append(val)
         return struct.pack(self.format, *processed)
 
-
     @staticmethod
     def unpack(buf, schema):
-        fmt_str = ''.join(f for _, f in schema)
+        fmt_str = ''.join('i' if fmt == 'text' else fmt for _, fmt in schema)
         vals = list(struct.unpack(fmt_str, buf))
         out = []
         for (_, fmt) in schema:
@@ -59,7 +58,7 @@ class Record:
     
     @staticmethod
     def get_size(schema) -> int:
-        format_str = ''.join(fmt for _, fmt in schema)
+        format_str = ''.join('i' if fmt == 'text' else fmt for _, fmt in schema)
         return struct.calcsize(format_str)
 
     def __str__(self) -> None:
