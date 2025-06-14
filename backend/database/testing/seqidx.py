@@ -3,6 +3,7 @@ import sys
 import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database import *
+import random
 from faker import Faker
 
 def _test_seqidx(n: int):

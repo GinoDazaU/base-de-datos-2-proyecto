@@ -197,7 +197,7 @@ def delete_record(table_name: str, pk_value):
 # =============================================================================
 
 
-def search_by_field(table_name: str, field_name: str, value):
+def search_by_field(table_name: str, field_name: str, value) -> List[Record]:
     return HeapFile(_table_path(table_name)).search_by_field(field_name, value)
 
 

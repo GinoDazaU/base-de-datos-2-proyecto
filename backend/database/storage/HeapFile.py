@@ -221,6 +221,11 @@ class HeapFile:
                 old_rec = Record.unpack(buf, self.schema)
                 if rec.values[pk_idx] != key:
                     continue
+                # Borrar campos tipo text
+                for i, (field_name, fmt) in enumerate(self.schema):
+                    if fmt == "text":
+                        offset = old_rec.values[i]
+                        TextFile(self.table_name, field_name).delete(offset)
                 # marcar hueco: set PK = sentinel y next_free = free_head
                 rec.values[pk_idx] = sentinel
                 fh.seek(byte_off)
@@ -280,8 +285,15 @@ class HeapFile:
                     continue
 
                 if rec.values[fld_idx] == value:
-                    resultados.append(rec)
-                    if stop_early:  # campo = PK → salir
+                    # --- Reemplazar offsets por contenido real para campos 'text' ---
+                    updated_values = list(rec.values)
+                    for i, (fname, fmt) in enumerate(self.schema):
+                        if fmt == "text":
+                            offset = updated_values[i]
+                            updated_values[i] = TextFile(self.table_name, fname).read(offset)
+                    resultados.append(Record(self.schema, updated_values))
+
+                    if stop_early:
                         break
 
                 fh.seek(PTR_SIZE, os.SEEK_CUR)
@@ -346,6 +358,15 @@ class HeapFile:
             for i in range(self.heap_size):
                 buf = fh.read(self.rec_data_size)
                 rec = Record.unpack(buf, self.schema)
+
+                # Reemplazar offsets por texto real
+                for idx, (name, fmt) in enumerate(self.schema):
+                    if fmt == "text":
+                        offset = rec.values[idx]
+                        text_file = TextFile(self.table_name, name)
+                        text_content = text_file.read(offset)
+                        rec.values[idx] = text_content
+
                 print(rec)
                 fh.seek(PTR_SIZE, os.SEEK_CUR)
 
