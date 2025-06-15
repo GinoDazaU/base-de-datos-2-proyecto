@@ -41,3 +41,9 @@ class DBManager:
             raise FileNotFoundError(f"Table {table_name} does not exist")
         schema_path = DBManager._table_path(table_name) + ".schema.json"
         return HeapFile._load_schema_from_file(schema_path)
+    
+    @staticmethod
+    def create_table(table_name: str, schema: List[Tuple[str, str]],
+                     primary_key: Optional[str] = None) -> None:
+        HeapFile.build_file(DBManager._table_path(table_name), schema, primary_key)
+        print(f"Tabla {table_name} creada con éxito.")
