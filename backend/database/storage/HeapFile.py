@@ -77,6 +77,18 @@ class HeapFile:
             self.heap_size, self.free_head = struct.unpack(
                 METADATA_FORMAT, f.read(METADATA_SIZE)
             )
+    
+    #-------------------------------------------------------------------
+    # Utilidades externas ----------------------------------------------
+    #-------------------------------------------------------------------
+    @staticmethod
+    def _load_schema_from_file(fname: str) -> List[Tuple[str, str]]:
+        if not os.path.exists(fname):
+            raise FileNotFoundError(f"El archivo de esquema {fname} no existe.")
+        with open(fname, encoding="utf-8") as jf:
+            js = json.load(jf)
+        schema = [(fld["name"], fld["type"]) for fld in js["fields"]]
+        return schema
 
     # ------------------------------------------------------------------
     # Utilidades internas ----------------------------------------------
