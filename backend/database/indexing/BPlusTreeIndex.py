@@ -21,7 +21,7 @@ class BPlusTreeNode:
 class BPlusTreeIndex:
     def __init__(self, order, filename, auxname, index_format='i'):
         self.order = order
-        self.min_keys = math.ceil(self.order / 2)
+        self.min_keys = self.order // 2
         self.max_keys = order
         self.filename = filename
         self.auxname = auxname
@@ -187,7 +187,7 @@ class BPlusTreeIndex:
         self.root_offset = offset
 
     def insert(self, record):
-        print(f"[DEBUG INSERT] Insertando clave: {record.key}, offset: {record.offset}")
+        #print(f"[DEBUG INSERT] Insertando clave: {record.key}, offset: {record.offset}")
 
         # No escribas al archivo ni calcules un nuevo offset
         index_record = IndexRecord(self.index_format, record.key, record.offset)
@@ -205,7 +205,7 @@ class BPlusTreeIndex:
         node = self.load_node(node_offset)
 
         if node.is_leaf:
-            print(f"[DEBUG _insert_aux] Insertando en hoja. Clave: {index_record.key}")        
+            #print(f"[DEBUG _insert_aux] Insertando en hoja. Clave: {index_record.key}")        
             idx = 0
             while idx < len(node.records) and index_record.key > node.records[idx].key:
                 idx += 1
@@ -218,7 +218,7 @@ class BPlusTreeIndex:
                 return None
 
         else:
-            print(f"[DEBUG _insert_aux] Descendiendo en nodo interno. Clave: {index_record.key}")
+            #print(f"[DEBUG _insert_aux] Descendiendo en nodo interno. Clave: {index_record.key}")
             idx = 0
             while idx < len(node.keys) and index_record.key > node.keys[idx]:
                 idx += 1
@@ -362,6 +362,91 @@ class BPlusTreeIndex:
 
         return None
     
+    def _handle_internal_underflow(self, node_offset):
+        """
+        Maneja el underflow en nodos internos: redistribución o fusión.
+        """
+        parent_offset, parent_node, idx_in_parent = self._find_parent(self.root_offset, node_offset)
+        node = self.load_node(node_offset)
+
+        # Verificar hermanos
+        left_sibling = None
+        right_sibling = None
+        left_offset = None
+        right_offset = None
+
+        if idx_in_parent > 0:
+            left_offset = parent_node.children[idx_in_parent - 1]
+            left_sibling = self.load_node(left_offset)
+
+        if idx_in_parent < len(parent_node.children) - 1:
+            right_offset = parent_node.children[idx_in_parent + 1]
+            right_sibling = self.load_node(right_offset)
+
+        # ----- Redistribuir desde el hermano izquierdo -----
+        if left_sibling and len(left_sibling.keys) > self.min_keys:
+            sep_key = parent_node.keys[idx_in_parent - 1]
+
+            # Toma el último hijo del izquierdo
+            borrowed_key = left_sibling.keys.pop()
+            borrowed_child = left_sibling.children.pop()
+
+            node.keys.insert(0, sep_key)
+            node.children.insert(0, borrowed_child)
+            parent_node.keys[idx_in_parent - 1] = borrowed_key
+
+            self.save_node_at(left_offset, left_sibling)
+            self.save_node_at(node_offset, node)
+            self.save_node_at(parent_offset, parent_node)
+            return
+
+        # ----- Redistribuir desde el hermano derecho -----
+        if right_sibling and len(right_sibling.keys) > self.min_keys:
+            sep_key = parent_node.keys[idx_in_parent]
+
+            borrowed_key = right_sibling.keys.pop(0)
+            borrowed_child = right_sibling.children.pop(0)
+
+            node.keys.append(sep_key)
+            node.children.append(borrowed_child)
+            parent_node.keys[idx_in_parent] = borrowed_key
+
+            self.save_node_at(right_offset, right_sibling)
+            self.save_node_at(node_offset, node)
+            self.save_node_at(parent_offset, parent_node)
+            return
+
+        # ----- Fusión con hermano izquierdo -----
+        if left_sibling:
+            sep_key = parent_node.keys.pop(idx_in_parent - 1)
+            parent_node.children.pop(idx_in_parent)
+
+            left_sibling.keys.append(sep_key)
+            left_sibling.keys += node.keys
+            left_sibling.children += node.children
+
+            self.save_node_at(left_offset, left_sibling)
+            self.save_node_at(parent_offset, parent_node)
+            return
+
+        # ----- Fusión con hermano derecho -----
+        if right_sibling:
+            sep_key = parent_node.keys.pop(idx_in_parent)
+            parent_node.children.pop(idx_in_parent + 1)
+
+            node.keys.append(sep_key)
+            node.keys += right_sibling.keys
+            node.children += right_sibling.children
+
+            self.save_node_at(node_offset, node)
+            self.save_node_at(parent_offset, parent_node)
+            return
+
+        # Si el padre se queda sin claves, actualizar raíz
+        if parent_node == self.load_node(self.root_offset) and len(parent_node.keys) == 0:
+            new_root_offset = parent_node.children[0]
+            self.update_root_offset(new_root_offset)
+    
     def _find_parent(self, current_offset, child_offset):
         current_node = self.load_node(current_offset)
 
@@ -385,21 +470,28 @@ class BPlusTreeIndex:
         node = self.load_node(node_offset)
 
         if node.is_leaf:
-            # Eliminar el registro con matching key AND offset
-            node.records = [r for r in node.records if not (r.key == key and r.offset == offset)]
-            
-            if len(node.records) < self.min_keys:
-                return self._handle_leaf_underflow(node, node_offset)
-            else:
-                self.save_node_at(node_offset, node)
-                return None
+            print(f"[DEBUG DELETE] Nodo hoja actual: {[r.key for r in node.records]}")
+            for i, rec in enumerate(node.records):
+                print(f"[DEBUG] Comparando con record: {rec.key=} {rec.offset=} vs objetivo: {key=} {offset=}")
+                if rec.key == key and rec.offset == offset:
+                    del node.records[i]
+                    self.save_node_at(node_offset, node)
+                    print(f"[DEBUG DELETE] Eliminado en hoja. Claves ahora: {[r.key for r in node.records]}")
+                    return True
+            print(f"[DEBUG DELETE] Clave no encontrada en esta hoja.")
+            return False
 
         # Nodo interno: buscar el hijo correspondiente
         idx = 0
         while idx < len(node.keys) and key > node.keys[idx]:
             idx += 1
         self._delete_aux(node.children[idx], key, offset)
-    
+
+        # Si el hijo quedó en underflow, manejamos el caso
+        child_node = self.load_node(node.children[idx])
+        if not child_node.is_leaf and len(child_node.keys) < self.min_keys:
+            self._handle_internal_underflow(node.children[idx])
+
     def scan_all(self):
         node = self.load_node(self.root_offset)
         # Bajar hasta la hoja más a la izquierda
