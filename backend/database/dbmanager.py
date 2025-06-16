@@ -26,7 +26,6 @@ class DBManager:
             return
         self._initialized = True
 
-
     # Helper methods for managing tables and schemas
     @staticmethod
     def table_path(table_name: str) -> str:
