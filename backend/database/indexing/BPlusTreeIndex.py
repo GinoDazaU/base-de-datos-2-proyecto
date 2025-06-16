@@ -225,7 +225,7 @@ class BPlusTreeIndex:
             result = self._insert_aux(node.children[idx], index_record)
 
             if result:
-                print(f"[DEBUG _insert_aux] Split recibido desde hijo. Clave: {index_record.key}")
+                #print(f"[DEBUG _insert_aux] Split recibido desde hijo. Clave: {index_record.key}")
                 new_node_offset, new_key = result
                 node.keys.insert(idx, new_key)
                 node.children.insert(idx + 1, new_node_offset)
@@ -271,7 +271,7 @@ class BPlusTreeIndex:
         return new_offset, separator_key
 
     def search(self, key):
-        print(f"[DEBUG SEARCH] Buscando clave: {key}")    
+        #print(f"[DEBUG SEARCH] Buscando clave: {key}")    
         return self.search_aux(self.root_offset, key)
 
     def search_aux(self, node_offset, key):
@@ -463,7 +463,7 @@ class BPlusTreeIndex:
         return None, None, None
 
     def delete(self, key, offset):
-        print(f"[DEBUG DELETE] Eliminando clave: {key}, offset: {offset}")
+        #print(f"[DEBUG DELETE] Eliminando clave: {key}, offset: {offset}")
         self._delete_aux(self.root_offset, key, offset)
 
     def _delete_aux(self, node_offset, key, offset):
@@ -537,9 +537,9 @@ class BPlusTreeIndex:
         entries = extract_index_fn(key_field)
         entries.sort(key=lambda x: x[0])
 
-        print("\n[DEBUG] Entradas extraídas para el índice B+ Tree:")
-        for key, offset in entries[:10]:
-            print(f"  Key: {key!r} -> Offset: {offset}")
+        #print("\n[DEBUG] Entradas extraídas para el índice B+ Tree:")
+        #for key, offset in entries[:10]:
+        #    print(f"  Key: {key!r} -> Offset: {offset}")
 
         for key, offset in entries:
             index_record = IndexRecord(field_format, key, offset)

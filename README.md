@@ -1,5 +1,7 @@
 <meta charset="UTF-8">
 
+<h2>Nota: Los últimos cambios incluidos para el proyecto 1 fueron el parser sql, estos cambios fueron aprobados por el profesor para considerarse dentro de la nota de la presentación</h2>
+
 <h1 align="center">Mini DataBase Manager</h3>
 
 ---
@@ -279,11 +281,11 @@ Hemos realizado pruebas exhaustivas para evaluar el desempeño de cada técnica 
 
     ![Gráfico de Inserción](./assets/grafico_insercion.png)
 
-    | Registros | Sequential (I/O) | Sequential (ms) | ISAM (I/O) | ISAM (ms) | Hashing (I/O) | Hashing (ms) | B+ Tree (I/O) | B+ Tree (ms) | RTree (I/O) | RTree (ms) |
-    | :-------- | :--------------- | :-------------- | :--------- | :-------- | :------------ | :------------- | :------------ | :----------- | :---------- | :---------- |
-    | 10,000    | 800              | 120             | 150        | 30        | 90            | 15             | 180           | 45           | 200         | 50          |
-    | 50,000    | 4500             | 700             | 800        | 160       | 500           | 100            | 1100          | 270          | 1300        | 320         |
-    | 100,000   | 10000            | 1500            | 1800       | 360       | 1100          | 220            | 2400          | 600          | 2800        | 700         |
+    | Registros | Sequential (I/O) | Sequential (ms) | Hashing (I/O) | Hashing (ms) | B+ Tree (I/O) | B+ Tree (ms) | RTree (I/O) | RTree (ms) |
+    | :-------- | :--------------- | :-------------- | :------------ | :------------- | :------------ | :----------- | :---------- | :---------- |
+    | 10,000    | 800              | 120             | 90            | 15             | 180           | 45           | 200         | 50          |
+    | 50,000    | 4500             | 700             | 500           | 100            | 1100          | 270          | 1300        | 320         |
+    | 100,000   | 10000            | 1500            | 1100          | 220            | 2400          | 600          | 2800        | 700         |
    
 
 * **Gráfico 2: Búsqueda Exacta**
@@ -291,22 +293,22 @@ Hemos realizado pruebas exhaustivas para evaluar el desempeño de cada técnica 
 
     ![Gráfico de Búsqueda](./assets/grafico_busqueda.png)
 
-    | Registros | Sequential (I/O) | Sequential (ms) | ISAM (I/O) | ISAM (ms) | Hashing (I/O) | Hashing (ms) | B+ Tree (I/O) | B+ Tree (ms) | RTree (I/O) | RTree (ms) |
-    | :-------- | :--------------- | :-------------- | :--------- | :-------- | :------------ | :------------- | :------------ | :----------- | :---------- | :---------- |
-    | 10,000    | 10               | 5               | 5          | 2         | 2             | 1              | 5             | 2            | 6           | 3           |
-    | 50,000    | 20               | 10              | 7          | 3         | 2             | 1              | 7             | 3            | 8           | 4           |
-    | 100,000   | 30               | 15              | 10         | 4         | 3             | 2              | 10            | 4            | 12          | 6           |
+    | Registros | Sequential (I/O) | Sequential (ms) | Hashing (I/O) | Hashing (ms) | B+ Tree (I/O) | B+ Tree (ms) | RTree (I/O) | RTree (ms) |
+    | :-------- | :--------------- | :-------------- | :------------ | :------------- | :------------ | :----------- | :---------- | :---------- |
+    | 10,000    | 10               | 5               | 2             | 1              | 5             | 2            | 6           | 3           |
+    | 50,000    | 20               | 10              | 2             | 1              | 7             | 3            | 8           | 4           |
+    | 100,000   | 30               | 15              | 3             | 2              | 10            | 4            | 12          | 6           |
 
 * **Gráfico 3: Eliminación**
     Este gráfico y tabla muestran el costo de eliminar registros, considerando la reestructuración y el manejo de espacio libre de cada técnica.
 
     ![Gráfico de Eliminación](./assets/grafico_eliminacion.png)
 
-    | Registros | Sequential (I/O) | Sequential (ms) | ISAM (I/O) | ISAM (ms) | Hashing (I/O) | Hashing (ms) | B+ Tree (I/O) | B+ Tree (ms) | RTree (I/O) | RTree (ms) |
-    | :-------- | :--------------- | :-------------- | :--------- | :-------- | :------------ | :------------- | :------------ | :----------- | :---------- | :---------- |
-    | 10,000    | 15               | 8               | 6          | 3         | 3             | 2              | 10            | 3            | 7           | 4           |
-    | 50,000    | 25               | 12              | 8          | 4         | 4             | 2              | 15            | 5            | 9           | 5           |
-    | 100,000   | 40               | 20              | 12         | 6         | 4             | 3              | 20            | 7            | 14          | 8           |
+    | Registros | Sequential (I/O) | Sequential (ms) | Hashing (I/O) | Hashing (ms) | B+ Tree (I/O) | B+ Tree (ms) | RTree (I/O) | RTree (ms) |
+    | :-------- | :--------------- | :-------------- | :------------ | :------------- | :------------ | :----------- | :---------- | :---------- |
+    | 10,000    | 15               | 8               | 3             | 2              | 10            | 3            | 7           | 4           |
+    | 50,000    | 25               | 12              | 4             | 2              | 15            | 5            | 9           | 5           |
+    | 100,000   | 40               | 20              | 4             | 3              | 20            | 7            | 14          | 8           |
 
 </details>
 
@@ -366,7 +368,7 @@ Los experimentos respaldan los modelos teóricos: **Extendible Hashing** sobresa
 La aplicación cuenta con una **interfaz gráfica de usuario (GUI) amigable e intuitiva**, diseñada específicamente para facilitar la interacción con el sistema y la visualización directa del funcionamiento y las métricas de desempeño de las técnicas de indexación. La GUI permite a los usuarios:
 
 * **Creación y Carga de Datasets**:
-    * **Carga desde archivos CSV**: Los usuarios pueden cargar datasets existentes desde archivos CSV. La GUI presenta una opción para seleccionar el archivo, parsear sus encabezados y permitir al usuario mapear estos a tipos de datos (`INT`, `TEXT`, `DATE`, `ARRAY[FLOAT]`) y especificar qué columnas serán indexadas y con qué técnica (`SEQ`, `ISAM`, `HASH`, `BTree`, `RTree`).
+    * **Carga desde archivos CSV**: Los usuarios pueden cargar datasets existentes desde archivos CSV. La GUI presenta una opción para seleccionar el archivo, parsear sus encabezados y permitir al usuario mapear estos a tipos de datos (`INT`, `TEXT`, `DATE`, `ARRAY[FLOAT]`) y especificar qué columnas serán indexadas y con qué técnica (`SEQ`, `HASH`, `BTree`, `RTree`).
 
 * **Definición de Esquemas y Creación de Índices**:
     * La interfaz permite a los usuarios definir el esquema de sus tablas de forma visual. Se pueden añadir columnas, especificar su tipo de dato y, lo más importante, seleccionar la técnica de indexación deseada (o ninguna) para cada columna. Por ejemplo, al definir un `CREATE TABLE images (id INT PRIMARY KEY INDEX BTree, name TEXT INDEX HASH, creationDate DATE, features ARRAY[FLOAT] INDEX RTree);`, la GUI reflejará estas opciones con menús desplegables y checkboxes intuitivos.
@@ -414,15 +416,12 @@ Los **resultados experimentales** han validado nuestras hipótesis teóricas, mo
 
 </details>
 
-## 4.3. Video Demostrativo de Funcionalidad
+## 4.3. Aplicación Gráfica (Por terminar)
 
-En última instancia, este proyecto proporciona una **plataforma educativa y práctica** invaluable, que permite a los usuarios comprender de primera mano cómo la elección estratégica de una técnica de indexación puede optimizar drásticamente las operaciones de bases de datos, un conocimiento fundamental en el diseño y la administración de sistemas de información eficientes.
-
-Hemos preparado un **video demostrativo** que muestra la funcionalidad completa de la aplicación.
+Frontend web desployeado que conecta con el backend y la base de datos, permite usar SQL.
 
 **Pulsar en la imagen**
-[![Ver video](./images/04.png)](https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=sharing)
-https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=sharing
+[![Ver video](./images/04.png)](http://54.84.175.94:3000)
 
 ---
 
@@ -434,8 +433,4 @@ https://drive.google.com/file/d/1hWQnOL7_l6z6VjvyjqIOUalf-Eb9A6Ly/view?usp=shari
 
 ---
 
-# Oveview - Pasos de implementación del proyecto
-<details>
-<summary><strong>Ver más</strong></summary>
-
-</details>
+![](https://media1.tenor.com/m/jRaSFSY9f78AAAAC/postgresql-heart-locket.gif)

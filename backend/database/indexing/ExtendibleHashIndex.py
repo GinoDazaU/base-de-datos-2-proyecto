@@ -90,12 +90,13 @@ class _Page:
             return self.store.page(self.next).insert(rec)
         return False
 
-    def search(self, key):
+    def search(self, key) -> List[_Rec]:
         self.load()
-        for r in self.data:
-            if r.key == key:
-                return r
-        return None if self.next == -1 else self.store.page(self.next).search(key)
+        matches = [r for r in self.data if r.key == key]
+        if self.next != -1:
+            matches += self.store.page(self.next).search(key)
+        return matches
+
 
     def delete(self, key):
         self.load()
@@ -270,8 +271,9 @@ class _HashTree:
     def search(self, key: Union[int, str]) -> List[int]:
         bits = self._hash_bits(key)
         page = self.store.page(self._leaf(bits).pid)
-        r = page.search(key)
-        return [] if r is None else [r.offset]
+        results = page.search(key)
+        return [r.offset for r in results] if results else []
+
 
     def delete(self, key: Union[int, str]):
         bits = self._hash_bits(key)
