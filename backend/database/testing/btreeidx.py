@@ -8,114 +8,150 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database import *
 from storage.Record import Record
 
-def _test_btreeidx(n: int):
-    table_name = f"Heap{n}"
-    schema = [("id", "i"), ("nombre", "20s"), ("precio", "f")]
+def crear_arbol_inicial():
+    if os.path.exists("testtree.btree.idx"):
+        os.remove("testtree.btree.idx")
+    if os.path.exists("testtree.dat"):
+        os.remove("testtree.dat")
 
-    # Crear tabla y crear índice B+ en el campo 'nombre'
-    create_table(table_name, schema, primary_key="id")
-    create_btree_idx(table_name, "nombre")
-    print(f"Tabla '{table_name}' creada con índice B+ en 'nombre'.")
+    btree = BPlusTreeIndex(order=2, filename="testtree.dat", auxname="testtree.btree.idx", index_format='i')
+    claves = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    for i, clave in enumerate(claves):
+        btree.insert(IndexRecord('i', clave, 100 + i * 10))
+    return btree
 
-    nombre_objetivo = None
+import os
 
-    print(f"== INSERTANDO {n} REGISTROS ==")
-    for i in range(n):
-        nombre = "P" + ''.join(random.choices(string.ascii_uppercase, k=5))
-        if i == n // 2:
-            nombre_objetivo = nombre
-        precio = round(random.uniform(1.0, 100.0), 2)
-        rec = Record(schema, [i + 1, nombre, precio])
-        insert_record(table_name, rec)
+def limpiar_archivos_btree(nombre_base: str):
+    """
+    Elimina los archivos del índice B+ Tree (.btree.idx y .btree.aux) si existen.
+    
+    Args:
+        nombre_base: Ruta base (sin extensión) del índice, por ejemplo 'prueba.test'
+    """
+    for ext in [".btree.idx", ".btree.aux"]:
+        path = f"{nombre_base}{ext}"
+        if os.path.exists(path):
+            os.remove(path)
+            print(f"[DEBUG CLEAN] Archivo eliminado: {path}")
+        else:
+            print(f"[DEBUG CLEAN] No existe: {path}")
 
-    print(f"\nBuscando registros con nombre: {nombre_objetivo}\n")
+def test_eliminacion_caso_1_y_2():
+    print("\n--- TEST CASOS 1 y 2 ---")
 
-    # Búsqueda sin índice
-    t1 = time.time()
-    res_no_idx = search_by_field(table_name, "nombre", nombre_objetivo)
-    t2 = time.time()
-    print(f"Sin índice: {len(res_no_idx)} encontrado(s) en {t2 - t1:.6f} s")
+    limpiar_archivos_btree("prueba.test")
 
-    # Búsqueda con índice B+
-    t3 = time.time()
-    res_btree_idx = search_btree_idx(table_name, "nombre", nombre_objetivo)
-    t4 = time.time()
-    print(f"Con índice B+: {len(res_btree_idx)} encontrado(s) en {t4 - t3:.6f} s")
+    btree = crear_arbol_inicial()
 
-    # Eliminación por PK de todos los encontrados
-    print("\n== ELIMINANDO REGISTROS POR PK ==")
-    for r in res_no_idx:
-        pk_idx = [i for i, (n, _) in enumerate(r.schema) if n == "id"][0]
-        delete_record(table_name, r.values[pk_idx])
+    print("\n--- Antes de eliminar ---")
+    for k in [30, 40]:
+        print(f"[DEBUG SEARCH] Buscando clave: {k}")
+        print(f"Buscar {k}: {btree.search(k)}")
 
-    # Verificación post-borrado
-    print(f"\n== VERIFICACIÓN POST-BORRADO de {nombre_objetivo} ==")
-    res1 = search_by_field(table_name, "nombre", nombre_objetivo)
-    print(f"Sin índice: {'ENCONTRADO' if res1 else 'NO ENCONTRADO'}")
+    offset_30 = btree.search(30)[0]
+    btree.delete(30, offset_30)
 
-    res2 = search_btree_idx(table_name, "nombre", nombre_objetivo)
-    print(f"Con índice B+: {'ENCONTRADO' if res2 else 'NO ENCONTRADO'}")
+    print("\n--- Después de eliminar 30 (caso 1) ---")
+    print(f"Buscar 30: {btree.search(30)}")
 
-    # Elegimos valores de rango basados en el alfabeto
-    valor_inicio = "PA"    # por ejemplo
-    valor_fin = "PZ"
+    offset_40 = btree.search(40)[0]
+    btree.delete(40, offset_40)
 
-    print(f"\n== BÚSQUEDA POR RANGO: '{valor_inicio}' a '{valor_fin}' ==")
-    t5 = time.time()
-    res_rango = search_btree_idx_range(table_name, "nombre", valor_inicio, valor_fin)
-    t6 = time.time()
-    print(f"Con índice B+ (rango): {len(res_rango)} encontrado(s) en {t6 - t5:.6f} s")
+    print("\n--- Después de eliminar 40 (caso 2) ---")
+    print(f"Buscar 40: {btree.search(40)}")
 
-    print("\n== SCAN B+ TREE ==")
-    #print_btree_idx(table_name, "nombre")
+def test_eliminacion_caso_3_redistribucion():
+    print("\n--- TEST CASO 3: Redistribución ---")
+    btree = crear_arbol_inicial()
+    for k in [30, 40, 50]:
+        offset = btree.search(k)[0]
+        btree.delete(k, offset)
 
-def _test_btreeidx_integers(n: int):
-    table_name = f"HeapInt{n}"
-    schema = [("id", "i"), ("codigo", "i"), ("precio", "f")]
+    print("\n--- Después de eliminar 30, 40, 50 ---")
+    for k in [30, 40, 50]:
+        print(f"Buscar {k}: {btree.search(k)}")
 
-    create_table(table_name, schema, primary_key="id")
-    create_btree_idx(table_name, "codigo")
-    print(f"Tabla '{table_name}' creada con índice B+ en 'codigo'.")
+def test_eliminacion_caso_4_fusion():
+    print("\n--- TEST CASO 4: Fusión de hojas ---")
+    from indexing.BPlusTreeIndex import BPlusTreeIndex, IndexRecord
+    import os
 
-    codigo_objetivo = None
+    # Preparar entorno de prueba
+    test_file = "fusion_test"
+    aux_file = "fusion_test.codigo.btree.idx"
 
-    print(f"== INSERTANDO {n} REGISTROS ==")
-    for i in range(n):
-        codigo = random.randint(1000, 9999)
-        if i == n // 2:
-            codigo_objetivo = codigo
-        precio = round(random.uniform(1.0, 100.0), 2)
-        rec = Record(schema, [i + 1, codigo, precio])
-        insert_record(table_name, rec)
+    # Eliminar archivos previos
+    for f in [test_file, aux_file]:
+        if os.path.exists(f):
+            os.remove(f)
 
-    print(f"\nBuscando registros con codigo: {codigo_objetivo}\n")
+    # Crear árbol con orden 2 (max 2 claves por nodo)
+    tree = BPlusTreeIndex(order=2, filename=test_file, auxname=aux_file, index_format='i')
 
-    # Búsqueda sin índice
-    t1 = time.time()
-    res_no_idx = search_by_field(table_name, "codigo", codigo_objetivo)
-    t2 = time.time()
-    print(f"Sin índice: {len(res_no_idx)} encontrado(s) en {t2 - t1:.6f} s")
+    # Insertar claves que caen en distintas hojas y luego forzarán fusión
+    claves = [10, 20, 30, 40, 50, 60]
+    for i, clave in enumerate(claves):
+        tree.insert(IndexRecord('i', clave, 100 + i * 10))
 
-    # Búsqueda con índice B+
-    t3 = time.time()
-    res_btree_idx = search_btree_idx(table_name, "codigo", codigo_objetivo)
-    t4 = time.time()
-    print(f"Con índice B+: {len(res_btree_idx)} encontrado(s) en {t4 - t3:.6f} s")
+    print("\n[DEBUG] Árbol después de inserciones:")
+    tree.scan_all()
 
-    # Eliminación por PK de todos los encontrados
-    print("\n== ELIMINANDO REGISTROS POR PK ==")
-    for r in res_no_idx:
-        pk_idx = [i for i, (n, _) in enumerate(r.schema) if n == "id"][0]
-        delete_record(table_name, r.values[pk_idx])
+    # Eliminar claves para dejar una hoja vacía y forzar fusión
+    for clave in [30, 40, 50]:
+        offset = 100 + claves.index(clave) * 10
+        print(f"[DEBUG DELETE TEST] Eliminando clave: {clave}")
+        tree.delete(clave, offset)
 
-    # Verificación post-borrado
-    print(f"\n== VERIFICACIÓN POST-BORRADO de {codigo_objetivo} ==")
-    res1 = search_by_field(table_name, "codigo", codigo_objetivo)
-    print(f"Sin índice: {'ENCONTRADO' if res1 else 'NO ENCONTRADO'}")
+    print("\n[DEBUG] Árbol después de eliminar 30, 40, 50 (esperamos fusión de hojas):")
+    tree.scan_all()
 
-    res2 = search_btree_idx(table_name, "codigo", codigo_objetivo)
-    print(f"Con índice B+: {'ENCONTRADO' if res2 else 'NO ENCONTRADO'}")
+    # Confirmar que ya no existen
+    for clave in [30, 40, 50]:
+        result = tree.search(clave)
+        print(f"[DEBUG BUSCAR {clave}] → {result}")
+
+def test_delete_case5_fusion_internal_nodes():
+    print("\n--- TEST CASO 5: Fusión en nodos internos ---")
+
+    from indexing.BPlusTreeIndex import BPlusTreeIndex
+    from indexing.IndexRecord import IndexRecord
+
+    auxname = "test_case5.btree.idx"
+    dataname = "test_case5.dat"
+
+    # Eliminar archivos anteriores
+    for f in [auxname, dataname]:
+        if os.path.exists(f):
+            os.remove(f)
+
+    tree = BPlusTreeIndex(order=2, filename=dataname, auxname=auxname, index_format='i')
+
+    # Insertar 15 claves para generar varios splits y nodos internos
+    for i in range(15):
+        key = (i + 1) * 10  # 10, 20, ..., 150
+        tree.insert(IndexRecord('i', key, 100 + i * 10))
+
+    print("\n[DEBUG] Árbol después de inserciones:")
+    tree.scan_all()
+
+    # Eliminar todas las claves menos 10 y 150 (borde)
+    for i in range(1, 14):  # 20 hasta 140
+        key = (i + 1) * 10
+        print(f"[DEBUG DELETE TEST] Eliminando clave: {key}")
+        tree.delete(key, 100 + i * 10)
+
+    print("\n[DEBUG] Árbol después de eliminar múltiples claves (esperamos fusión de nodos internos):")
+    tree.scan_all()
+
+    # Validación
+    for i in range(1, 14):
+        key = (i + 1) * 10
+        found = tree.search(key)
+        print(f"[DEBUG BUSCAR {key}] → {found}")
 
 if __name__ == "__main__":
-    _test_btreeidx(100)
-    #_test_btreeidx_integers(100)
+    #test_eliminacion_caso_1_y_2()
+    #test_eliminacion_caso_3_redistribucion()
+    #test_eliminacion_caso_4_fusion()
+    test_delete_case5_fusion_internal_nodes()
