@@ -1,7 +1,7 @@
 import struct
 import json
 import os
-from typing import Optional, Tuple, List
+from typing import Iterator, Optional, Tuple, List
 import pandas as pd
 
 from .Record import Record
@@ -437,3 +437,32 @@ class HeapFile:
 
             df = pd.DataFrame(rows, columns=headers)
         return df
+
+    # esto es para el spimi, se supone (segun gpt) yield hace que retornes los elementos
+    # de una lista de uno en uno, no todo de golpe lo que llenaria la ram
+    def iterate_text_documents(self) -> Iterator[Tuple[int, str]]:
+        """
+        Devuelve (id, texto) de todos los registros válidos,
+        concatenando todos los campos 'text' en un solo string.
+        """
+        text_fields = [i for i, (_, fmt) in enumerate(self.schema) if fmt == "text"]
+        pk_idx, _ = self._pk_idx_fmt()
+        sentinel = self._sentinel(self.schema[pk_idx][1])
+
+        with open(self.filename, "rb") as fh:
+            fh.seek(METADATA_SIZE)
+            for i in range(self.heap_size):
+                buf = fh.read(self.rec_data_size)
+                if len(buf) < self.rec_data_size:
+                    break
+                rec = Record.unpack(buf, self.schema)
+                if rec.values[pk_idx] == sentinel:
+                    fh.seek(PTR_SIZE, os.SEEK_CUR)
+                    continue
+                text = " ".join(
+                    TextFile(self.table_name, self.schema[idx][0]).read(offset)
+                    for idx in text_fields
+                    for offset in [rec.values[idx]]
+                )
+                fh.seek(PTR_SIZE, os.SEEK_CUR)
+                yield rec.values[pk_idx], text
