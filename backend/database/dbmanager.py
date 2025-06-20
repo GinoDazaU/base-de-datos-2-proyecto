@@ -210,10 +210,7 @@ class DBManager:
         table_path = DBManager.table_path(table_name)
         heap = HeapFile(table_path)
         seq_idx = SequentialIndex(table_path, field_name)
-        return [
-            heap.fetch_record_by_offset(r.offset)
-            for r in seq_idx.search_record(field_value)
-        ]
+        return [heap.fetch_record_by_offset(r.offset) for r in seq_idx.search_record(field_value)]
     
     @staticmethod
     def search_seq_idx_range(table_name: str, field_name: str, start_value, end_value):
@@ -222,16 +219,13 @@ class DBManager:
         idx = SequentialIndex(table_path, field_name)
         records = idx.search_range(start_value, end_value)
         return [heap.fetch_record_by_offset(rec.offset) for rec in records]
-
     
     @staticmethod
     def search_hash_idx(table_name: str, field_name: str, field_value):
         table_path = DBManager.table_path(table_name)
         heap = HeapFile(table_path)
         hidx = ExtendibleHashIndex(table_path, field_name)
-        return [
-            heap.fetch_record_by_offset(r.offset) for r in hidx.search_record(field_value)
-        ]
+        return [heap.fetch_record_by_offset(r.offset) for r in hidx.search_record(field_value)]
     
     @staticmethod
     def search_btree_idx(table_name: str, field_name: str, field_value):
@@ -328,3 +322,13 @@ class DBManager:
             return False
         DBManager.remove_from_secondary_indexes(table_path, old_rec, offset)
         return True
+    
+    # region Parser helper functions
+    
+    def create_index(self, table_name: str, field_name: str, index_type: str) -> None:
+        pass
+
+    def drop_index(self, table_name: str, field_name: str, index_type: str) -> None:
+        pass
+
+    # endregion
