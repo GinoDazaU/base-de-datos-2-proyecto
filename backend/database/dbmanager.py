@@ -64,9 +64,7 @@ class DBManager:
             case _ if re_string.fullmatch(format): return ColumnType.VARCHAR
             case _: raise ValueError(f"Unknown format '{format}' for field '{field_name}' in table '{table_name}'")
 
-    # Index management methods
-
-    # Index creation methods
+    # region Index creation
     @staticmethod
     def create_seq_idx(table_name: str, field_name: str) -> None:
         type = DBManager.get_field_type(table_name, field_name)
@@ -103,7 +101,7 @@ class DBManager:
         RTreeIndex.build_index(path, HeapFile(path).extract_index, field_name)
         print(f"Índice R-Tree creado para {field_name} en la tabla {table_name}.")
 
-    # Index verification methods
+    # region Index verification
     @staticmethod
     def check_seq_idx(table_name: str, field: str) -> bool:
         table_path = DBManager.table_path(table_name)
@@ -128,7 +126,7 @@ class DBManager:
         index_paths = (f"{table_path}.{field}.rtree.{ext}" for ext in ("idx", "dat"))
         return all(os.path.exists(index_path) for index_path in index_paths)
 
-    # Index deletion methods    
+    # region Index deletion
     @staticmethod
     def drop_seq_idx(table_name: str, field) -> None:
         table_path = DBManager.table_path(table_name)
@@ -311,8 +309,8 @@ class DBManager:
         rtree = RTreeIndex(table_path, field_name)
         records = rtree.search_knn(point, k)
         return [heap.fetch_record_by_offset(rec.offset) for rec in records]
-    
-    # Main methods
+
+    # region Main methods
     @staticmethod
     def create_table(table_name: str, schema: List[Tuple[str, str]],
                      primary_key: Optional[str] = None) -> None:
@@ -373,5 +371,3 @@ class DBManager:
 
     def drop_index(self, table_name: str, field_name: str, index_type: IndexType) -> None:
         pass
-
-    # endregion
