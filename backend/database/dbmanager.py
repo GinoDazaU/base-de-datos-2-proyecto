@@ -7,8 +7,9 @@ from storage.Record import Record
 from indexing.SequentialIndex import SequentialIndex
 from indexing.ExtendibleHashIndex import ExtendibleHashIndex
 from indexing.BPlusTreeIndex import BPlusTreeIndex, BPlusTreeIndexWrapper
-from indexing.IndexRecord import IndexRecord
+from indexing.IndexRecord import IndexRecord, re_string, re_tuple
 from indexing.RTreeIndex import RTreeIndex
+from column_types import IndexType, ColumnType
 
 class DBManager:
     _instance = None
@@ -42,30 +43,62 @@ class DBManager:
             raise FileNotFoundError(f"Table {table_name} does not exist")
         schema_path = DBManager.table_path(table_name) + ".schema.json"
         return HeapFile._load_schema_from_file(schema_path)
+    
+    @staticmethod
+    def get_field_format(table_name: str, field_name: str) -> str:
+        schema = DBManager.get_table_schema(table_name)
+        for name, field_name in schema:
+            if name == field_name:
+                return field_name
+        raise ValueError(f"Field {field_name} not found in table {table_name}")
+    
+    @staticmethod
+    def get_field_type(table_name: str, field_name: str) -> ColumnType:
+        format = DBManager.get_field_format(table_name, field_name)
+        match format:
+            case 'i': return ColumnType.INT
+            case 'f': return ColumnType.FLOAT
+            case '?': return ColumnType.BOOL
+            case "2f": return ColumnType.POINT2D
+            case "3f": return ColumnType.POINT3D
+            case _ if re_string.fullmatch(format): return ColumnType.VARCHAR
+            case _: raise ValueError(f"Unknown format '{format}' for field '{field_name}' in table '{table_name}'")
 
     # Index management methods
 
     # Index creation methods
     @staticmethod
     def create_seq_idx(table_name: str, field_name: str) -> None:
+        type = DBManager.get_field_type(table_name, field_name)
+        if type not in (ColumnType.INT, ColumnType.FLOAT, ColumnType.VARCHAR):
+            raise ValueError(f"Índice no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}.")
         path = DBManager.table_path(table_name)
         SequentialIndex.build_index(path, HeapFile(path).extract_index, field_name)
         print(f"Índice secuencial creado para {field_name} en la tabla {table_name}.")
 
     @staticmethod
     def create_hash_idx(table_name: str, field_name: str) -> None:
+        type = DBManager.get_field_type(table_name, field_name)
+        if type not in (ColumnType.INT, ColumnType.VARCHAR):
+            raise ValueError(f"Índice hash no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}.")
         path = DBManager.table_path(table_name)
         ExtendibleHashIndex.build_index(path, HeapFile(path).extract_index, field_name)
         print(f"Índice hash creado para {field_name} en la tabla {table_name}.")
 
     @staticmethod
     def create_btree_idx(table_name: str, field_name: str) -> None:
+        type = DBManager.get_field_type(table_name, field_name)
+        if type not in (ColumnType.INT, ColumnType.FLOAT, ColumnType.VARCHAR):
+            raise ValueError(f"Índice B+Tree no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}.")
         path = DBManager.table_path(table_name)
         BPlusTreeIndex.build_index(path, HeapFile(path).extract_index, field_name)
         print(f"Índice B+Tree creado para {field_name} en la tabla {table_name}.")
 
     @staticmethod
     def create_rtree_idx(table_name: str, field_name: str) -> None:
+        type = DBManager.get_field_type(table_name, field_name)
+        if type not in (ColumnType.POINT2D, ColumnType.POINT3D):
+            raise ValueError(f"Índice R-Tree no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}.")
         path = DBManager.table_path(table_name)
         RTreeIndex.build_index(path, HeapFile(path).extract_index, field_name)
         print(f"Índice R-Tree creado para {field_name} en la tabla {table_name}.")
@@ -325,10 +358,20 @@ class DBManager:
     
     # region Parser helper functions
     
-    def create_index(self, table_name: str, field_name: str, index_type: str) -> None:
-        pass
+    def create_index(self, table_name: str, field_name: str, index_type: IndexType) -> None:
+        match index_type:
+            case IndexType.SEQUENTIAL:
+                DBManager.create_seq_idx(table_name, field_name)
+            case IndexType.EXTENDIBLEHASH:
+                DBManager.create_hash_idx(table_name, field_name)
+            case IndexType.BPLUSTREE:
+                DBManager.create_btree_idx(table_name, field_name)
+            case IndexType.RTREE:
+                DBManager.create_rtree_idx(table_name, field_name)
+            case _:
+                raise ValueError(f"Unkown idex type: {index_type}")
 
-    def drop_index(self, table_name: str, field_name: str, index_type: str) -> None:
+    def drop_index(self, table_name: str, field_name: str, index_type: IndexType) -> None:
         pass
 
     # endregion

@@ -29,6 +29,8 @@ from database import (
     _table_path,
 )
 
+from dbmanager import DBManager
+
 from statement import (
     CreateTableStatement,
     CreateIndexStatement,
@@ -180,58 +182,7 @@ class RunVisitor:
         return QueryResult(True, f"Table '{st.table_name}' dropped successfully.")
 
     def visit_createindexstatement(self, st: CreateIndexStatement):
-        schema: SchemaType = get_table_schema(
-            st.table_name
-        )  # also checks if table exists
-        fmt: str = None
-
-        for name, format in schema:  # WHY IS SCHEMA A LIST
-            if st.column_name == name:
-                fmt = format
-                break
-
-        if fmt is None:
-            raise ValueError(
-                f"Column '{st.column_name}' does not exist in table '{st.table_name}'."
-            )
-
-        actual_type = fmt_to_column_type(fmt)
-
-        if st.index_type == IndexType.BPLUSTREE:
-            if actual_type not in (
-                ColumnType.INT,
-                ColumnType.FLOAT,
-                ColumnType.VARCHAR,
-            ):
-                raise ValueError(
-                    f"B+ Tree index can only be created on INT, FLOAT or VARCHAR columns, not {actual_type}."
-                )
-            create_btree_idx(st.table_name, st.column_name)
-        elif st.index_type == IndexType.EXTENDIBLEHASH:
-            if actual_type not in (ColumnType.INT, ColumnType.VARCHAR):
-                raise ValueError(
-                    f"Extendible Hash index can only be created on INT or VARCHAR columns, not {actual_type}."
-                )
-            create_hash_idx(st.table_name, st.column_name)
-        elif st.index_type == IndexType.RTREE:
-            if actual_type not in (ColumnType.POINT2D, ColumnType.POINT3D):
-                raise ValueError(
-                    f"R-Tree index can only be created on POINT2D or POINT3D columns, not {actual_type}."
-                )
-            create_rtree_idx(st.table_name, st.column_name)
-        elif st.index_type == IndexType.SEQUENTIAL:
-            if actual_type not in (
-                ColumnType.INT,
-                ColumnType.FLOAT,
-                ColumnType.VARCHAR,
-            ):
-                raise ValueError(
-                    f"Sequential index can only be created on INT, FLOAT or VARCHAR columns, not {actual_type}."
-                )
-            create_seq_idx(st.table_name, st.column_name)
-        else:
-            raise ValueError(f"Unsupported index type: {st.index_type}")
-
+        DBManager().create_index(st.table_name, st.column_name, st.index_type)
         return QueryResult(
             True,
             f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' created successfully.",
