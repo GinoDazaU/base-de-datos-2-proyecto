@@ -5,7 +5,11 @@
 import os
 import glob
 import time
+import math
+import json
+
 from typing import List, Tuple, Optional, Union
+from collections import Counter, defaultdict
 
 from storage.HeapFile import HeapFile
 from storage.Record import Record
@@ -14,6 +18,8 @@ from indexing.ExtendibleHashIndex import ExtendibleHashIndex
 from indexing.BPlusTreeIndex import BPlusTreeIndex, BPlusTreeIndexWrapper
 from indexing.IndexRecord import IndexRecord
 from indexing.RTreeIndex import RTreeIndex
+from indexing.Spimi import SPIMIIndexer
+from indexing.utils_spimi import preprocess
 
 # Ruta base para almacenamiento de tablas
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -499,3 +505,79 @@ def print_btree_idx(table_name: str, field_name: str):
 
 def print_rtree_idx(table_name: str, field_name: str):
     RTreeIndex(_table_path(table_name), field_name).print_all()
+
+
+def build_spimi_index(table_name: str) -> None:
+    """
+    Construye el índice invertido SPIMI para los campos de tipo 'text' de la tabla.
+    """
+    indexer = SPIMIIndexer()
+    indexer.build_index(table_name)
+
+def search_text(table_name: str, query: str, k: int = 5) -> list[tuple[Record, float]]:
+    """
+    Realiza una búsqueda textual usando similitud de coseno entre la query y los documentos.
+    """
+    query_tokens = preprocess(query)
+    if not query_tokens:
+        return []
+
+    # Contamos frecuencia de términos en la consulta
+    query_tf = Counter(query_tokens)
+    total_terms_in_query = sum(query_tf.values())
+
+    # Normalizamos TF y preparamos espacio para scores
+    query_vector = {}
+    query_norm_squared = 0
+
+    # Recuperamos postings relevantes
+    doc_vectors = defaultdict(dict)  # doc_id -> {term: tfidf}
+    doc_norms = defaultdict(float)   # doc_id -> norma²
+    postings_records = search_hash_idx("inverted_index", "term", "term")
+
+    for rec in postings_records:
+        term, postings_json = rec.values
+        if term not in query_tf:
+            continue
+
+        # TF de la query para ese término
+        tf_q = query_tf[term] / total_terms_in_query  # normalizado
+        # Recuperamos postings
+        postings = json.loads(postings_json)
+
+        # Estimamos IDF desde TF-IDF invertido (solo si TF en doc es 1)
+        idf = 0
+        if postings:
+            tfidf_sample = postings[0][1]
+            idf = tfidf_sample / 1  # suposición: TF fue 1
+
+        tfidf_q = tf_q * idf
+        query_vector[term] = tfidf_q
+        query_norm_squared += tfidf_q ** 2
+
+        for doc_id, tfidf in postings:
+            doc_vectors[doc_id][term] = tfidf
+            doc_norms[doc_id] += tfidf ** 2
+
+    # Similitud coseno
+    query_norm = math.sqrt(query_norm_squared)
+    scored_docs = []
+
+    for doc_id, term_weights in doc_vectors.items():
+        dot_product = sum(query_vector[term] * term_weights.get(term, 0) for term in query_vector)
+        doc_norm = math.sqrt(doc_norms[doc_id])
+        similarity = dot_product / (query_norm * doc_norm) if doc_norm else 0
+        scored_docs.append((doc_id, similarity))
+
+    # Top-k
+    scored_docs.sort(key=lambda x: x[1], reverse=True)
+    scored_docs = scored_docs[:k]
+
+    # Cargar registros
+    results = []
+    for doc_id, sim in scored_docs:
+        record = search_by_field(table_name, "id", doc_id)
+        if record:
+            results.append((record, sim))
+
+    return results
