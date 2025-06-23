@@ -370,4 +370,14 @@ class DBManager:
                 raise ValueError(f"Unkown idex type: {index_type}")
 
     def drop_index(self, table_name: str, field_name: str, index_type: IndexType) -> None:
-        pass
+        match index_type:
+            case IndexType.SEQUENTIAL:
+                DBManager.drop_seq_idx(table_name, field_name)
+            case IndexType.EXTENDIBLEHASH:
+                DBManager.drop_hash_idx(table_name, field_name)
+            case IndexType.BPLUSTREE:
+                DBManager.drop_btree_idx(table_name, field_name)
+            case IndexType.RTREE:
+                DBManager.drop_rtree_idx(table_name, field_name)
+            case _:
+                raise ValueError(f"Unknown index type: {index_type}")

@@ -189,33 +189,7 @@ class RunVisitor:
         )
 
     def visit_dropindexstatement(self, st: DropIndexStatement):
-        if st.index_type == IndexType.BPLUSTREE:
-            if not check_btree_idx(st.table_name, st.column_name):
-                raise ValueError(
-                    f"B+ Tree index on column '{st.column_name}' in table '{st.table_name}' does not exist."
-                )
-            drop_btree_idx(st.table_name, st.column_name)
-        elif st.index_type == IndexType.EXTENDIBLEHASH:
-            if not check_hash_idx(st.table_name, st.column_name):
-                raise ValueError(
-                    f"Extendible Hash index on column '{st.column_name}' in table '{st.table_name}' does not exist."
-                )
-            drop_hash_idx(st.table_name, st.column_name)
-        elif st.index_type == IndexType.RTREE:
-            if not check_rtree_idx(st.table_name, st.column_name):
-                raise ValueError(
-                    f"R-Tree index on column '{st.column_name}' in table '{st.table_name}' does not exist."
-                )
-            drop_rtree_idx(st.table_name, st.column_name)
-        elif st.index_type == IndexType.SEQUENTIAL:
-            if not check_seq_idx(st.table_name, st.column_name):
-                raise ValueError(
-                    f"Sequential index on column '{st.column_name}' in table '{st.table_name}' does not exist."
-                )
-            drop_seq_idx(st.table_name, st.column_name)
-        else:
-            raise ValueError(f"Unsupported index type: {st.index_type}")
-
+        DBManager().drop_index(st.table_name, st.column_name, st.index_type)
         return QueryResult(
             True,
             f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' dropped successfully.",
