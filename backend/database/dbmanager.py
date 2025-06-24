@@ -35,7 +35,7 @@ class DBManager:
     
     @staticmethod
     def check_table_exists(table_name: str):
-     return os.path.exists(DBManager.table_path(table_name) + ".dat")
+     return os.path.exists(DBManager.table_path(table_name) + ".dat") and os.path.exists(DBManager.table_path(table_name) + ".schema.json")
     
     @staticmethod
     def get_table_schema(table_name: str):
@@ -72,7 +72,6 @@ class DBManager:
             raise ValueError(f"Índice no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}.")
         path = DBManager.table_path(table_name)
         SequentialIndex.build_index(path, HeapFile(path).extract_index, field_name)
-        print(f"Índice secuencial creado para {field_name} en la tabla {table_name}.")
 
     @staticmethod
     def create_hash_idx(table_name: str, field_name: str) -> None:
@@ -81,7 +80,6 @@ class DBManager:
             raise ValueError(f"Índice hash no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}.")
         path = DBManager.table_path(table_name)
         ExtendibleHashIndex.build_index(path, HeapFile(path).extract_index, field_name)
-        print(f"Índice hash creado para {field_name} en la tabla {table_name}.")
 
     @staticmethod
     def create_btree_idx(table_name: str, field_name: str) -> None:
@@ -90,7 +88,6 @@ class DBManager:
             raise ValueError(f"Índice B+Tree no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}.")
         path = DBManager.table_path(table_name)
         BPlusTreeIndex.build_index(path, HeapFile(path).extract_index, field_name)
-        print(f"Índice B+Tree creado para {field_name} en la tabla {table_name}.")
 
     @staticmethod
     def create_rtree_idx(table_name: str, field_name: str) -> None:
@@ -99,7 +96,6 @@ class DBManager:
             raise ValueError(f"Índice R-Tree no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}.")
         path = DBManager.table_path(table_name)
         RTreeIndex.build_index(path, HeapFile(path).extract_index, field_name)
-        print(f"Índice R-Tree creado para {field_name} en la tabla {table_name}.")
 
     # region Index verification
     @staticmethod
@@ -318,23 +314,11 @@ class DBManager:
         print(f"Tabla {table_name} creada con éxito.")
 
     @staticmethod
-    def drop_table(table_name: str) -> None:
+    def drop_table_aux(table_name: str) -> None:
         DBManager.drop_all_indexes_table(table_name)
-
         table_path = DBManager.table_path(table_name)
-        if not os.path.exists(f"{table_path}.dat"):
-            raise FileNotFoundError(f"La tabla '{table_name}' no existe.")
-
         os.remove(f"{table_path}.dat")
-
-        if not os.path.exists(f"{table_path}.schema.json"):
-            raise FileNotFoundError(
-                f"El archivo de esquema de la tabla '{table_name}' no existe."
-            )
-
         os.remove(f"{table_path}.schema.json")
-
-        print(f"Tabla '{table_name}' eliminada correctamente.")
 
     @staticmethod
     def insert_record(table_name: str, record: Record) -> int:
@@ -355,8 +339,15 @@ class DBManager:
         return True
     
     # region Parser helper functions
+
+    def drop_table(self, table_name: str) -> None:
+        if not DBManager.check_table_exists(table_name):
+            raise ValueError(f"La tabla '{table_name}' no existe.")
+        DBManager.drop_table_aux(table_name)
     
     def create_index(self, table_name: str, field_name: str, index_type: IndexType) -> None:
+        if not DBManager.check_table_exists(table_name):
+            raise ValueError(f"La tabla '{table_name}' no existe.")
         match index_type:
             case IndexType.SEQUENTIAL:
                 DBManager.create_seq_idx(table_name, field_name)
@@ -367,9 +358,11 @@ class DBManager:
             case IndexType.RTREE:
                 DBManager.create_rtree_idx(table_name, field_name)
             case _:
-                raise ValueError(f"Unkown idex type: {index_type}")
+                raise ValueError(f"Unkown index type: {index_type}")
 
     def drop_index(self, table_name: str, field_name: str, index_type: IndexType) -> None:
+        if not DBManager.check_table_exists(table_name):
+            raise ValueError(f"La tabla '{table_name}' no existe.")
         match index_type:
             case IndexType.SEQUENTIAL:
                 DBManager.drop_seq_idx(table_name, field_name)

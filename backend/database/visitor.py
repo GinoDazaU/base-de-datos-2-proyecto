@@ -176,9 +176,7 @@ class RunVisitor:
         return QueryResult(True, f"Table '{st.table_name}' created successfully.")
 
     def visit_droptablestatement(self, st: DropTableStatement):
-        if not check_table_exists(st.table_name):
-            raise ValueError(f"Table '{st.table_name}' does not exist.")
-        drop_table(st.table_name)
+        DBManager().drop_table(st.table_name)
         return QueryResult(True, f"Table '{st.table_name}' dropped successfully.")
 
     def visit_createindexstatement(self, st: CreateIndexStatement):
