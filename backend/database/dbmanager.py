@@ -340,6 +340,8 @@ class DBManager:
     
     # region Parser helper functions
 
+    def create_table(self, table_name: str, )
+
     def drop_table(self, table_name: str) -> None:
         if not DBManager.check_table_exists(table_name):
             raise ValueError(f"La tabla '{table_name}' no existe.")

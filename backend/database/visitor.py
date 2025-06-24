@@ -181,17 +181,11 @@ class RunVisitor:
 
     def visit_createindexstatement(self, st: CreateIndexStatement):
         DBManager().create_index(st.table_name, st.column_name, st.index_type)
-        return QueryResult(
-            True,
-            f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' created successfully.",
-        )
+        return QueryResult(True, f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' created successfully.")
 
     def visit_dropindexstatement(self, st: DropIndexStatement):
         DBManager().drop_index(st.table_name, st.column_name, st.index_type)
-        return QueryResult(
-            True,
-            f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' dropped successfully.",
-        )
+        return QueryResult(True, f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' dropped successfully.")
 
     def visit_insertstatement(self, st: InsertStatement):
         if not check_table_exists(st.table_name):
