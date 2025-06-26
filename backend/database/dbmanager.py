@@ -10,6 +10,8 @@ from indexing.BPlusTreeIndex import BPlusTreeIndex, BPlusTreeIndexWrapper
 from indexing.IndexRecord import IndexRecord, re_string, re_tuple
 from indexing.RTreeIndex import RTreeIndex
 from column_types import IndexType, ColumnType
+from statement import CreateColumnDefinition
+from fancytypes.schema import SchemaType
 
 class DBManager:
     _instance = None
@@ -27,7 +29,7 @@ class DBManager:
             return
         self._initialized = True
 
-    # Helper methods for managing tables and schemas
+    # region Helper methods
     @staticmethod
     def table_path(table_name: str) -> str:
         """Devuelve la ruta absoluta (sin extensión) de la tabla."""
@@ -63,6 +65,24 @@ class DBManager:
             case "3f": return ColumnType.POINT3D
             case _ if re_string.fullmatch(format): return ColumnType.VARCHAR
             case _: raise ValueError(f"Unknown format '{format}' for field '{field_name}' in table '{table_name}'")
+
+    @staticmethod
+    def type_to_format(column_type: ColumnType, varchar_length: int = 0) -> str:
+        match column_type:
+            case ColumnType.INT:
+                return "i"
+            case ColumnType.FLOAT:
+                return "f"
+            case ColumnType.VARCHAR:
+                return f"{varchar_length}s"
+            case ColumnType.BOOL:
+                return "?"
+            case ColumnType.POINT2D:
+                return "2f"
+            case ColumnType.POINT3D:
+                return "3f"
+            case _:
+                raise ValueError(f"Unsupported column type: {column_type}")
 
     # region Index creation
     @staticmethod
@@ -179,7 +199,7 @@ class DBManager:
         for field in fields:
             DBManager.drop_all_indexes_field(table_name, field)
 
-    # Update indexes
+    # region Index update
     @staticmethod
     def update_secondary_indexes(table_path: str, record: Record, offset: int) -> None:
         schema = record.schema
@@ -227,7 +247,7 @@ class DBManager:
             elif idx_type == "rtree":
                 RTreeIndex(table_path, field_name).delete_record(value, offset)
 
-    # Search methods
+    # region Index search
     @staticmethod
     def search_by_field(table_name: str, field_name: str, value):
       return HeapFile(DBManager.table_path(table_name)).search_by_field(field_name, value)
@@ -308,7 +328,7 @@ class DBManager:
 
     # region Main methods
     @staticmethod
-    def create_table(table_name: str, schema: List[Tuple[str, str]],
+    def create_table_aux(table_name: str, schema: List[Tuple[str, str]],
                      primary_key: Optional[str] = None) -> None:
         HeapFile.build_file(DBManager.table_path(table_name), schema, primary_key)
         print(f"Tabla {table_name} creada con éxito.")
@@ -340,7 +360,21 @@ class DBManager:
     
     # region Parser helper functions
 
-    def create_table(self, table_name: str, )
+    def create_table(self, table_name: str, columns: list[CreateColumnDefinition]) -> None:
+        if DBManager.check_table_exists(table_name):
+            raise FileExistsError(f"Table'{table_name}' already exists.")
+        
+        schema: SchemaType = []
+        pk: str = ""
+        for column in columns:
+            format: str = DBManager.type_to_format(column.column_type, column.varchar_length)
+            if column.is_pk:
+                if pk:
+                    raise ValueError(f"Multiple primary keys defined for table '{table_name}'.")
+                pk = column.column_name
+            schema.append((column.column_name, format))
+        
+        DBManager.create_table_aux(table_name, schema, pk)
 
     def drop_table(self, table_name: str) -> None:
         if not DBManager.check_table_exists(table_name):

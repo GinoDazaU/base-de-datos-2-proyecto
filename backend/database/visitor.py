@@ -160,19 +160,7 @@ class RunVisitor:
         return lastResult
 
     def visit_createtablestatement(self, st: CreateTableStatement):
-        if check_table_exists(st.table_name):
-            raise ValueError(f"Table '{st.table_name}' already exists.")
-        pk: str = None
-        schema: SchemaType = []
-        for col in st.columns:
-            fmt: str = column_type_to_fmt(col.column_type, col.varchar_length)
-            if col.is_pk:
-                if pk is not None:
-                    raise ValueError("Multiple primary keys are not allowed.")
-                pk = col.column_name
-            schema.append((col.column_name, fmt))
-
-        create_table(st.table_name, schema, pk)
+        DBManager().create_table(st.table_name, st.columns)
         return QueryResult(True, f"Table '{st.table_name}' created successfully.")
 
     def visit_droptablestatement(self, st: DropTableStatement):
