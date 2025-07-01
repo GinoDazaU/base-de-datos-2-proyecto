@@ -10,7 +10,7 @@ from indexing.BPlusTreeIndex import BPlusTreeIndex, BPlusTreeIndexWrapper
 from indexing.IndexRecord import IndexRecord, re_string, re_tuple
 from indexing.RTreeIndex import RTreeIndex
 from column_types import IndexType, ColumnType
-from statement import CreateColumnDefinition
+from statement import CreateColumnDefinition, ConstantExpression
 from fancytypes.schema import SchemaType
 
 class DBManager:
@@ -36,13 +36,22 @@ class DBManager:
         return os.path.join(DBManager.tables_dir, table_name)
     
     @staticmethod
-    def check_table_exists(table_name: str):
+    def check_table_exists(table_name: str) -> bool:
      return os.path.exists(DBManager.table_path(table_name) + ".dat") and os.path.exists(DBManager.table_path(table_name) + ".schema.json")
     
     @staticmethod
-    def get_table_schema(table_name: str):
+    def verify_table_exists(table_name: str) -> None:
         if not DBManager.check_table_exists(table_name):
             raise FileNotFoundError(f"Table {table_name} does not exist")
+        
+    @staticmethod
+    def verify_table_not_exists(table_name: str) -> None:
+        if DBManager.check_table_exists(table_name):
+            raise FileExistsError(f"Table {table_name} already exists")
+    
+    @staticmethod
+    def get_table_schema(table_name: str):
+        DBManager.verify_table_exists(table_name)
         schema_path = DBManager.table_path(table_name) + ".schema.json"
         return HeapFile._load_schema_from_file(schema_path)
     
@@ -361,9 +370,7 @@ class DBManager:
     # region Parser helper functions
 
     def create_table(self, table_name: str, columns: list[CreateColumnDefinition]) -> None:
-        if DBManager.check_table_exists(table_name):
-            raise FileExistsError(f"Table'{table_name}' already exists.")
-        
+        DBManager.verify_table_not_exists(table_name)
         schema: SchemaType = []
         pk: str = ""
         for column in columns:
@@ -382,8 +389,7 @@ class DBManager:
         DBManager.drop_table_aux(table_name)
     
     def create_index(self, table_name: str, field_name: str, index_type: IndexType) -> None:
-        if not DBManager.check_table_exists(table_name):
-            raise ValueError(f"La tabla '{table_name}' no existe.")
+        DBManager.verify_table_exists(table_name)
         match index_type:
             case IndexType.SEQUENTIAL:
                 DBManager.create_seq_idx(table_name, field_name)
@@ -397,8 +403,7 @@ class DBManager:
                 raise ValueError(f"Unkown index type: {index_type}")
 
     def drop_index(self, table_name: str, field_name: str, index_type: IndexType) -> None:
-        if not DBManager.check_table_exists(table_name):
-            raise ValueError(f"La tabla '{table_name}' no existe.")
+        DBManager.verify_table_exists(table_name)
         match index_type:
             case IndexType.SEQUENTIAL:
                 DBManager.drop_seq_idx(table_name, field_name)
@@ -410,3 +415,7 @@ class DBManager:
                 DBManager.drop_rtree_idx(table_name, field_name)
             case _:
                 raise ValueError(f"Unknown index type: {index_type}")
+            
+    def insert(self, table_name: str, column_names: list[str], values: list[ConstantExpression]) -> None:
+        DBManager.verify_table_exists(table_name)
+        schema = DBManager.get_table_schema(table_name)
