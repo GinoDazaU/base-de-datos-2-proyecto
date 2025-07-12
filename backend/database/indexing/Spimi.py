@@ -12,7 +12,6 @@ from storage.HeapFile import HeapFile
 from .ExtendibleHashIndex import ExtendibleHashIndex
 from storage.Record import Record
 
-MAX_TERMS_PER_BLOCK = 100
 
 class SPIMIIndexer:
     def __init__(self, block_dir="index_blocks", index_table_name="inverted_index"):
@@ -23,14 +22,15 @@ class SPIMIIndexer:
     def build_index(self, table_name: str):
         self.doc_count = 0
         self._process_documents(table_name)
-        full_index = self._external_merge_blocks_with_tfidf()
-        self._save_index_to_table(full_index)
+        full_index, document_norms = self._external_merge_blocks_with_tfidf()
+        self._save_index_to_table(full_index, document_norms)
         self._clean_blocks()
 
     def _process_documents(self, table_name: str):
         heapfile: HeapFile = HeapFile(table_name)
-        term_dict = defaultdict(lambda: defaultdict(int))  # term -> {doc_id: freq}
+        term_dict = defaultdict(lambda: defaultdict(int))
         block_number = 0
+        memory_limit = 100 * 1024 * 1024  # 100 MB
 
         for doc_id, text in heapfile.iterate_text_documents():
             self.doc_count += 1
@@ -38,7 +38,8 @@ class SPIMIIndexer:
             for token in tokens:
                 term_dict[token][doc_id] += 1
 
-                if len(term_dict) >= MAX_TERMS_PER_BLOCK:
+                # Verificar uso de memoria
+                if sys.getsizeof(term_dict) >= memory_limit:
                     self._dump_block(term_dict, block_number)
                     block_number += 1
                     term_dict.clear()
@@ -57,7 +58,8 @@ class SPIMIIndexer:
     def _external_merge_blocks_with_tfidf(self):
         """
         Realiza un merge externo ordenado entre bloques y calcula TF-IDF en el proceso.
-        Corregido: Manejo adecuado de iteradores y prevención de KeyError
+        Ahora también calcula las normas de los documentos.
+        Devuelve: (inverted_index, document_norms)
         """
         block_paths = [os.path.join(self.block_dir, f) for f in os.listdir(self.block_dir) if f.endswith(".pkl")]
         block_iters = []
@@ -65,8 +67,9 @@ class SPIMIIndexer:
         heap = []
         N = self.doc_count
         merged_index = {}
+        document_norms = defaultdict(float)  # {doc_id: suma_de_cuadrados_tfidf}
 
-        # Inicializar iteradores de bloques
+        # Inicializar iteradores de bloques (igual que antes)
         for i, path in enumerate(block_paths):
             with open(path, "rb") as f:
                 block = pickle.load(f)
@@ -82,60 +85,80 @@ class SPIMIIndexer:
         while heap:
             smallest_term, block_idx = heapq.heappop(heap)
             
-            # Recolectar todas las ocurrencias del término en todos los bloques
             combined_postings = defaultdict(int)
             blocks_to_advance = []
 
-            # Buscar el término en todos los bloques activos
             for i in list(current_terms.keys()):
                 term, postings = current_terms[i]
                 if term == smallest_term:
                     for doc_id, freq in postings.items():
                         combined_postings[doc_id] += freq
                     blocks_to_advance.append(i)
-                    del current_terms[i]  # Remover del diccionario actual
+                    del current_terms[i]
 
-            # Calcular TF-IDF
             df_t = len(combined_postings)
             idf = math.log(N / df_t) if df_t and N > 0 else 0
-            postings_tfidf = [
-                (doc_id, round(freq * idf, 5)) 
-                for doc_id, freq in combined_postings.items()
-            ]
+            postings_tfidf = []
+            
+            for doc_id, freq in combined_postings.items():
+                tfidf = round(freq * idf, 5)
+                postings_tfidf.append((doc_id, tfidf))
+                document_norms[doc_id] += tfidf ** 2  # Acumula el cuadrado para la norma
+            
             merged_index[smallest_term] = postings_tfidf
 
-            # Avanzar los bloques procesados
             for i in blocks_to_advance:
                 try:
                     term, postings = next(block_iters[i])
                     heapq.heappush(heap, (term, i))
                     current_terms[i] = (term, postings)
                 except StopIteration:
-                    # Fin del iterador de este bloque
                     pass
 
+        # Calcular la raíz cuadrada para obtener las normas finales
+        document_norms = {doc_id: math.sqrt(norm) for doc_id, norm in document_norms.items()}
+        
         print(f"[SPIMI] Merge externo completado con {len(merged_index)} términos.")
-        return merged_index
+        return merged_index, document_norms
 
-    def _save_index_to_table(self, inverted_index):
+    def _save_index_to_table(self, inverted_index, document_norms):
         """
-        Guarda el índice invertido (con TF-IDF) en la tabla.
+        Guarda el índice invertido (con TF-IDF) y las normas en la tabla.
         """
-        schema = [("term", "50s"), ("postings", "text")]
-        HeapFile.build_file(self.index_table_name, schema, "term")
-        heapfile = HeapFile(self.index_table_name)
+        # Esquema para el índice invertido
+        schema_idx = [("term", "50s"), ("postings", "text")]
+        HeapFile.build_file(self.index_table_name, schema_idx, "term")
+        heapfile_idx = HeapFile(self.index_table_name)
 
         for term, postings in inverted_index.items():
-            postings_serialized = json.dumps(postings)  # [(doc_id, tfidf), ...]
-            record = Record(schema, [term, postings_serialized])
-            heapfile.insert_record(record)
+            postings_serialized = json.dumps(postings)
+            record = Record(schema_idx, [term, postings_serialized])
+            heapfile_idx.insert_record(record)
 
+        # Esquema para las normas (nueva tabla)
+        schema_norms = [("doc_id", "i"), ("norm", "f")]
+        norms_table_name = f"{self.index_table_name}_norms"
+        HeapFile.build_file(norms_table_name, schema_norms, "doc_id")
+        heapfile_norms = HeapFile(norms_table_name)
+
+        for doc_id, norm in document_norms.items():
+            record = Record(schema_norms, [doc_id, norm])
+            heapfile_norms.insert_record(record)
+
+        # Crear índices hash
         ExtendibleHashIndex.build_index(
             self.index_table_name,
-            lambda field_name: heapfile.extract_index(field_name),
+            lambda field_name: heapfile_idx.extract_index(field_name),
             "term"
         )
-        print(f"[SPIMI] Índice TF-IDF guardado en '{self.index_table_name}' con índice hash en 'term'.")
+        ExtendibleHashIndex.build_index(
+            norms_table_name,
+            lambda field_name: heapfile_norms.extract_index(field_name),
+            "doc_id"
+        )
+        
+        print(f"[SPIMI] Índice TF-IDF guardado en '{self.index_table_name}'")
+        print(f"[SPIMI] Normas de documentos guardadas en '{norms_table_name}'")
 
     def _clean_blocks(self):
         """
