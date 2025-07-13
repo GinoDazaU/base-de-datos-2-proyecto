@@ -1,6 +1,7 @@
 import os
 import glob
 import time
+import visitor
 from typing import List, Tuple, Optional, Union
 from storage.HeapFile import HeapFile
 from storage.Record import Record
@@ -416,6 +417,24 @@ class DBManager:
             case _:
                 raise ValueError(f"Unknown index type: {index_type}")
             
-    def insert(self, table_name: str, column_names: list[str], values: list[ConstantExpression]) -> None:
+    def insert(self, table_name: str, columns: list[str], values: list) -> None:
         DBManager.verify_table_exists(table_name)
-        schema = DBManager.get_table_schema(table_name)
+        if len(columns) != len(values):
+            raise ValueError("Column names and values length mismatch.")
+        schema: list[tuple[str, str]] = DBManager.get_table_schema(table_name)
+        schema_dict: dict = dict(schema)
+        for column, value in zip(columns, values):
+            if column not in schema_dict:
+                raise ValueError(f"Column '{column}' does not exist in table '{table_name}'.")
+            column_type = DBManager.get_field_type(table_name, column)
+            map: dict = {
+                ColumnType.INT: int,
+                ColumnType.FLOAT: float,
+                ColumnType.BOOL: bool,
+                ColumnType.POINT2D: tuple[float, float],
+                ColumnType.POINT3D: tuple[float, float, float],
+                ColumnType.VARCHAR: str
+            }
+            if not isinstance(value, map[column_type]):
+                raise TypeError(f"Value for column '{column}' must be of type {column_type}, got {type(value)}.")
+        DBManager.insert_record(table_name, Record(schema, values))

@@ -176,87 +176,8 @@ class RunVisitor:
         return QueryResult(True, f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' dropped successfully.")
 
     def visit_insertstatement(self, st: InsertStatement):
-        if not check_table_exists(st.table_name):
-            raise ValueError(f"Table '{st.table_name}' does not exist.")
-
-        if len(st.column_names) != len(st.values):
-            raise ValueError(
-                f"Number of column names ({len(st.column_names)}) does not match number of values ({len(st.values)})."
-            )
-
-        # now we gotta check that types match the table schema
-        # we must also follow the order of the column names
-        # :(
-
-        schema: SchemaType = get_table_schema(st.table_name)
-        schema_dict = {name: fmt for name, fmt in schema}
-
-        for col_name, const_exp in zip(st.column_names, st.values):
-            if col_name not in schema_dict:
-                raise ValueError(
-                    f"Column '{col_name}' does not exist in table '{st.table_name}'."
-                )
-
-            fmt = schema_dict[col_name]
-            actual_type = fmt_to_column_type(fmt)
-
-            if actual_type == ColumnType.INT and not isinstance(
-                const_exp, IntExpression
-            ):
-                raise ValueError(f"Value for column '{col_name}' must be of type INT.")
-            elif actual_type == ColumnType.FLOAT and not isinstance(
-                const_exp, (IntExpression | FloatExpression)
-            ):
-                raise ValueError(
-                    f"Value for column '{col_name}' must be of type FLOAT or INT."
-                )
-            elif actual_type == ColumnType.VARCHAR and not isinstance(
-                const_exp, StringExpression
-            ):
-                raise ValueError(
-                    f"Value for column '{col_name}' must be of type VARCHAR."
-                )
-            elif actual_type == ColumnType.BOOL and not isinstance(
-                const_exp, BoolExpression
-            ):
-                raise ValueError(f"Value for column '{col_name}' must be of type BOOL.")
-            elif actual_type == ColumnType.POINT2D and not isinstance(
-                const_exp, Point2DExpression
-            ):
-                raise ValueError(
-                    f"Value for column '{col_name}' must be of type POINT2D."
-                )
-            elif actual_type == ColumnType.POINT3D and not isinstance(
-                const_exp, Point3DExpression
-            ):
-                raise ValueError(
-                    f"Value for column '{col_name}' must be of type POINT3D."
-                )
-
-            # else: it's fine, we can insert it
-            # but first we check for length of VARCHAR
-
-            if actual_type == ColumnType.VARCHAR:
-                if len(const_exp.value) > int(schema_dict[col_name].split("s")[0]):
-                    raise ValueError(
-                        f"Value for column '{col_name}' exceeds maximum length of {schema_dict[col_name].split('s')[0]} characters."
-                    )
-        # all values are valid, but we still need to convert it into a record and give
-        # it the values in the right order
-
-        value_dict = dict(zip(st.column_names, st.values), strict=True)
-        record_values = []
-        for name, fmt in schema:
-            if name in value_dict:
-                record_values.append(
-                    value_dict[name].value
-                )  # TODO: correctly pass point2d or point3d values as tuple
-            else:
-                raise ValueError(
-                    f"Column '{name}' is missing in the insert statement. NULL is not supported yet."
-                )
-        record = Record(schema, record_values)
-        insert_record(st.table_name, record)
+        values = [exp.accept(self) for exp in st.values]
+        DBManager().insert(st.table_name, st.column_names, values)
         return QueryResult(
             True,
             f"Record inserted into table '{st.table_name}' successfully.",
