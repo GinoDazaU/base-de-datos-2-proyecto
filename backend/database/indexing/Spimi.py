@@ -29,7 +29,7 @@ class SPIMIIndexer:
         heapfile: HeapFile = HeapFile(table_name)
         term_dict = defaultdict(lambda: defaultdict(int))
         block_number = 0
-        memory_limit = 100 * 1024 * 1024  # 100 MB
+        memory_limit = 4 * 1024  # 4 KB
 
         for doc_id, text in heapfile.iterate_text_documents():
             self.doc_count += 1
