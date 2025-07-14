@@ -4,7 +4,8 @@ import math
 from collections import defaultdict
 import sys
 import json
-from typing import Dict, List, Tuple, DefaultDict, Any, Union
+import heapq
+from typing import Dict, List, Tuple, DefaultDict, Any, Union, Iterator
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from .utils_spimi import preprocess
@@ -21,8 +22,7 @@ class SPIMIIndexer:
     def build_index(self, table_name: str) -> None:
         self.doc_count = 0
         self._process_documents(table_name)
-        full_index, document_norms = self._external_merge_blocks_with_tfidf()
-        self._save_index_to_table(full_index, document_norms)
+        self._streaming_merge_with_tfidf()
         self._clean_blocks()
 
     def _process_documents(self, table_name: str) -> None:
@@ -44,125 +44,97 @@ class SPIMIIndexer:
 
         if term_dict:
             self._dump_block(term_dict, block_number)
+        self.total_blocks = block_number + 1
 
     def _dump_block(self, term_dict: Dict[str, Dict[int, int]], block_number: int) -> None:
         path = os.path.join(self.block_dir, f"block_{block_number}.pkl")
         sorted_dict = dict(sorted(term_dict.items()))
         with open(path, "wb") as f:
             pickle.dump(sorted_dict, f)
-        print(f"[SPIMI] Bloque {block_number} guardado con {len(sorted_dict)} términos.")
 
-    def _external_merge_blocks_with_tfidf(self) -> Tuple[
-        Dict[str, List[Tuple[int, float]]], 
-        Dict[int, float]
-    ]:
-        block_paths = [os.path.join(self.block_dir, f) for f in os.listdir(self.block_dir) if f.endswith(".pkl")]
-        N = self.doc_count
-        document_norms = defaultdict(float)
-        
-        # Si no hay bloques, retornar vacío
-        if not block_paths:
-            return {}, {}
-        
-        # Función para convertir bloque a formato TF-IDF
-        def convert_to_tfidf(block: Dict[str, Dict[int, int]]) -> Dict[str, List[Tuple[int, float]]]:
-            tfidf_block = {}
-            for term, freqs in block.items():
-                df_t = len(freqs)
-                idf = math.log(N / df_t) if df_t and N > 0 else 0
-                postings = []
-                
-                for doc_id, freq in freqs.items():
-                    tf = 1 + math.log(freq) if freq > 0 else 0
-                    tfidf = round(tf * idf, 5)
-                    postings.append((doc_id, tfidf))
-                    document_norms[doc_id] += tfidf ** 2
-                
-                tfidf_block[term] = postings
-            return tfidf_block
-
-        # Convertir todos los bloques a TF-IDF
-        tfidf_blocks = []
-        for path in block_paths:
-            with open(path, 'rb') as f:
-                block = pickle.load(f)
-                tfidf_blocks.append(convert_to_tfidf(block))
-        
-        # Fusionar bloques TF-IDF
-        def merge_two_tfidf_blocks(block1, block2):
-            merged = {}
-            all_terms = set(block1.keys()) | set(block2.keys())
-            
-            for term in sorted(all_terms):
-                # Combinar postings de ambos bloques
-                combined = {}
-                
-                # Agregar postings del primer bloque
-                if term in block1:
-                    for doc_id, tfidf in block1[term]:
-                        combined.setdefault(doc_id, 0)
-                        combined[doc_id] += tfidf
-                
-                # Agregar postings del segundo bloque
-                if term in block2:
-                    for doc_id, tfidf in block2[term]:
-                        combined.setdefault(doc_id, 0)
-                        combined[doc_id] += tfidf
-                
-                # Crear lista de postings combinados
-                merged[term] = [(doc_id, tfidf) for doc_id, tfidf in combined.items()]
-            
-            return merged
-
-        # Fusionar bloques por pares
-        while len(tfidf_blocks) > 1:
-            new_blocks = []
-            for i in range(0, len(tfidf_blocks), 2):
-                block1 = tfidf_blocks[i]
-                block2 = tfidf_blocks[i+1] if i+1 < len(tfidf_blocks) else {}
-                merged_block = merge_two_tfidf_blocks(block1, block2)
-                new_blocks.append(merged_block)
-            tfidf_blocks = new_blocks
-
-        # El bloque final es el resultado
-        final_index = tfidf_blocks[0]
-        
-        # Calcular normas finales
-        document_norms = {doc_id: math.sqrt(norm) for doc_id, norm in document_norms.items()}
-        
-        return final_index, document_norms
-
-    def _save_index_to_table(
-        self,
-        inverted_index: Dict[str, List[Tuple[int, float]]],
-        document_norms: Dict[int, float]
-    ) -> None:
-        # 1. Guardar índice invertido principal
+    def _streaming_merge_with_tfidf(self) -> None:
+        """Merge externo con streaming que evita cargar todo en RAM"""
+        # 1. Inicializar el archivo final de índice
         schema_idx = [("term", "50s"), ("postings", "text")]
         HeapFile.build_file(self.index_table_name, schema_idx, "term")
         heapfile_idx = HeapFile(self.index_table_name)
-
-        for term, postings in inverted_index.items():
-            # Convertir a formato JSON
-            valid_postings = []
-            for doc_id, tfidf in postings:
-                valid_postings.append([int(doc_id), float(tfidf)])
-            
-            postings_json = json.dumps(valid_postings)
-            record = Record(schema_idx, [str(term), postings_json])
-            heapfile_idx.insert_record(record)
-
-        # 2. Guardar normas de documentos
+        
+        # 2. Inicializar el archivo de normas
         schema_norms = [("doc_id", "i"), ("norm", "f")]
         norms_table_name = f"{self.index_table_name}_norms"
         HeapFile.build_file(norms_table_name, schema_norms, "doc_id")
         heapfile_norms = HeapFile(norms_table_name)
-
-        for doc_id, norm in document_norms.items():
-            record = Record(schema_norms, [int(doc_id), float(norm)])
+        
+        # 3. Inicializar estructuras para el merge
+        block_paths = [os.path.join(self.block_dir, f) for f in os.listdir(self.block_dir) if f.endswith(".pkl")]
+        block_iters = []
+        current_terms = {}
+        heap = []
+        document_norms = defaultdict(float)
+        N = self.doc_count
+        
+        # 4. Crear iteradores para cada bloque
+        for i, path in enumerate(block_paths):
+            with open(path, "rb") as f:
+                block = pickle.load(f)
+                block_iter = iter(block.items())
+                block_iters.append(block_iter)
+                try:
+                    term, postings = next(block_iter)
+                    heapq.heappush(heap, (term, i))
+                    current_terms[i] = (term, postings)
+                except StopIteration:
+                    continue
+        
+        # 5. Proceso de merge por streaming
+        while heap:
+            term, block_idx = heapq.heappop(heap)
+            
+            # Combinar todas las ocurrencias del término
+            combined_freqs = defaultdict(int)
+            blocks_to_advance = []
+            
+            for i in list(current_terms.keys()):
+                current_term, freqs = current_terms[i]
+                if current_term == term:
+                    for doc_id, count in freqs.items():
+                        combined_freqs[doc_id] += count
+                    blocks_to_advance.append(i)
+                    del current_terms[i]
+            
+            # Calcular TF-IDF
+            df = len(combined_freqs)
+            idf = math.log(N / df) if df and N > 0 else 0
+            postings_tfidf = []
+            
+            for doc_id, freq in combined_freqs.items():
+                tf = 1 + math.log(freq) if freq > 0 else 0
+                tfidf = round(tf * idf, 5)
+                postings_tfidf.append((doc_id, tfidf))
+                document_norms[doc_id] += tfidf ** 2
+            
+            # Guardar término en el índice final (streaming)
+            postings_json = json.dumps([[doc_id, tfidf] for doc_id, tfidf in postings_tfidf])
+            record = Record(schema_idx, [term, postings_json])
+            heapfile_idx.insert_record_free(record)
+            
+            # Avanzar los bloques procesados
+            for i in blocks_to_advance:
+                try:
+                    next_term, next_postings = next(block_iters[i])
+                    heapq.heappush(heap, (next_term, i))
+                    current_terms[i] = (next_term, next_postings)
+                except StopIteration:
+                    # Fin de este bloque
+                    pass
+        
+        # 6. Guardar normas (streaming)
+        for doc_id, norm_sum in document_norms.items():
+            norm = math.sqrt(norm_sum)
+            record = Record(schema_norms, [doc_id, norm])
             heapfile_norms.insert_record(record)
         
-        # 3. Crear índices hash
+        # 7. Crear índices hash
         ExtendibleHashIndex.build_index(
             self.index_table_name,
             lambda field_name: heapfile_idx.extract_index(field_name),
@@ -179,4 +151,3 @@ class SPIMIIndexer:
             for fname in os.listdir(self.block_dir):
                 os.remove(os.path.join(self.block_dir, fname))
             os.rmdir(self.block_dir)
-            print("[SPIMI] Bloques temporales eliminados.")
