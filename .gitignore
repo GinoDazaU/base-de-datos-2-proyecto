@@ -9,5 +9,13 @@
 *.tree
 *.db
 *.text
-*.ipynb
 *.pkl
+/data/fma_small/
+/data/features/
+/data/codebook.pkl
+/data/histograms.pkl
+*.mp3
+*.npy
+*.pkl
+*.ipynb
+
