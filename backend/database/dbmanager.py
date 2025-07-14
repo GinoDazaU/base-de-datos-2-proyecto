@@ -1,7 +1,6 @@
 import os
 import glob
 import time
-import visitor
 from typing import List, Tuple, Optional, Union
 from storage.HeapFile import HeapFile
 from storage.Record import Record
@@ -438,3 +437,6 @@ class DBManager:
             if not isinstance(value, map[column_type]):
                 raise TypeError(f"Value for column '{column}' must be of type {column_type}, got {type(value)}.")
         DBManager.insert_record(table_name, Record(schema, values))
+
+    def select(self, columns: list[str], table_name: str, conditions: Optional[List]) -> List[Record]:
+        pass
