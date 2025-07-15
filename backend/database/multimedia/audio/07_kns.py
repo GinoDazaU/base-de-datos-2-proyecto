@@ -6,9 +6,9 @@ from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.metrics import pairwise_distances_argmin_min
 
 # Parámetros
-query_audio_path = ""        
-codebook_path = "codebook.pkl"
-histogramas_tfidf_path = "histogramas_TFIDF.pkl"
+query_audio_path = "C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/fma_small/000/000207.mp3"        
+codebook_path = "C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/codebook.pkl"
+histogramas_tfidf_path = "C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/histogramas_TFIDF.pkl"
 n_clusters = 64
 top_k = 5
 
