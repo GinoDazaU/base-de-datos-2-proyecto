@@ -133,6 +133,7 @@ def main():
         print(f"Index len:      {len(results_idx)}")
 
     # 7. Clean up
+    """
     drop_table(table_name)
     for suffix in [
         ".codebook.pkl",
@@ -145,6 +146,7 @@ def main():
         path = f"backend/database/tables/{table_name}.{field_name}" if suffix.startswith(".") else f"backend/database/tables/{suffix}"
         if os.path.exists(path):
             os.remove(path)
+    """
     print(f"Table '{table_name}' dropped and associated files removed.")
 
 
