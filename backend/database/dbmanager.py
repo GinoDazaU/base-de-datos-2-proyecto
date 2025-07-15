@@ -1,7 +1,7 @@
 import os
 import glob
 import time
-from typing import List, Tuple, Optional, Union
+from typing import List, Tuple, Optional, Union, Set
 from storage.HeapFile import HeapFile
 from storage.Record import Record
 from indexing.SequentialIndex import SequentialIndex
@@ -12,6 +12,7 @@ from indexing.RTreeIndex import RTreeIndex
 from column_types import IndexType, ColumnType
 from statement import CreateColumnDefinition, ConstantExpression
 from fancytypes.schema import SchemaType
+from column_types import OperationType
 
 class DBManager:
     _instance = None
@@ -58,9 +59,9 @@ class DBManager:
     @staticmethod
     def get_field_format(table_name: str, field_name: str) -> str:
         schema = DBManager.get_table_schema(table_name)
-        for name, field_name in schema:
+        for name, format in schema:
             if name == field_name:
-                return field_name
+                return format
         raise ValueError(f"Field {field_name} not found in table {table_name}")
     
     @staticmethod
@@ -92,6 +93,33 @@ class DBManager:
                 return "3f"
             case _:
                 raise ValueError(f"Unsupported column type: {column_type}")
+            
+    @staticmethod
+    def validate_compare_value(table_name: str, field_name: str, op: OperationType, value) -> None:
+        col_type: ColumnType = DBManager.get_field_type(table_name, field_name)
+
+        def check_scalar(v) -> bool:
+            match col_type:
+                case ColumnType.INT: return isinstance(v, int)
+                case ColumnType.FLOAT: return isinstance(v, float)
+                case ColumnType.BOOL: return isinstance(v, bool)
+                case ColumnType.VARCHAR: return isinstance(v, str)
+                case ColumnType.POINT2D: return isinstance(v, tuple) and len(v) == 2 and all(isinstance(x, (int, float)) for x in v)
+                case ColumnType.POINT3D: return isinstance(v, tuple) and len(v) == 3 and all(isinstance(x, (int, float)) for x in v)
+                case _: return False
+        
+        if op in (OperationType.EQUAL, OperationType.NOT_EQUAL, OperationType.GREATER_THAN,
+                  OperationType.LESS_THAN, OperationType.GREATER__EQUAL, OperationType.LESS__EQUAL):
+            if not check_scalar(value):
+                raise TypeError(f"Invalid value for comparison with column '{field_name}' of type {col_type}, got {value!r}.")
+            return
+        
+        if op is OperationType.BETWEEN:
+            if not isinstance(value, tuple) or len(value) != 2 or not all(check_scalar(v) for v in value):
+                raise TypeError(f"Invalid value for BETWEEN, expected a pair of values matching {col_type}, got {value!r}.")
+            return
+            
+        raise ValueError(f"Unsupported operation {op} for column '{field_name}' of type {col_type}.")
 
     # region Index creation
     @staticmethod
@@ -262,78 +290,63 @@ class DBManager:
       return HeapFile(DBManager.table_path(table_name)).search_by_field(field_name, value)
     
     @staticmethod
-    def search_seq_idx(table_name: str, field_name: str, field_value):
+    def search_seq_idx(table_name: str, field_name: str, value: Union[int, float, str]) -> Set[int]:
         table_path = DBManager.table_path(table_name)
-        heap = HeapFile(table_path)
-        seq_idx = SequentialIndex(table_path, field_name)
-        return [heap.fetch_record_by_offset(r.offset) for r in seq_idx.search_record(field_value)]
-    
-    @staticmethod
-    def search_seq_idx_range(table_name: str, field_name: str, start_value, end_value):
-        table_path = DBManager.table_path(table_name)
-        heap = HeapFile(table_path)
         idx = SequentialIndex(table_path, field_name)
-        records = idx.search_range(start_value, end_value)
-        return [heap.fetch_record_by_offset(rec.offset) for rec in records]
+        return {r.offset for r in idx.search_record(value)}
     
     @staticmethod
-    def search_hash_idx(table_name: str, field_name: str, field_value):
+    def search_seq_idx_range(table_name: str, field_name: str,
+                             range: Tuple[Union[int, float, str], Union[int, float, str]]) -> Set[int]:
         table_path = DBManager.table_path(table_name)
-        heap = HeapFile(table_path)
-        hidx = ExtendibleHashIndex(table_path, field_name)
-        return [heap.fetch_record_by_offset(r.offset) for r in hidx.search_record(field_value)]
+        idx = SequentialIndex(table_path, field_name)
+        return {r.offset for r in idx.search_range(range[0], range[1])}
     
     @staticmethod
-    def search_btree_idx(table_name: str, field_name: str, field_value):
+    def search_hash_idx(table_name: str, field_name: str, value: Union[int, str]) -> Set[int]:
         table_path = DBManager.table_path(table_name)
-        heap = HeapFile(table_path)
-        btree = BPlusTreeIndexWrapper(table_path, field_name)
-        offsets = btree.search(field_value)
-        return [heap.fetch_record_by_offset(off) for off in offsets] if offsets else []
+        idx = ExtendibleHashIndex(table_path, field_name)
+        return {r.offset for r in idx.search_record(value)}
     
     @staticmethod
-    def search_btree_idx_range(table_name: str, field_name: str, start_value, end_value):
+    def search_btree_idx(table_name: str, field_name: str, field_value) -> Set[int]:
         table_path = DBManager.table_path(table_name)
-        heap = HeapFile(table_path)
-        btree = BPlusTreeIndexWrapper(table_path, field_name)
-        offsets = btree.range_search(start_value, end_value)
-        return [heap.fetch_record_by_offset(off) for off in offsets] if offsets else []
+        idx = BPlusTreeIndexWrapper(table_path, field_name)
+        return set(idx.search(field_value))
+    
+    @staticmethod
+    def search_btree_idx_range(table_name: str, field_name: str,
+                               range: Tuple[Union[int, float, str], Union[int, float, str]]) -> Set[int]:
+        table_path = DBManager.table_path(table_name)
+        idx = BPlusTreeIndexWrapper(table_path, field_name)
+        return set(idx.range_search(range[0], range[1]))
 
     @staticmethod
-    def search_rtree_record(
-    table_name: str, field_name: str, point: Tuple[Union[int, float], ...]) -> List[Record]:
+    def search_rtree_record(table_name: str, field_name: str, point: Tuple[Union[int, float], ...]) -> Set[int]:
         table_path = DBManager.table_path(table_name)
-        heap = HeapFile(table_path)
-        rtree = RTreeIndex(table_path, field_name)
-        records = rtree.search_record(point)
-        return [heap.fetch_record_by_offset(rec.offset) for rec in records]
+        idx = RTreeIndex(table_path, field_name)
+        return {r.offset for r in idx.search_record(point)}
     
     @staticmethod
-    def search_rtree_bounds(table_name: str, field_name: str, lower_bound: Tuple[Union[int, float], ...],
-    upper_bound: Tuple[Union[int, float], ...]) -> List[Record]:
+    def search_rtree_bounds(table_name: str, field_name: str,
+                            bounds: Tuple[Tuple[Union[int, float], ...], Tuple[Union[int, float], ...]]) -> Set[int]:
         table_path = DBManager.table_path(table_name)
-        heap = HeapFile(table_path)
-        rtree = RTreeIndex(table_path, field_name)
-        records = rtree.search_bounds(lower_bound, upper_bound)
-        return [heap.fetch_record_by_offset(rec.offset) for rec in records]
+        idx = RTreeIndex(table_path, field_name)
+        return {r.offset for r in idx.search_bounds(bounds[0], bounds[1])}
     
     @staticmethod
-    def search_rtree_radius(table_name: str, field_name: str, point: Tuple[Union[int, float], ...],
-    radius: float) -> List[Record]:
+    def search_rtree_radius(table_name: str, field_name: str, 
+                            bounds: Tuple[Tuple[Union[int, float], ...], float]) -> Set[int]:
         table_path = DBManager.table_path(table_name)
-        heap = HeapFile(table_path)
-        rtree = RTreeIndex(table_path, field_name)
-        records = rtree.search_radius(point, radius)
-        return [heap.fetch_record_by_offset(rec.offset) for rec in records]
+        idx = RTreeIndex(table_path, field_name)
+        return {r.offset for r in idx.search_radius(bounds[0], bounds[1])}
     
     @staticmethod
-    def search_rtree_knn(table_name: str, field_name: str, point: Tuple[Union[int, float], ...],
-    k: int) -> List[Record]:
+    def search_rtree_knn(table_name: str, field_name: str,
+                         bounds: Tuple[Tuple[Union[int, float], ...], int]) -> Set[int]:
         table_path = DBManager.table_path(table_name)
-        heap = HeapFile(table_path)
-        rtree = RTreeIndex(table_path, field_name)
-        records = rtree.search_knn(point, k)
-        return [heap.fetch_record_by_offset(rec.offset) for rec in records]
+        idx = RTreeIndex(table_path, field_name)
+        return {r.offset for r in idx.search_knn(bounds[0], bounds[1])}
 
     # region Main methods
     @staticmethod
@@ -367,7 +380,7 @@ class DBManager:
         DBManager.remove_from_secondary_indexes(table_path, old_rec, offset)
         return True
     
-    # region Parser helper functions
+    # region Parser helpers
 
     def create_table(self, table_name: str, columns: list[CreateColumnDefinition]) -> None:
         DBManager.verify_table_not_exists(table_name)
@@ -438,5 +451,53 @@ class DBManager:
                 raise TypeError(f"Value for column '{column}' must be of type {column_type}, got {type(value)}.")
         DBManager.insert_record(table_name, Record(schema, values))
 
-    def select(self, columns: list[str], table_name: str, conditions: Optional[List]) -> List[Record]:
-        pass
+    def fetch_condition_offsets(self, table_name: str, field: str, op: OperationType, value) -> set[int]:
+        DBManager.verify_table_exists(table_name)
+        DBManager.validate_compare_value(table_name, field, op, value)
+
+        priority_map: dict[OperationType, list[tuple]] = {
+            OperationType.EQUAL: [
+                (self.check_hash_idx, self.search_hash_idx),
+                (self.check_btree_idx, self.search_btree_idx),
+                (self.check_seq_idx, self.search_seq_idx),
+                (self.check_rtree_idx, self.search_rtree_record)
+            ],
+            OperationType.GREATER__EQUAL: [
+                (self.check_btree_idx, self.search_btree_idx_range),
+                (self.check_seq_idx, self.search_seq_idx_range)
+            ],
+            OperationType.LESS__EQUAL: [
+                (self.check_btree_idx, self.search_btree_idx_range),
+                (self.check_seq_idx, self.search_seq_idx_range)
+            ],
+            OperationType.GREATER_THAN: [
+                (self.check_btree_idx, self.search_btree_idx_range),
+                (self.check_seq_idx, self.search_seq_idx_range)
+            ],
+            OperationType.LESS_THAN: [
+                (self.check_btree_idx, self.search_btree_idx_range),
+                (self.check_seq_idx, self.search_seq_idx_range)
+            ],
+        }
+
+        for check, search in priority_map.get(op, []):
+            if check(table_name, field):
+                return search(table_name, field, value)
+
+        def cmp(v):
+            match op:
+                case OperationType.EQUAL: return v == value
+                case OperationType.NOT_EQUAL: return v != value
+                case OperationType.GREATER_THAN: return v > value
+                case OperationType.LESS_THAN: return v < value
+                case OperationType.GREATER__EQUAL: return v >= value
+                case OperationType.LESS__EQUAL: return v <= value
+                case _: raise ValueError(f"Unsupported operation {op} for field {field} in table {table_name}.")
+        
+        heap = HeapFile(DBManager.table_path(table_name))
+        all_pairs: List[Tuple[Union[int, float, str], int]] = heap.extract_index(field)
+
+        return {off for v, off in all_pairs if cmp(v)}
+
+    def records_projection(self, offsets: list[int], columns: list[str]) -> list[Record]:
+        return []
