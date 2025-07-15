@@ -57,11 +57,26 @@ class DBManager:
         return HeapFile._load_schema_from_file(schema_path)
     
     @staticmethod
+    def get_table_heap(table_name: str) -> HeapFile:
+        DBManager.verify_table_exists(table_name)
+        return HeapFile(DBManager.table_path(table_name))
+    
+    @staticmethod
     def get_field_format(table_name: str, field_name: str) -> str:
         schema = DBManager.get_table_schema(table_name)
         for name, format in schema:
             if name == field_name:
                 return format
+        raise ValueError(f"Field {field_name} not found in table {table_name}")
+    
+    @staticmethod
+    def get_column_position(table_name: str, field_name: str) -> int:
+        schema = DBManager.get_table_schema(table_name)
+        i = 0
+        for name, format in schema:
+            if name == field_name:
+                return i
+            i += 1
         raise ValueError(f"Field {field_name} not found in table {table_name}")
     
     @staticmethod
@@ -492,12 +507,27 @@ class DBManager:
                 case OperationType.LESS_THAN: return v < value
                 case OperationType.GREATER__EQUAL: return v >= value
                 case OperationType.LESS__EQUAL: return v <= value
+                case OperationType.BETWEEN: return value[0] <= v <= value[1]
                 case _: raise ValueError(f"Unsupported operation {op} for field {field} in table {table_name}.")
         
-        heap = HeapFile(DBManager.table_path(table_name))
+        heap: HeapFile = DBManager.get_table_heap(table_name)
         all_pairs: List[Tuple[Union[int, float, str], int]] = heap.extract_index(field)
 
         return {off for v, off in all_pairs if cmp(v)}
 
-    def records_projection(self, offsets: list[int], columns: list[str]) -> list[Record]:
-        return []
+    def records_projection(self, table_name: str, offsets: list[int], columns: list[str] | None) -> list[list]:
+        heap: HeapFile = DBManager.get_table_heap(table_name)
+        schema: list[tuple] = DBManager.get_table_schema(table_name)
+        names = [name for name, _ in schema]
+        if columns:
+            for col in columns:
+                if col not in names:
+                    raise ValueError(f"Column '{col}' does not exist in table '{table_name}'.")
+        else:
+            columns = names
+        positions: list[int] = [DBManager.get_column_position(table_name, col) for col in columns]
+        results: list[list] = []
+        for offset in offsets:
+            record: Record = heap.fetch_record_by_offset(offset)
+            results.append([record.values[pos] for pos in positions])
+        return results
