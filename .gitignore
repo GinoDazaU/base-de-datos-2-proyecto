@@ -18,4 +18,5 @@
 *.npy
 *.pkl
 *.ipynb
+*.venv
 
