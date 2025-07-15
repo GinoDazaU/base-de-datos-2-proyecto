@@ -454,7 +454,7 @@ class DBManager:
             if column not in schema_dict:
                 raise ValueError(f"Column '{column}' does not exist in table '{table_name}'.")
             column_type = DBManager.get_field_type(table_name, column)
-            map: dict = {
+            type_map: dict = {
                 ColumnType.INT: int,
                 ColumnType.FLOAT: float,
                 ColumnType.BOOL: bool,
