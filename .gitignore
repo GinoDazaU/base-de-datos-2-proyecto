@@ -19,4 +19,5 @@
 *.pkl
 *.ipynb
 *.venv
+sounds/
 

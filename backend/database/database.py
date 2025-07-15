@@ -13,6 +13,8 @@ from collections import Counter, defaultdict
 
 from storage.HeapFile import HeapFile
 from storage.Record import Record
+from storage.Sound import Sound
+from storage.HistogramFile import HistogramFile
 from indexing.SequentialIndex import SequentialIndex
 from indexing.ExtendibleHashIndex import ExtendibleHashIndex
 from indexing.BPlusTreeIndex import BPlusTreeIndex, BPlusTreeIndexWrapper
@@ -20,6 +22,7 @@ from indexing.IndexRecord import IndexRecord
 from indexing.RTreeIndex import RTreeIndex
 from indexing.Spimi import SPIMIIndexer
 from indexing.utils_spimi import preprocess
+import pickle
 
 # Ruta base para almacenamiento de tablas
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -63,6 +66,9 @@ def get_table_schema(table_name: str):
 def create_table(
     table_name: str, schema: List[Tuple[str, str]], primary_key: str
 ) -> None:
+    for field_name, field_type in schema:
+        if field_type.upper() == "SOUND":
+            HistogramFile.build_file(_table_path(table_name), field_name)
     HeapFile.build_file(_table_path(table_name), schema, primary_key)
     print(f"Tabla '{table_name}' creada con éxito.")
 
@@ -117,6 +123,17 @@ def drop_table(table_name: str) -> None:
 def insert_record(table_name: str, record: Record) -> int:
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
+
+    values = list(record.values)
+    for i, (field_name, field_type) in enumerate(record.schema):
+        if field_type.upper() == "SOUND":
+            sound_path = values[i]
+            if isinstance(sound_path, str):
+                sound_file = Sound(_table_path(table_name), field_name)
+                sound_offset = sound_file.insert(sound_path)
+                values[i] = (sound_offset, -1)  # -1 for histogram offset
+    record.values = list(values)
+
     offset = heap.insert_record(record)
     _update_secondary_indexes(table_path, record, offset)
     return offset
@@ -203,8 +220,8 @@ def delete_record(table_name: str, pk_value):
 # =============================================================================
 
 
-def search_by_field(table_name: str, field_name: str, value) -> List[Record]:
-    return HeapFile(_table_path(table_name)).search_by_field(field_name, value)
+def search_by_field(table_name: str, field_name: str, value, crude_data=False) -> List[Record]:
+    return HeapFile(_table_path(table_name)).search_by_field(field_name, value, crude_data)
 
 
 def search_seq_idx(table_name: str, field_name: str, field_value):
@@ -511,8 +528,161 @@ def build_spimi_index(table_name: str) -> None:
     """
     Construye el índice invertido SPIMI para los campos de tipo 'text' de la tabla.
     """
-    indexer = SPIMIIndexer()
+    indexer = SPIMIIndexer(_table_path)
+    indexer.build_index(_table_path(table_name))
+
+
+def build_acoustic_index(table_name: str, field_name: str) -> None:
+    """
+    Construye el índice invertido para un campo de tipo 'SOUND'.
+    """
+    from indexing.SpimiAudio import SpimiAudioIndexer
+    indexer = SpimiAudioIndexer(_table_path, field_name)
     indexer.build_index(table_name)
+
+
+def build_acoustic_model(table_name: str, field_name: str, num_clusters: int):
+    """
+    Construye un modelo acústico (codebook e histogramas) para un campo de audio.
+
+    Args:
+        table_name (str): Nombre de la tabla.
+        field_name (str): Nombre del campo de tipo SOUND.
+        num_clusters (int): Número de clusters para K-Means.
+    """
+    heap_file = HeapFile(_table_path(table_name))
+
+    # 1. Construir el codebook
+    from multimedia.codebook import build_codebook
+    build_codebook(heap_file, field_name, num_clusters)
+
+    # 2. Cargar el codebook
+    from multimedia.histogram import load_codebook
+    codebook = load_codebook(heap_file.table_name, field_name)
+    if codebook is None:
+        return
+
+    # 3. Generar y almacenar histogramas
+    from multimedia.histogram import build_histogram
+    sound_handler = Sound(_table_path(table_name), field_name)
+    histogram_handler = HistogramFile(_table_path(table_name), field_name)
+
+    for record in heap_file.get_all_records():
+        sound_offset, _ = record.values[heap_file.schema.index((field_name, "SOUND"))]
+        audio_path = sound_handler.read(sound_offset)
+
+        if audio_path is None:
+            continue
+
+        histogram = build_histogram(audio_path, codebook)
+        if histogram is not None:
+            # Convertir el histograma a una lista de tuplas (ID, COUNT)
+            histogram_tuples = [(i, int(count)) for i, count in enumerate(histogram) if count > 0]
+
+            # Insertar el histograma y obtener el offset
+            histogram_offset = histogram_handler.insert(histogram_tuples)
+
+            # Actualizar el registro en el heap file con el offset del histograma
+            record.values = list(record.values)
+            record.values[heap_file.schema.index((field_name, "SOUND"))] = (sound_offset, histogram_offset)
+            heap_file.update_record(record)
+
+def knn_search(table_name: str, field_name: str, query_audio_path: str, k: int) -> list[tuple[Record, float]]:
+    """
+    Realiza una búsqueda k-NN en un campo de audio.
+    """
+    from multimedia.knn import knn_sequential_search
+    heap_file = HeapFile(_table_path(table_name))
+    return knn_sequential_search(query_audio_path, heap_file, field_name, k)
+
+def knn_search_index(table_name: str, field_name: str, query_audio_path: str, k: int) -> list[tuple[Record, float]]:
+    """
+    Realiza una búsqueda k-NN en un campo de audio utilizando el índice invertido.
+    """
+    from multimedia.histogram import build_histogram, load_codebook
+    from multimedia.knn import cosine_similarity, tf_idf
+    import numpy as np
+
+    # 1. Cargar codebook y construir histograma de consulta
+    codebook = load_codebook(_table_path(table_name), field_name)
+    if codebook is None:
+        return []
+
+    query_histogram = build_histogram(query_audio_path, codebook)
+    if query_histogram is None:
+        return []
+
+    N = HeapFile(_table_path(table_name)).heap_size
+    query_tfidf = np.zeros(len(codebook["centroids"]))
+    for i, count in enumerate(query_histogram):
+        if count > 0:
+            query_tfidf[i] = tf_idf(count, codebook["doc_freq"][i], N)
+
+    # 2. Inicializar estructuras para el cálculo
+    doc_scores = defaultdict(float)
+    doc_norms = {}
+    relevant_docs = set()
+
+    # 3. Buscar términos en el índice acústico
+    acoustic_index = HeapFile(_table_path("acoustic_index"))
+    hash_idx = ExtendibleHashIndex(_table_path("acoustic_index"), "term")
+
+    for term_id, tfidf_query in enumerate(query_tfidf):
+        if tfidf_query > 0:
+            index_records = hash_idx.search_record(term_id)
+            if not index_records:
+                continue
+
+            record = acoustic_index.fetch_record_by_offset(index_records[0].offset)
+            postings = json.loads(record.values[1])
+
+            for doc_id, tfidf_doc in postings:
+                doc_scores[doc_id] += tfidf_query * tfidf_doc
+                relevant_docs.add(doc_id)
+
+                if doc_id not in doc_norms:
+                    norms_table = HeapFile(_table_path("acoustic_index_norms"))
+                    hash_idx_norms = ExtendibleHashIndex(_table_path("acoustic_index_norms"), "doc_id")
+                    norm_records = hash_idx_norms.search_record(doc_id)
+                    if norm_records:
+                        record = norms_table.fetch_record_by_offset(norm_records[0].offset)
+                        doc_norms[doc_id] = record.values[1]
+
+    # 4. Calcular similitud coseno para documentos relevantes
+    query_norm = np.linalg.norm(query_tfidf)
+    scored_docs = []
+
+    for doc_id in relevant_docs:
+        doc_norm = doc_norms.get(doc_id, 1e-10)
+        similarity = doc_scores[doc_id] / (query_norm * doc_norm)
+        scored_docs.append((doc_id, similarity))
+
+    # 5. Obtener top-k documentos
+    scored_docs.sort(key=lambda x: x[1], reverse=True)
+    top_k = scored_docs[:k]
+
+    # 6. Recuperar registros completos
+    results = []
+    source_table = HeapFile(_table_path(table_name))
+
+    for doc_id, score in top_k:
+        matching_recs = source_table.search_by_field("id", doc_id)
+        if matching_recs:
+            results.append((matching_recs[0], score))
+
+    # 7. Asignar similitud 0 a los documentos no encontrados
+    all_doc_ids = {rec.values[0] for rec in source_table.get_all_records()}
+    found_doc_ids = {res[0].values[0] for res in results}
+    missing_doc_ids = all_doc_ids - found_doc_ids
+
+    for doc_id in missing_doc_ids:
+        matching_recs = source_table.search_by_field("id", doc_id)
+        if matching_recs:
+            results.append((matching_recs[0], 0.0))
+
+    results.sort(key=lambda x: x[1], reverse=True)
+
+    return results[:k]
 
 def search_text(table_name: str, query: str, k: int = 5) -> list[tuple[Record, float]]:
     """

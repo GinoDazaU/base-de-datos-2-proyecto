@@ -13,15 +13,11 @@ from storage.HeapFile import HeapFile
 from .ExtendibleHashIndex import ExtendibleHashIndex
 from storage.Record import Record
 
-TABLES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tables"))
-
-def _table_path(table_name: str) -> str:
-    return os.path.join(TABLES_DIR, table_name)
-
 class SPIMIIndexer:
-    def __init__(self, block_dir: str = "index_blocks", index_table_name: str = "inverted_index"):
-        self.block_dir = os.path.join(TABLES_DIR, block_dir)
+    def __init__(self, _table_path, block_dir: str = "index_blocks", index_table_name: str = "inverted_index"):
+        self.block_dir = os.path.join("backend/database/tables", block_dir)
         self.index_table_name = index_table_name
+        self._table_path = _table_path
         os.makedirs(self.block_dir, exist_ok=True)
 
     def build_index(self, table_name: str) -> None:
@@ -31,7 +27,7 @@ class SPIMIIndexer:
         self._clean_blocks()
 
     def _process_documents(self, table_name: str) -> None:
-        heapfile: HeapFile = HeapFile(_table_path(table_name))
+        heapfile: HeapFile = HeapFile(table_name)
         term_dict = defaultdict(lambda: defaultdict(int))
         block_number = 0
         memory_limit = 4 * 1024  # 4 KB
@@ -61,14 +57,14 @@ class SPIMIIndexer:
         """Merge externo con streaming que evita cargar todo en RAM"""
         # 1. Inicializar el archivo final de índice
         schema_idx = [("term", "50s"), ("postings", "text")]
-        HeapFile.build_file(_table_path(self.index_table_name), schema_idx, "term")
-        heapfile_idx = HeapFile(_table_path(self.index_table_name))
+        HeapFile.build_file(self._table_path(self.index_table_name), schema_idx, "term")
+        heapfile_idx = HeapFile(self._table_path(self.index_table_name))
         
         # 2. Inicializar el archivo de normas
         schema_norms = [("doc_id", "i"), ("norm", "f")]
         norms_table_name = f"{self.index_table_name}_norms"
-        HeapFile.build_file(_table_path(norms_table_name), schema_norms, "doc_id")
-        heapfile_norms = HeapFile(_table_path(norms_table_name))
+        HeapFile.build_file(self._table_path(norms_table_name), schema_norms, "doc_id")
+        heapfile_norms = HeapFile(self._table_path(norms_table_name))
         
         # 3. Inicializar estructuras para el merge
         block_paths = [os.path.join(self.block_dir, f) for f in os.listdir(self.block_dir) if f.endswith(".pkl")]
@@ -121,10 +117,7 @@ class SPIMIIndexer:
             # Guardar término en el índice final (streaming)
             postings_json = json.dumps([[doc_id, tfidf] for doc_id, tfidf in postings_tfidf])
             record = Record(schema_idx, [term, postings_json])
-            try: 
-                heapfile_idx.insert_record(record)
-            except:
-                continue
+            heapfile_idx.insert_record_free(record)
             
             # Avanzar los bloques procesados
             for i in blocks_to_advance:
@@ -144,12 +137,12 @@ class SPIMIIndexer:
         
         # 7. Crear índices hash
         ExtendibleHashIndex.build_index(
-            _table_path(self.index_table_name),
+            self._table_path(self.index_table_name),
             lambda field_name: heapfile_idx.extract_index(field_name),
             "term"
         )
         ExtendibleHashIndex.build_index(
-            _table_path(norms_table_name),
+            self._table_path(norms_table_name),
             lambda field_name: heapfile_norms.extract_index(field_name),
             "doc_id"
         )

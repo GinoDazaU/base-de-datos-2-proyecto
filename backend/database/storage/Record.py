@@ -1,4 +1,5 @@
 import struct
+import os
 
 # Esta clase Record representa un registro binario genérico.
 # A diferencia de versiones más rígidas (como las que usan FORMAT fijo),
@@ -17,15 +18,35 @@ class Record:
     def __init__(self, schema, values):
         self.schema = schema
         self.values = values
-        self.format = ''.join('i' if fmt == 'text' else fmt for _, fmt in schema)
+        self.format = ''.join(self.get_format_char(fmt) for _, fmt in schema)
         self.size = struct.calcsize(self.format)
+
+    def get_format_char(self, fmt):
+        return Record.get_format_char_static(fmt)
+
+    @staticmethod
+    def get_format_char_static(fmt):
+        if fmt.upper() in ["TEXT", "INT"]:
+            return "i"
+        elif fmt.upper() == "SOUND":
+            return "ii"
+        elif fmt.upper() == "FLOAT":
+            return "f"
+        elif fmt.upper() == "BOOL":
+            return "?"
+        elif "VARCHAR" in fmt.upper():
+            return f"{int(fmt.split('(')[1][:-1])}s"
+        else:
+            return fmt
 
     def pack(self) -> bytes:
         processed = []
         for (_, fmt), val in zip(self.schema, self.values):
-            if 's' in fmt:                         # cadena fija
-                size = int(fmt[:-1])
-                processed.append(val.encode()[:size].ljust(size, b'\x00'))
+            if fmt.upper() == "SOUND":
+                processed.extend(val)
+            elif 's' in self.get_format_char(fmt): # cadena fija
+                size = int(self.get_format_char(fmt)[:-1])
+                processed.append(val.encode('utf-8')[:size].ljust(size, b'\x00'))
             elif fmt[:-1].isdigit():               # 3i, 4f, etc.
                 if not (isinstance(val, (list, tuple)) and len(val) == int(fmt[:-1])):
                     raise ValueError(f"Se esperaban {fmt[:-1]} elementos para '{fmt}'")
@@ -36,7 +57,7 @@ class Record:
 
     @staticmethod
     def unpack(buf, schema):
-        fmt_str = ''.join('i' if fmt == 'text' else fmt for _, fmt in schema)
+        fmt_str = ''.join(Record.get_format_char_static(fmt) for _, fmt in schema)
         vals = list(struct.unpack(fmt_str, buf))
         out = []
         for (_, fmt) in schema:
@@ -51,6 +72,8 @@ class Record:
                 n = int(fmt[:-1])
                 out.append(tuple(vals[:n]))
                 del vals[:n]
+            elif fmt.upper() == "SOUND":
+                out.append((vals.pop(0), vals.pop(0)))
             else:
                 out.append(vals.pop(0))
         return Record(schema, out)
@@ -58,14 +81,23 @@ class Record:
     
     @staticmethod
     def get_size(schema) -> int:
-        format_str = ''.join('i' if fmt == 'text' else fmt for _, fmt in schema)
+        format_str = "".join(Record.get_format_char_static(fmt) for _, fmt in schema)
         return struct.calcsize(format_str)
 
     def __str__(self) -> None:
         out_parts = []
         for (_, fmt), value in zip(self.schema, self.values):
-            if 's' in fmt:                         # cadena fija
-                out_parts.append(str(value))
+            if fmt.upper() == "SOUND":
+                # For sound, we might store a path, let's show only the basename
+                if isinstance(value, str) and os.path.exists(value):
+                    out_parts.append(os.path.basename(value))
+                else:
+                    out_parts.append(str(value))
+            elif 's' in self.get_format_char(fmt): # cadena fija
+                if isinstance(value, bytes):
+                    out_parts.append(value.decode('utf-8').strip('\x00'))
+                else:
+                    out_parts.append(str(value))
             elif fmt[:-1].isdigit():               # '4f', '3i', etc.
                 # Formatear cada componente según su tipo base
                 base = fmt[-1]
@@ -110,3 +142,4 @@ def main():
     # Mostrar todos los registros
     for r in registros:
         r.print()
+        

@@ -6,6 +6,7 @@ import pandas as pd
 
 from .Record import Record
 from .TextFile import TextFile
+from .Sound import Sound
 
 # --------------------------------------------------------
 #  Valores centinela para marcar registros eliminados
@@ -59,8 +60,10 @@ class HeapFile:
 
         # Crear archivo .text por cada campo tipo "text"
         for field_name, fmt in schema:
-            if fmt == "text":
+            if fmt.upper() == "TEXT":
                 TextFile.build_file(table_name, field_name)
+            elif fmt.upper() == "SOUND":
+                Sound.build_file(table_name, field_name)
 
     # ------------------------------------------------------------------
     # Inicialización ----------------------------------------------------
@@ -83,18 +86,6 @@ class HeapFile:
             self.heap_size, self.free_head = struct.unpack(
                 METADATA_FORMAT, f.read(METADATA_SIZE)
             )
-    
-    #-------------------------------------------------------------------
-    # Utilidades externas ----------------------------------------------
-    #-------------------------------------------------------------------
-    @staticmethod
-    def _load_schema_from_file(fname: str) -> List[Tuple[str, str]]:
-        if not os.path.exists(fname):
-            raise FileNotFoundError(f"El archivo de esquema {fname} no existe.")
-        with open(fname, encoding="utf-8") as jf:
-            js = json.load(jf)
-        schema = [(fld["name"], fld["type"]) for fld in js["fields"]]
-        return schema
 
     # ------------------------------------------------------------------
     # Utilidades internas ----------------------------------------------
@@ -140,6 +131,15 @@ class HeapFile:
                 offset = text_file.insert(text_value)
                 record.values[idx] = offset  # reemplazar texto por offset
 
+    def _process_sound_fields(self, record: Record) -> None:
+        for idx, (field_name, fmt) in enumerate(record.schema):
+            if fmt.upper() == "SOUND":
+                sound_path = record.values[idx]
+                if isinstance(sound_path, str):
+                    sound_file = Sound(self.filename.replace(".dat", ""), field_name)
+                    sound_offset = sound_file.insert(sound_path)
+                    record.values[idx] = (sound_offset, -1)
+
     def insert_record(self, record: Record) -> int:
         if record.schema != self.schema:
             raise ValueError("Esquema del registro no coincide.")
@@ -162,6 +162,7 @@ class HeapFile:
                     fh.seek(PTR_SIZE, os.SEEK_CUR)  # saltar next_free
 
         self._process_text_fields(record)
+        self._process_sound_fields(record)
 
         # ── 2. Insertar (reciclar hueco o append) ─────────────────────
         with open(self.filename, "r+b") as fh:
@@ -189,6 +190,7 @@ class HeapFile:
             raise ValueError("Esquema del registro no coincide.")
 
         self._process_text_fields(record)
+        self._process_sound_fields(record)
 
         with open(self.filename, "r+b") as fh:
             if self.free_head == -1:  # sin huecos → append
@@ -238,6 +240,9 @@ class HeapFile:
                     if fmt == "text":
                         offset = old_rec.values[i]
                         TextFile(self.table_name, field_name).delete(offset)
+                    elif fmt.upper() == "SOUND":
+                        sound_offset, _ = old_rec.values[i]
+                        Sound(self.filename.replace(".dat", ""), field_name).delete(sound_offset)
                 # marcar hueco: set PK = sentinel y next_free = free_head
                 rec.values[pk_idx] = sentinel
                 fh.seek(byte_off)
@@ -258,7 +263,7 @@ class HeapFile:
     # ------------------------------------------------------------------
     #  Búsqueda secuencial por cualquier campo --------------------------
     # ------------------------------------------------------------------
-    def search_by_field(self, field: str, value):
+    def search_by_field(self, field: str, value, crude_data=False):
         """
         Busca secuencialmente en el heap y devuelve:
           • Una lista de Record con todas las coincidencias.
@@ -300,9 +305,14 @@ class HeapFile:
                     # --- Reemplazar offsets por contenido real para campos 'text' ---
                     updated_values = list(rec.values)
                     for i, (fname, fmt) in enumerate(self.schema):
-                        if fmt == "text":
+                        if fmt.upper() == "TEXT":
                             offset = updated_values[i]
                             updated_values[i] = TextFile(self.table_name, fname).read(offset)
+                        elif fmt.upper() == "SOUND":
+                            if not crude_data:
+                                sound_offset, _ = updated_values[i]
+                                updated_values[i] = Sound(self.filename.replace(".dat", ""), fname).read(sound_offset)
+
                     resultados.append(Record(self.schema, updated_values))
 
                     if stop_early:
@@ -361,9 +371,12 @@ class HeapFile:
             # Procesar campos de texto
             updated_values = list(record.values)
             for i, (fname, fmt) in enumerate(self.schema):
-                if fmt == "text":
+                if fmt.upper() == "TEXT":
                     offset = updated_values[i]
                     updated_values[i] = TextFile(self.table_name, fname).read(offset)
+                elif fmt.upper() == "SOUND":
+                    sound_offset, _ = updated_values[i]
+                    updated_values[i] = Sound(self.filename.replace(".dat", ""), fname).read(sound_offset)
             
             return Record(self.schema, updated_values)
 
@@ -383,11 +396,16 @@ class HeapFile:
 
                 # Reemplazar offsets por texto real
                 for idx, (name, fmt) in enumerate(self.schema):
-                    if fmt == "text":
+                    if fmt.upper() == "TEXT":
                         offset = rec.values[idx]
                         text_file = TextFile(self.table_name, name)
                         text_content = text_file.read(offset)
                         rec.values[idx] = text_content
+                    elif fmt.upper() == "SOUND":
+                        sound_offset, _ = rec.values[idx]
+                        sound_file = Sound(self.filename.replace(".dat", ""), name)
+                        sound_path = sound_file.read(sound_offset)
+                        rec.values[idx] = sound_path
 
                 print(rec)
                 fh.seek(PTR_SIZE, os.SEEK_CUR)
@@ -422,29 +440,6 @@ class HeapFile:
                 records.append(rec)
                 f.seek(PTR_SIZE, os.SEEK_CUR)
         return records
-    
-    def get_all_offsets(self) -> set[int]:
-        offsets: set[int] = set()
-        pk_idx, pk_sentinel = None, None
-        if self.primary_key is not None:
-            pk_idx, pk_fmt = self._pk_idx_fmt()
-            pk_sentinel = self._sentinel(pk_fmt)
-
-        with open(self.filename, "rb") as f:
-            f.seek(METADATA_SIZE)
-            pos = 0
-            while pos < self.heap_size:
-                buf = f.read(self.rec_data_size)
-                if len(buf) < self.rec_data_size:
-                    break
-                rec = Record.unpack(buf, self.schema)
-                # si no es hueco, lo incluimos
-                if not (pk_idx is not None and rec.values[pk_idx] == pk_sentinel):
-                    offsets.add(pos)
-                # saltar puntero next_free
-                f.seek(PTR_SIZE, os.SEEK_CUR)
-                pos += 1
-        return offsets
 
     @staticmethod
     def to_dataframe(heapfile: "HeapFile", alias=None) -> pd.DataFrame:
@@ -511,3 +506,26 @@ class HeapFile:
                 )
                 fh.seek(PTR_SIZE, os.SEEK_CUR)
                 yield rec.values[pk_idx], text
+
+    def update_record(self, record: Record):
+        if record.schema != self.schema:
+            raise ValueError("Esquema del registro no coincide.")
+
+        pk_idx, _ = self._pk_idx_fmt()
+        pk_value = record.values[pk_idx]
+
+        with open(self.filename, "r+b") as fh:
+            for pos in range(self.heap_size):
+                byte_off = METADATA_SIZE + pos * self.slot_size
+                fh.seek(byte_off)
+                buf = fh.read(self.rec_data_size)
+                rec = Record.unpack(buf, self.schema)
+                if rec.values[pk_idx] == pk_value:
+                    # Decode string values before packing
+                    for i, (fname, fmt) in enumerate(self.schema):
+                        if 's' in Record.get_format_char_static(fmt) and isinstance(record.values[i], bytes):
+                            record.values[i] = record.values[i].decode('utf-8').strip('\x00')
+                    fh.seek(byte_off)
+                    fh.write(record.pack())
+                    return True
+        return False
