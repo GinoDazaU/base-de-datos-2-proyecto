@@ -462,7 +462,7 @@ class DBManager:
                 ColumnType.POINT3D: tuple[float, float, float],
                 ColumnType.VARCHAR: str
             }
-            if not isinstance(value, map[column_type]):
+            if not isinstance(value, type_map[column_type]):
                 raise TypeError(f"Value for column '{column}' must be of type {column_type}, got {type(value)}.")
         DBManager.insert_record(table_name, Record(schema, values))
 
