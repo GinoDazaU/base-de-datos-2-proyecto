@@ -39,7 +39,7 @@ def _test_spimi_from_news_csv(path: str):
     print(f"\n== CONSTRUYENDO ÍNDICE SPIMI PARA '{table_name}' ==")
     build_spimi_index(table_name)
 
-    query = "trump"
+    query = "The Justice Department proposed two retired judges for the role"
     print(f"\n== CONSULTA: '{query}' ==")
     results = search_text(table_name, query, k=5)
 
