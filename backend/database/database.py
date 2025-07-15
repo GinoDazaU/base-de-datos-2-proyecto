@@ -555,7 +555,6 @@ def build_acoustic_model(table_name: str, field_name: str, num_clusters: int):
     # 1. Construir el codebook
     from multimedia.codebook import build_codebook
     build_codebook(heap_file, field_name, num_clusters)
-
     # 2. Cargar el codebook
     from multimedia.histogram import load_codebook
     codebook = load_codebook(heap_file.table_name, field_name)
@@ -568,7 +567,7 @@ def build_acoustic_model(table_name: str, field_name: str, num_clusters: int):
     histogram_handler = HistogramFile(_table_path(table_name), field_name)
 
     for record in heap_file.get_all_records():
-        sound_offset, _ = record.values[heap_file.schema.index((field_name, "SOUND"))]
+        sound_offset, _ = record.values[heap_file.schema.index((field_name, "sound"))]
         audio_path = sound_handler.read(sound_offset)
 
         if audio_path is None:
@@ -584,7 +583,7 @@ def build_acoustic_model(table_name: str, field_name: str, num_clusters: int):
 
             # Actualizar el registro en el heap file con el offset del histograma
             record.values = list(record.values)
-            record.values[heap_file.schema.index((field_name, "SOUND"))] = (sound_offset, histogram_offset)
+            record.values[heap_file.schema.index((field_name, "sound"))] = (sound_offset, histogram_offset)
             heap_file.update_record(record)
 
 def knn_search(table_name: str, field_name: str, query_audio_path: str, k: int) -> list[tuple[Record, float]]:

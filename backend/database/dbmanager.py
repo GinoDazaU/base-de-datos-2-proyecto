@@ -15,6 +15,9 @@ from column_types import IndexType, ColumnType
 from statement import CreateColumnDefinition, ConstantExpression
 from fancytypes.schema import SchemaType
 from column_types import OperationType
+from database import build_acoustic_model
+from storage.Sound import Sound
+from storage.HistogramFile import HistogramFile
 
 
 class DBManager:
@@ -59,7 +62,8 @@ class DBManager:
     def get_table_schema(table_name: str):
         DBManager.verify_table_exists(table_name)
         schema_path = DBManager.table_path(table_name) + ".schema.json"
-        return HeapFile._load_schema_from_file(schema_path)
+        heapfile=HeapFile(DBManager.table_path(table_name))
+        return heapfile.schema
 
     @staticmethod
     def get_table_heap(table_name: str) -> HeapFile:
@@ -238,6 +242,7 @@ class DBManager:
 
     @staticmethod
     def create_spimi_audio_idx(table_name: str, field_name) -> None:
+        build_acoustic_model(DBManager.table_path(table_name),field_name,1)
         SpimiAudioIndexer(DBManager.table_path, field_name).build_index(table_name)
 
     # region Index verification
@@ -502,6 +507,16 @@ class DBManager:
     def insert_record(table_name: str, record: Record) -> int:
         table_path = DBManager.table_path(table_name)
         heap = HeapFile(table_path)
+
+        values = list(record.values)
+        for i, (field_name, field_type) in enumerate(record.schema):
+            if field_type.upper() == "SOUND":
+                sound_path = values[i]
+                if isinstance(sound_path, str):
+                    sound_file = Sound(DBManager.table_path(table_name), field_name)
+                    sound_offset = sound_file.insert(sound_path)
+                    values[i] = (sound_offset, -1)  # -1 for histogram offset
+        record.values = list(values)
         offset = heap.insert_record(record)
         DBManager.update_secondary_indexes(table_path, record, offset)
         return offset
@@ -535,7 +550,10 @@ class DBManager:
                     )
                 pk = column.column_name
             schema.append((column.column_name, format))
-
+        for field_name, field_type in schema:
+            if field_type.upper() == "SOUND":
+                HistogramFile.build_file(DBManager.table_path(table_name), field_name)
+        print(f"Tabla '{table_name}' creada con éxito.")
         DBManager.create_table_aux(table_name, schema, pk)
 
     def drop_table(self, table_name: str) -> None:
@@ -585,6 +603,7 @@ class DBManager:
             raise ValueError("Column names and values length mismatch.")
         schema: list[tuple[str, str]] = DBManager.get_table_schema(table_name)
         schema_dict: dict = dict(schema)
+        """
         for column, value in zip(columns, values):
             if column not in schema_dict:
                 raise ValueError(
@@ -598,11 +617,14 @@ class DBManager:
                 ColumnType.POINT2D: tuple[float, float],
                 ColumnType.POINT3D: tuple[float, float, float],
                 ColumnType.VARCHAR: str,
+                ColumnType.TEXT: str,      
+                ColumnType.SOUND: str,
             }
-            if not isinstance(value, map[column_type]):
+            if not isinstance(value, type_map[column_type]):
                 raise TypeError(
                     f"Value for column '{column}' must be of type {column_type}, got {type(value)}."
                 )
+        """
         DBManager.insert_record(table_name, Record(schema, values))
 
     def fetch_condition_offsets(

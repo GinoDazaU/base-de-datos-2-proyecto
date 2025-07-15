@@ -61,7 +61,9 @@ class Record:
         vals = list(struct.unpack(fmt_str, buf))
         out = []
         for (_, fmt) in schema:
-            if 's' in fmt:
+            if fmt.upper() == "SOUND":
+                out.append((vals.pop(0), vals.pop(0)))
+            elif 's' in fmt:
                 size = int(fmt[:-1])
                 raw = vals.pop(0)
                 if isinstance(raw, bytes):
@@ -72,8 +74,7 @@ class Record:
                 n = int(fmt[:-1])
                 out.append(tuple(vals[:n]))
                 del vals[:n]
-            elif fmt.upper() == "SOUND":
-                out.append((vals.pop(0), vals.pop(0)))
+            
             else:
                 out.append(vals.pop(0))
         return Record(schema, out)

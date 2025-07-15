@@ -139,6 +139,7 @@ class HeapFile:
                     sound_file = Sound(self.filename.replace(".dat", ""), field_name)
                     sound_offset = sound_file.insert(sound_path)
                     record.values[idx] = (sound_offset, -1)
+                    
 
     def insert_record(self, record: Record) -> int:
         if record.schema != self.schema:
@@ -393,7 +394,6 @@ class HeapFile:
             for i in range(self.heap_size):
                 buf = fh.read(self.rec_data_size)
                 rec = Record.unpack(buf, self.schema)
-
                 # Reemplazar offsets por texto real
                 for idx, (name, fmt) in enumerate(self.schema):
                     if fmt.upper() == "TEXT":

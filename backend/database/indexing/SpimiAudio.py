@@ -45,7 +45,7 @@ class SpimiAudioIndexer:
         for record in heapfile.get_all_records():
             self.doc_count += 1
             _, histogram_offset = record.values[
-                heapfile.schema.index((self.field_name, "SOUND"))
+                heapfile.schema.index((self.field_name, "sound"))
             ]
 
             if histogram_offset == -1:

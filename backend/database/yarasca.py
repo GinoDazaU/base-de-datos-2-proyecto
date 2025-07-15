@@ -734,6 +734,7 @@ if __name__ == "__main__":
     ]
     audio_test = [
         "CREATE TABLE IF NOT EXISTS songs(id INT primary key, audio SOUND);"
+        "INSERT INTO songs(id, audio) VALUES(1, '000002.mp3');",
         "CREATE INDEX ON songs(audio) USING SPIMIAUDIO;"
     ]
 
