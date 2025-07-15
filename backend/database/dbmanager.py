@@ -141,7 +141,7 @@ class DBManager:
     def create_seq_idx(table_name: str, field_name: str) -> None:
         type = DBManager.get_field_type(table_name, field_name)
         if type not in (ColumnType.INT, ColumnType.FLOAT, ColumnType.VARCHAR):
-            raise ValueError(f"Índice no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}.")
+            raise ValueError(f"Unsupported index for field {field_name} of type {type} in table {table_name}.")
         path = DBManager.table_path(table_name)
         SequentialIndex.build_index(path, HeapFile(path).extract_index, field_name)
 
