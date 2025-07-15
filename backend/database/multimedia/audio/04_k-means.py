@@ -4,9 +4,9 @@ import pickle
 from sklearn.cluster import MiniBatchKMeans
 
 # Parámetros
-features_folder = "features"
-n_clusters = 64  # Número de acoustic words, ajustable según dataset
-codebook_path = "codebook.pkl"
+features_folder = "C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/features"
+n_clusters = 64  # Número de acoustic words
+codebook_path = "C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/codebook.pkl"
 
 # Paso 1: Cargar todos los MFCCs
 all_descriptors = []
@@ -37,10 +37,10 @@ import numpy as np
 import pickle
 
 # Cargar un MFCC cualquiera
-mfcc = np.load("features/000002_mfcc.npy").T
+mfcc = np.load("C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/features/000002_mfcc.npy").T
 
 # Cargar el modelo KMeans
-with open("codebook.pkl", "rb") as f:
+with open("C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/codebook.pkl", "rb") as f:
     kmeans = pickle.load(f)
 
 # Asignar cada frame a su acoustic word

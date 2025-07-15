@@ -1,7 +1,5 @@
 <meta charset="UTF-8">
 
-<h2>Nota: Los últimos cambios incluidos para el proyecto 1 fueron el parser sql, estos cambios fueron aprobados por el profesor para considerarse dentro de la nota de la presentación</h2>
-
 <h1 align="center">Mini DataBase Manager</h3>
 
 ---

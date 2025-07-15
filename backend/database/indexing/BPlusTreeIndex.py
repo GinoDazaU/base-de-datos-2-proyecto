@@ -270,15 +270,15 @@ class BPlusTreeIndex:
 
         return new_offset, separator_key
 
-    def search(self, key):
+    def search(self, key) -> list[int]:
         #print(f"[DEBUG SEARCH] Buscando clave: {key}")    
         return self.search_aux(self.root_offset, key)
 
-    def search_aux(self, node_offset, key):
+    def search_aux(self, node_offset, key) -> list[int]:
         node = self.load_node(node_offset)
 
         if node.is_leaf:
-            matches = []
+            matches: list[int] = []
             for record in node.records:
                 if record.key == key:
                     matches.append(record.offset)
@@ -292,13 +292,13 @@ class BPlusTreeIndex:
                 idx += 1
             return self.search_aux(node.children[idx], key)
 
-    def range_search(self, min_key, max_key):
-        offsets = []
+    def range_search(self, min_key, max_key) -> list[int]:
+        offsets: list[int] = []
         self.range_search_aux(self.root_offset, min_key, max_key, offsets)
 
-        return offsets if offsets else None
+        return offsets
 
-    def range_search_aux(self, node_offset, min_key, max_key, result_list):
+    def range_search_aux(self, node_offset, min_key, max_key, result_list: list[int]) -> None:
         node = self.load_node(node_offset)
 
         if node.is_leaf:
@@ -574,10 +574,10 @@ class BPlusTreeIndexWrapper:
     def insert_record(self, index_record: IndexRecord):
         self.tree.insert(index_record)
 
-    def search(self, key):
+    def search(self, key) -> list[int]:
         return self.tree.search(key)
 
-    def range_search(self, min_key, max_key):
+    def range_search(self, min_key, max_key) -> list[int]:
         return self.tree.range_search(min_key, max_key)
 
     def delete_record(self, key, offset):

@@ -2,7 +2,7 @@ import pickle
 from collections import defaultdict
 
 # Cargar histogramas TF (no TF-IDF)
-with open("histogramas_TFIDF.pkl", "rb") as f:
+with open("C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/histogramas_TFIDF.pkl", "rb") as f:
     data = pickle.load(f)
 
 nombres = data["nombres"]
@@ -22,7 +22,7 @@ for song_id, vector in enumerate(X):
             inverted_index[word_id][song_id] = freq
 
 # Guardar índice invertido
-with open("inverted_index.pkl", "wb") as f:
+with open("C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/inverted_index.pkl", "wb") as f:
     pickle.dump(dict(inverted_index), f)
 
 print(f"✅ Índice invertido creado con {len(inverted_index)} acoustic words.")
@@ -36,20 +36,20 @@ from sklearn.metrics import pairwise_distances_argmin_min
 
 #query
 
-query_audio_path = ""
+query_audio_path = "C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/fma_small/000/000207.mp3"
 top_k = 5
 
 # Cargar recursos
-with open("codebook.pkl", "rb") as f:
+with open("C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/codebook.pkl", "rb") as f:
     kmeans = pickle.load(f)
 
-with open("histogramas_TFIDF.pkl", "rb") as f:
+with open("C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/histogramas_TFIDF.pkl", "rb") as f:
     data = pickle.load(f)
     nombres = data["nombres"]
     tfidf_vectors = data["tfidf_vectors"]
     n_clusters = data["codebook_size"]
 
-with open("inverted_index.pkl", "rb") as f:
+with open("C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/inverted_index.pkl", "rb") as f:
     inverted_index = pickle.load(f)
 
 # Procesar query

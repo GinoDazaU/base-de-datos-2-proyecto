@@ -5,10 +5,10 @@ from sklearn.metrics import pairwise_distances_argmin_min
 from sklearn.feature_extraction.text import TfidfTransformer
 
 # Parámetros
-features_folder = "features"
-codebook_path = "codebook.pkl"
+features_folder = "C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/features"
+codebook_path = "C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/codebook.pkl"
 n_clusters = 64  # Debe coincidir con el codebook
-output_tfidf_path = "histogramas_TFIDF.pkl"
+output_tfidf_path = "C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/histogramas_TFIDF.pkl"
 
 # Paso 1: Cargar el modelo KMeans (codebook)
 with open(codebook_path, "rb") as f:

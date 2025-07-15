@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import os
 
 # Directorios
-input_folder = "fma_small/000"
-output_folder = "features"
+input_folder = "C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/fma_small/000"
+output_folder = "C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/features"
 
 # Crear carpeta de salida si no existe
 os.makedirs(output_folder, exist_ok=True)
@@ -28,9 +28,9 @@ for file_name in os.listdir(input_folder):
 
 print("✅ MFCCs extraídos y guardados.")
 
-mfcc = np.load("features/000002_mfcc.npy")
+mfcc = np.load("C:/Users/renat/OneDrive/Documentos/2025/UTEC/2025-I/BDII/base-de-datos-2-proyecto/backend/database/multimedia/features/000002_mfcc.npy")
 plt.imshow(mfcc, aspect='auto', origin='lower')
-plt.title("MFCC de cancion1")
+plt.title("MFCC de Agua Marina - Migajas de Amor")
 plt.xlabel("Frame")
 plt.ylabel("Coeficiente MFCC")
 plt.colorbar()

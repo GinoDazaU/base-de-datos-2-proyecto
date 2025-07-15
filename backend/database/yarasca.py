@@ -93,7 +93,10 @@ class Parser:
     def parse_column_definition(self) -> CreateColumnDefinition:
         self.print_debug("Parsing column definition")
 
-        column_name, column_type, varchar_length, is_pk = None, None, None, False
+        column_name: str = ""
+        column_type: ColumnType
+        varchar_length: int = 0
+        is_pk: bool = False
 
         if not self.match(TokenType.USER_IDENTIFIER):
             raise SyntaxError(f"Expected column name, found {self.curr.text}")
@@ -129,19 +132,8 @@ class Parser:
                     f"Expected ')' after VARCHAR length, found {self.curr.text}"
                 )
             column_type = ColumnType.VARCHAR
-
-        if column_type not in (
-            ColumnType.INT,
-            ColumnType.FLOAT,
-            ColumnType.VARCHAR,
-            ColumnType.DATE,
-            ColumnType.BOOL,
-            ColumnType.POINT2D,
-            ColumnType.POINT3D,
-        ):
-            raise SyntaxError(
-                f"Invalid column type {self.prev.text} for column {column_name}"
-            )
+        else:
+            raise SyntaxError(f"Invalid column type {self.curr.text} for column {column_name}")
 
         if self.match(TokenType.PRIMARY):
             if not self.match(TokenType.KEY):
