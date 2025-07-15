@@ -116,7 +116,7 @@ class DBManager:
         def check_scalar(v) -> bool:
             match col_type:
                 case ColumnType.INT: return isinstance(v, int)
-                case ColumnType.FLOAT: return isinstance(v, float)
+                case ColumnType.FLOAT: return isinstance(v, (int, float))
                 case ColumnType.BOOL: return isinstance(v, bool)
                 case ColumnType.VARCHAR: return isinstance(v, str)
                 case ColumnType.POINT2D: return isinstance(v, tuple) and len(v) == 2 and all(isinstance(x, (int, float)) for x in v)
@@ -515,7 +515,7 @@ class DBManager:
 
         return {off for v, off in all_pairs if cmp(v)}
 
-    def records_projection(self, table_name: str, offsets: list[int], columns: list[str] | None) -> list[list]:
+    def records_projection(self, table_name: str, offsets: set[int], columns: list[str] | None) -> list[list]:
         heap: HeapFile = DBManager.get_table_heap(table_name)
         schema: list[tuple] = DBManager.get_table_schema(table_name)
         names = [name for name, _ in schema]
@@ -531,3 +531,7 @@ class DBManager:
             record: Record = heap.fetch_record_by_offset(offset)
             results.append([record.values[pos] for pos in positions])
         return results
+    
+    def fetch_all_offsets(self, table_name: str) -> set[int]:
+        DBManager.verify_table_exists(table_name)
+        return HeapFile(DBManager.table_path(table_name)).get_all_offsets()

@@ -1,12 +1,6 @@
 from contextlib import contextmanager
-from column_types import ColumnType, QueryResult, IndexType, OperationType
-
-from storage.HeapFile import HeapFile
-from storage.Record import Record
-
-import os
-
-from fancytypes.schema import SchemaType
+from column_types import ColumnType, QueryResult, OperationType
+from statement import Condition, ColumnExpression, SelectStatement, WhereStatement, Program, Statement
 
 from database import (
     create_table,
@@ -47,7 +41,6 @@ from statement import (
     Program,
     Point2DExpression,
     Point3DExpression,
-    # xd,
     OrCondition,
     AndCondition,
     NotCondition,
@@ -109,12 +102,14 @@ class RunVisitor:
     """Base visitor class for executing statements"""
 
     def __init__(self):
-        self.current_record: Record = None
+        self.current_table: str = ""
 
     def generic_visit(self, node):
-        """Called if no explicit visitor function exists for a node."""
-        print("GENERIC VISIT CALLED ON ", node.__class__.__name__)
-        pass
+        if isinstance(node, Statement):
+            raise ValueError(f"No visit_{node.__class__.__name__.lower()} method defined for {node.__class__.__name__}")
+        if isinstance(node, Condition):
+            return set()
+        raise ValueError(f"No visit_{node.__class__.__name__.lower()} method defined for {node.__class__.__name__}")
 
     def visit_intexpression(self, expr: IntExpression):
         return expr.value
@@ -135,22 +130,7 @@ class RunVisitor:
         return (expr.x, expr.y, expr.z)
 
     def visit_columnexpression(self, expr: ColumnExpression):
-        # resolves colExp yeehaw
-        if self.current_record is None:
-            raise ValueError("Current record is not set.")
-        if expr.table_name and expr.table_name != os.path.basename(
-            self.current_record.schema[0][0]
-        ):
-            raise ValueError(
-                f"Table '{expr.table_name}' does not match the current record's table."
-            )
-        schema_names = [name for name, _ in self.current_record.schema]
-        if expr.column_name not in schema_names:
-            raise ValueError(
-                f"Column '{expr.column_name}' does not exist in the current record."
-            )
-        idx = schema_names.index(expr.column_name)
-        return self.current_record.values[idx]
+        return expr.column_name
 
     def visit_program(self, program: Program):
         lastResult: QueryResult = None
@@ -184,109 +164,50 @@ class RunVisitor:
         )
 
     def visit_selectstatement(self, st: SelectStatement):
-        if not check_table_exists(st.from_table):
-            raise ValueError(f"Table '{st.from_table}' does not exist.")
-        heapfile = HeapFile(_table_path(st.from_table))
-        records = heapfile.get_all_records()
-        table_name = os.path.basename(heapfile.table_name)
-        result = []
-        n, c = None, None
-
-        for rec in records:
-            self.current_record = rec
-            if st.where_statement is not None:
-                if not st.where_statement.accept(self):
-                    continue
-            entry = []
-            if st.select_all:
-                entry = rec.values
-            else:
-                for col in st.select_columns:
-                    col_name = col
-                    if "." in col:
-                        n, c = col.split(".")
-                        col_name = c
-                        if n != table_name:
-                            raise ValueError(
-                                f"Table '{n}' does not match the table in the statement '{st.from_table}'."
-                            )
-
-                    if hasattr(rec, "schema") and hasattr(rec, "values"):
-                        schema_names = [name for name, _ in rec.schema]
-
-                        if col_name not in schema_names:
-                            raise ValueError(
-                                f"Column '{col_name}' does not exist in table '{st.from_table}'."
-                            )
-                        idx = schema_names.index(col_name)
-                        entry.append(rec.values[idx])
-                    else:
-                        raise ValueError(
-                            "Record does not have a schema or values attribute???"
-                        )
-            result.append(entry)
+        self.current_table = st.from_table
+        offsets: set[int] = DBManager().fetch_all_offsets(st.from_table) if not st.where_statement else st.where_statement.accept(self)
+        columns = None if st.select_all else st.select_columns
+        results = DBManager().records_projection(st.from_table, offsets, columns)
         if st.limit is not None:
-            if st.limit < 0:
-                raise ValueError("Limit cannot be negative.")
-            result = result[: st.limit]
-        return QueryResult(
-            True,
-            f"Selected {len(result)} records from table '{st.from_table}'.",
-            result,
-        )  # result is an array of records
+            results = results[:st.limit]
+        return QueryResult(True, f"Selected {len(results)} records from table '{st.from_table}'.", results)
 
     # region RunVisitor Conditions
+
+    def visit_wherestatement(self, st: WhereStatement) -> set[int]:
+        return st.or_condition.accept(self)
+
     def visit_orcondition(self, condition: OrCondition):
-        if condition.or_condition is not None:
-            return condition.and_condition.accept(
-                self
-            ) or condition.or_condition.accept(self)
-        else:
-            return condition.and_condition.accept(self)
+        left = condition.and_condition.accept(self)
+        if condition.or_condition:
+            right = condition.or_condition.accept(self)
+            return left | right
+        return left
 
     def visit_andcondition(self, condition: AndCondition):
-        if condition.and_condition is not None:
-            return condition.not_condition.accept(
-                self
-            ) and condition.and_condition.accept(self)
-        else:
-            return condition.not_condition.accept(self)
+        left = condition.not_condition.accept(self)
+        if condition.and_condition:
+            right = condition.and_condition.accept(self)
+            return left & right
+        return left
 
     def visit_notcondition(self, condition: NotCondition):
-        if condition.is_not:
-            return not condition.primary_condition.accept(self)
-        else:
-            return condition.primary_condition.accept(self)
+        inner = condition.primary_condition.accept(self)
+        return DBManager().fetch_all_offsets(self.current_table) - inner if condition.is_not else inner
 
     def visit_constantcondition(self, condition: ConstantCondition):
-        return condition.bool_constant.accept(self)
+        return DBManager().fetch_all_offsets(self.current_table) if condition.bool_constant.accept(self) else set()
 
     def visit_simplecomparison(self, condition: SimpleComparison):
-        left_value = condition.left_expression.accept(self)
-        right_value = condition.right_expression.accept(self)
-
-        match condition.operator:
-            case OperationType.EQUAL:
-                return left_value == right_value
-            case OperationType.NOT_EQUAL:
-                return left_value != right_value
-            case OperationType.LESS_THAN:
-                return left_value < right_value
-            case OperationType.LESS__EQUAL:
-                return left_value <= right_value
-            case OperationType.GREATER_THAN:
-                return left_value > right_value
-            case OperationType.GREATER__EQUAL:
-                return left_value >= right_value
-            case _:
-                raise ValueError(f"Unsupported operator: {condition.operator}")
+        column = condition.left_expression.accept(self)
+        value = condition.right_expression.accept(self)
+        return DBManager().fetch_condition_offsets(self.current_table, column, condition.operator, value)
 
     def visit_betweencomparison(self, condition: BetweenComparison):
-        left_value = condition.left_expression.accept(self)
-        lower_bound = condition.lower_bound.accept(self)
-        upper_bound = condition.upper_bound.accept(self)
-
-        return lower_bound <= left_value <= upper_bound
+        column = condition.left_expression.accept(self)
+        low = condition.lower_bound.accept(self)
+        high = condition.upper_bound.accept(self)
+        return DBManager().fetch_condition_offsets(self.current_table, column, OperationType.BETWEEN, (low, high))
 
     def visit_primarycondition(self, condition: PrimaryCondition):
         if isinstance(condition.condition, ConstantCondition):
@@ -301,9 +222,6 @@ class RunVisitor:
             raise ValueError(f"Unsupported condition type: {type(condition.condition)}")
 
     # endregion
-
-    def visit_wherestatement(self, st: WhereStatement):
-        return st.or_condition.accept(self)  # returns bool, not print
 
 
 # endregion

@@ -4,7 +4,7 @@ from column_types import ColumnType, IndexType, OperationType, QueryResult
 class Visitable:
     """Base class for all SQL statements"""
 
-    def accept(self, visitor) -> QueryResult:
+    def accept(self, visitor):
         method_name = f"visit_{self.__class__.__name__.lower()}"
         method = getattr(visitor, method_name, visitor.generic_visit)
         return method(self)

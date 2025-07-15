@@ -372,6 +372,29 @@ class HeapFile:
                 records.append(rec)
                 f.seek(PTR_SIZE, os.SEEK_CUR)
         return records
+    
+    def get_all_offsets(self) -> set[int]:
+        offsets: set[int] = set()
+        pk_idx, pk_sentinel = None, None
+        if self.primary_key is not None:
+            pk_idx, pk_fmt = self._pk_idx_fmt()
+            pk_sentinel = self._sentinel(pk_fmt)
+
+        with open(self.filename, "rb") as f:
+            f.seek(METADATA_SIZE)
+            pos = 0
+            while pos < self.heap_size:
+                buf = f.read(self.rec_data_size)
+                if len(buf) < self.rec_data_size:
+                    break
+                rec = Record.unpack(buf, self.schema)
+                # si no es hueco, lo incluimos
+                if not (pk_idx is not None and rec.values[pk_idx] == pk_sentinel):
+                    offsets.add(pos)
+                # saltar puntero next_free
+                f.seek(PTR_SIZE, os.SEEK_CUR)
+                pos += 1
+        return offsets
 
     @staticmethod
     def to_dataframe(heapfile: "HeapFile", alias=None) -> pd.DataFrame:
