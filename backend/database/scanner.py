@@ -76,6 +76,14 @@ class TokenType(Enum):
     POINT2D = auto()  # for RTREE
     POINT3D = auto()  # for RTREE
 
+    # new
+    SPIMI = auto()
+    TEXT = auto()
+    SPIMIAUDIO = auto()
+    SOUND = auto()
+    IF = auto()
+    EXISTS = auto()
+
 
 class Token:
     TYPE_TO_TEXT = {
@@ -142,6 +150,13 @@ class Token:
         # aaaa
         TokenType.POINT2D: "POINT2D",
         TokenType.POINT3D: "POINT3D",
+        # wasa
+        TokenType.SPIMI: "SPIMI",
+        TokenType.TEXT: "TEXT",
+        TokenType.SPIMIAUDIO: "SPIMIAUDIO",
+        TokenType.SOUND: "SOUND",
+        TokenType.IF: "IF",
+        TokenType.EXISTS: "EXISTS",
     }
 
     TEXT_TO_TYPE = {text: key for key, text in TYPE_TO_TEXT.items()}
@@ -161,6 +176,7 @@ class Scanner:
     def __init__(self, source: str):
         self.source = source
         self.position = 0
+        self.line = 0
         self.current_char = self.source[self.position] if self.source else None
 
     def is_postgres_date(self, text: str) -> bool:
@@ -194,6 +210,9 @@ class Scanner:
 
     def skip_whitespace(self):
         while self.current_char is not None and self.current_char.isspace():
+            if self.current_char == "\n":
+                self.line += 1
+                self.position = 0
             self.advance()
 
     def next_token(self) -> Token:

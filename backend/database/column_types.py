@@ -9,6 +9,8 @@ class ColumnType(Enum):
     BOOL = auto()
     POINT2D = auto()
     POINT3D = auto()
+    TEXT = auto()
+    SOUND = auto()
 
     def __str__(self):
         return self.name
@@ -49,6 +51,8 @@ class IndexType(Enum):
     EXTENDIBLEHASH = auto()  # int or string
     RTREE = auto()  # dunno
     SEQUENTIAL = auto()  # int, float, string
+    SPIMI = auto()
+    SPIMIAUDIO = auto()
 
     def __str__(self):
         return self.name

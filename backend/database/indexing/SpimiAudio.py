@@ -7,14 +7,21 @@ import json
 import heapq
 from typing import Dict, List, Tuple, DefaultDict, Any, Union, Iterator
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from storage.HeapFile import HeapFile
 from storage.HistogramFile import HistogramFile
 from .ExtendibleHashIndex import ExtendibleHashIndex
 from storage.Record import Record
 
+
 class SpimiAudioIndexer:
-    def __init__(self, _table_path, field_name: str, block_dir: str = "audio_index_blocks", index_table_name: str = "acoustic_index"):
+    def __init__(
+        self,
+        _table_path,
+        field_name: str,
+        block_dir: str = "audio_index_blocks",
+        index_table_name: str = "acoustic_index",
+    ):
         self.block_dir = os.path.join("backend/database/tables", block_dir)
         self.index_table_name = index_table_name
         self._table_path = _table_path
@@ -37,7 +44,9 @@ class SpimiAudioIndexer:
 
         for record in heapfile.get_all_records():
             self.doc_count += 1
-            _, histogram_offset = record.values[heapfile.schema.index((self.field_name, "SOUND"))]
+            _, histogram_offset = record.values[
+                heapfile.schema.index((self.field_name, "SOUND"))
+            ]
 
             if histogram_offset == -1:
                 continue
@@ -45,7 +54,7 @@ class SpimiAudioIndexer:
             histogram = histogram_handler.read(histogram_offset)
 
             for centroid_id, count in histogram:
-                term_dict[centroid_id][record.values[0]] += count # values[0] is the id
+                term_dict[centroid_id][record.values[0]] += count  # values[0] is the id
 
                 if sys.getsizeof(term_dict) >= memory_limit:
                     self._dump_block(term_dict, block_number)
@@ -56,7 +65,9 @@ class SpimiAudioIndexer:
             self._dump_block(term_dict, block_number)
         self.total_blocks = block_number + 1
 
-    def _dump_block(self, term_dict: Dict[int, Dict[int, int]], block_number: int) -> None:
+    def _dump_block(
+        self, term_dict: Dict[int, Dict[int, int]], block_number: int
+    ) -> None:
         path = os.path.join(self.block_dir, f"block_{block_number}.json")
         sorted_dict = dict(sorted(term_dict.items()))
         with open(path, "w") as f:
@@ -76,7 +87,11 @@ class SpimiAudioIndexer:
         heapfile_norms = HeapFile(self._table_path(norms_table_name))
 
         # 3. Inicializar estructuras para el merge
-        block_paths = [os.path.join(self.block_dir, f) for f in os.listdir(self.block_dir) if f.endswith(".json")]
+        block_paths = [
+            os.path.join(self.block_dir, f)
+            for f in os.listdir(self.block_dir)
+            if f.endswith(".json")
+        ]
         block_iters = []
         current_terms = {}
         heap = []
@@ -121,10 +136,12 @@ class SpimiAudioIndexer:
                 tf = 1 + math.log10(freq) if freq > 0 else 0
                 tfidf = round(tf * idf, 5)
                 postings_tfidf.append((doc_id, tfidf))
-                document_norms[doc_id] += tfidf ** 2
+                document_norms[doc_id] += tfidf**2
 
             # Guardar término en el índice final (streaming)
-            postings_json = json.dumps([[doc_id, tfidf] for doc_id, tfidf in postings_tfidf])
+            postings_json = json.dumps(
+                [[doc_id, tfidf] for doc_id, tfidf in postings_tfidf]
+            )
             record = Record(schema_idx, [term, postings_json])
             heapfile_idx.insert_record_free(record)
 
@@ -148,12 +165,12 @@ class SpimiAudioIndexer:
         ExtendibleHashIndex.build_index(
             self._table_path(self.index_table_name),
             lambda field_name: heapfile_idx.extract_index(field_name),
-            "term"
+            "term",
         )
         ExtendibleHashIndex.build_index(
             self._table_path(norms_table_name),
             lambda field_name: heapfile_norms.extract_index(field_name),
-            "doc_id"
+            "doc_id",
         )
 
     def _clean_blocks(self):

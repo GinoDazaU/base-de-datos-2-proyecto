@@ -1,6 +1,13 @@
 from contextlib import contextmanager
-from column_types import ColumnType, QueryResult, OperationType
-from statement import Condition, ColumnExpression, SelectStatement, WhereStatement, Program, Statement
+from column_types import ColumnType, QueryResult, OperationType, IndexType
+from statement import (
+    Condition,
+    ColumnExpression,
+    SelectStatement,
+    WhereStatement,
+    Program,
+    Statement,
+)
 
 from database import (
     create_table,
@@ -106,10 +113,14 @@ class RunVisitor:
 
     def generic_visit(self, node):
         if isinstance(node, Statement):
-            raise ValueError(f"No visit_{node.__class__.__name__.lower()} method defined for {node.__class__.__name__}")
+            raise ValueError(
+                f"No visit_{node.__class__.__name__.lower()} method defined for {node.__class__.__name__}"
+            )
         if isinstance(node, Condition):
             return set()
-        raise ValueError(f"No visit_{node.__class__.__name__.lower()} method defined for {node.__class__.__name__}")
+        raise ValueError(
+            f"No visit_{node.__class__.__name__.lower()} method defined for {node.__class__.__name__}"
+        )
 
     def visit_intexpression(self, expr: IntExpression):
         return expr.value
@@ -140,6 +151,14 @@ class RunVisitor:
         return lastResult
 
     def visit_createtablestatement(self, st: CreateTableStatement):
+        if DBManager.check_table_exists(st.table_name):
+            if not st.if_not_exists:
+                raise ValueError(f"Table '{st.table_name}' already exists.")
+            else:
+                return QueryResult(
+                    True, f"Table '{st.table_name}' already exists, skipping creation."
+                )
+
         DBManager().create_table(st.table_name, st.columns)
         return QueryResult(True, f"Table '{st.table_name}' created successfully.")
 
@@ -149,11 +168,17 @@ class RunVisitor:
 
     def visit_createindexstatement(self, st: CreateIndexStatement):
         DBManager().create_index(st.table_name, st.column_name, st.index_type)
-        return QueryResult(True, f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' created successfully.")
+        return QueryResult(
+            True,
+            f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' created successfully.",
+        )
 
     def visit_dropindexstatement(self, st: DropIndexStatement):
         DBManager().drop_index(st.table_name, st.column_name, st.index_type)
-        return QueryResult(True, f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' dropped successfully.")
+        return QueryResult(
+            True,
+            f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' dropped successfully.",
+        )
 
     def visit_insertstatement(self, st: InsertStatement):
         values = [exp.accept(self) for exp in st.values]
@@ -165,12 +190,20 @@ class RunVisitor:
 
     def visit_selectstatement(self, st: SelectStatement):
         self.current_table = st.from_table
-        offsets: set[int] = DBManager().fetch_all_offsets(st.from_table) if not st.where_statement else st.where_statement.accept(self)
+        offsets: set[int] = (
+            DBManager().fetch_all_offsets(st.from_table)
+            if not st.where_statement
+            else st.where_statement.accept(self)
+        )
         columns = None if st.select_all else st.select_columns
         results = DBManager().records_projection(st.from_table, offsets, columns)
         if st.limit is not None:
-            results = results[:st.limit]
-        return QueryResult(True, f"Selected {len(results)} records from table '{st.from_table}'.", results)
+            results = results[: st.limit]
+        return QueryResult(
+            True,
+            f"Selected {len(results)} records from table '{st.from_table}'.",
+            results,
+        )
 
     # region RunVisitor Conditions
 
@@ -193,21 +226,33 @@ class RunVisitor:
 
     def visit_notcondition(self, condition: NotCondition):
         inner = condition.primary_condition.accept(self)
-        return DBManager().fetch_all_offsets(self.current_table) - inner if condition.is_not else inner
+        return (
+            DBManager().fetch_all_offsets(self.current_table) - inner
+            if condition.is_not
+            else inner
+        )
 
     def visit_constantcondition(self, condition: ConstantCondition):
-        return DBManager().fetch_all_offsets(self.current_table) if condition.bool_constant.accept(self) else set()
+        return (
+            DBManager().fetch_all_offsets(self.current_table)
+            if condition.bool_constant.accept(self)
+            else set()
+        )
 
     def visit_simplecomparison(self, condition: SimpleComparison):
         column = condition.left_expression.accept(self)
         value = condition.right_expression.accept(self)
-        return DBManager().fetch_condition_offsets(self.current_table, column, condition.operator, value)
+        return DBManager().fetch_condition_offsets(
+            self.current_table, column, condition.operator, value
+        )
 
     def visit_betweencomparison(self, condition: BetweenComparison):
         column = condition.left_expression.accept(self)
         low = condition.lower_bound.accept(self)
         high = condition.upper_bound.accept(self)
-        return DBManager().fetch_condition_offsets(self.current_table, column, OperationType.BETWEEN, (low, high))
+        return DBManager().fetch_condition_offsets(
+            self.current_table, column, OperationType.BETWEEN, (low, high)
+        )
 
     def visit_primarycondition(self, condition: PrimaryCondition):
         if isinstance(condition.condition, ConstantCondition):
@@ -276,7 +321,9 @@ class PrintVisitor(Visitor):
             st.accept(self)
 
     def visit_createtablestatement(self, st: CreateTableStatement):
-        self.print_line(f"CREATE TABLE {st.table_name}(")
+        self.print_line(
+            f"CREATE TABLE {'IF NOT EXISTS ' if st.if_not_exists else ''}{st.table_name}("
+        )
         with self.indented():
             for column in st.columns:
                 column_def = f"{column.column_name} {column.column_type}{' PRIMARY KEY' if column.is_pk else ''}"
@@ -291,9 +338,12 @@ class PrintVisitor(Visitor):
         self.print_line(f"DROP TABLE {statement.table_name}")
 
     def visit_createindexstatement(self, st: CreateIndexStatement):
-        self.print_line(
-            f"CREATE INDEX ON {st.table_name}({st.column_name}) USING {st.index_type};"
-        )
+        if st.index_type not in [IndexType.SPIMI, IndexType.SPIMIAUDIO]:
+            self.print_line(
+                f"CREATE INDEX ON {st.table_name}({st.column_name}) USING {st.index_type};"
+            )
+        else:
+            self.print_line(f"CREATE {str(st.index_type)} ON {st.table_name};")
 
     def visit_dropindexstatement(self, st: DropIndexStatement):
         self.print_line(

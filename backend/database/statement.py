@@ -141,6 +141,7 @@ class Statement(Visitable):
     def __init__(self):
         pass
 
+
 class CreateColumnDefinition:
     def __init__(
         self,
@@ -151,19 +152,26 @@ class CreateColumnDefinition:
     ):
         self.column_name = column_name
         self.column_type = column_type
-        self.varchar_length = (
-            varchar_length if column_type == ColumnType.VARCHAR else 0
-        )
+        self.varchar_length = varchar_length if column_type == ColumnType.VARCHAR else 0
         self.is_pk = is_pk
 
+
 class CreateTableStatement(Statement):
-    def __init__(self, table_name: str, columns: list[CreateColumnDefinition]):
+    def __init__(
+        self,
+        table_name: str,
+        columns: list[CreateColumnDefinition],
+        if_not_exists: bool = False,
+    ):
         self.table_name = table_name
         self.columns = columns
+        self.if_not_exists = if_not_exists
+
 
 class DropTableStatement(Statement):
     def __init__(self, table_name: str):
         self.table_name = table_name
+
 
 class CreateIndexStatement(Statement):
     def __init__(
@@ -174,11 +182,13 @@ class CreateIndexStatement(Statement):
         self.column_name = column_name
         self.index_type = index_type
 
+
 class DropIndexStatement(Statement):
     def __init__(self, index_type: IndexType, table_name: str, column_name: str):
         self.index_type = index_type
         self.table_name = table_name
         self.column_name = column_name
+
 
 class InsertStatement(Statement):
     def __init__(
@@ -188,9 +198,11 @@ class InsertStatement(Statement):
         self.column_names = column_names
         self.values = values
 
+
 class WhereStatement(Visitable):
     def __init__(self, or_condition: OrCondition = None):
         self.or_condition = or_condition
+
 
 class SelectStatement(Statement):
     def __init__(

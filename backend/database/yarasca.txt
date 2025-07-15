@@ -21,8 +21,9 @@ CreateTableColumnDefinition -> UserIdentifier DataType ArgumentList
 DataType- > INT | FLOAT | VARCHAR | DATE | BOOL | POINT2D | POINT3D | DATE
 ArgumentList -> [PRIMARY KEY] [USING Method]
 
-CreateIndexStatement -> CREATE INDEX UserIdentifier ON UserIdentifier(UserIdentifier) [USING Method]
+CreateIndexStatement -> CREATE INDEX UserIdentifier ON UserIdentifier(UserIdentifier) [USING Method] | Spimi
 Method -> {BPLUSTREE | EXTENDIBLEHASH | RTREE | SEQUENTIAL}
+Spimi -> CREATE SPIMI ON UserIdentifier
 
 ==================================================================================
 

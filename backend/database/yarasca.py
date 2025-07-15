@@ -115,6 +115,10 @@ class Parser:
             column_type = ColumnType.POINT2D  # TODO: integrate rtree
         elif self.match(TokenType.POINT3D):
             column_type = ColumnType.POINT3D  # TODO: integrate rtree
+        elif self.match(TokenType.TEXT):
+            column_type = ColumnType.TEXT
+        elif self.match(TokenType.SOUND):
+            column_type = ColumnType.SOUND
         elif self.match(TokenType.VARCHAR):
             if not self.match(TokenType.LEFT_PARENTHESIS):
                 raise SyntaxError(f"Expected '(' after VARCHAR, found {self.curr.text}")
@@ -133,7 +137,9 @@ class Parser:
                 )
             column_type = ColumnType.VARCHAR
         else:
-            raise SyntaxError(f"Invalid column type {self.curr.text} for column {column_name}")
+            raise SyntaxError(
+                f"Invalid column type {self.curr.text} for column {column_name}"
+            )
 
         if self.match(TokenType.PRIMARY):
             if not self.match(TokenType.KEY):
@@ -161,6 +167,18 @@ class Parser:
     # TODO: primary key
     def parse_create_table_statement(self) -> CreateTableStatement:
         self.print_debug("Parsing CREATE TABLE statement")
+
+        if_not_exists = False
+
+        if self.match(TokenType.IF):
+            if not self.match(TokenType.NOT):
+                raise SyntaxError(f"Expected NOT after IF, found {self.curr.text}")
+            if not self.match(TokenType.EXISTS):
+                raise SyntaxError(
+                    f"Expected EXISTS after IF NOT, found {self.curr.text}"
+                )
+            if_not_exists = True
+
         table_name = None
         if not self.match(TokenType.USER_IDENTIFIER):
             raise SyntaxError(
@@ -175,7 +193,7 @@ class Parser:
             raise SyntaxError(
                 f"Expected ')' after column definitions, found {self.curr.text}"
             )
-        return CreateTableStatement(table_name, columns)
+        return CreateTableStatement(table_name, columns, if_not_exists)
 
     def parse_drop_table_statement(self) -> DropTableStatement:
         self.print_debug("Parsing DROP TABLE statement")
@@ -225,11 +243,24 @@ class Parser:
             index_type = IndexType.RTREE
         elif self.match(TokenType.SEQUENTIAL):
             index_type = IndexType.SEQUENTIAL
+        elif self.match(TokenType.SPIMIAUDIO):
+            index_type = IndexType.SPIMIAUDIO
         else:
             raise SyntaxError(
                 f"Expected index type (BPLUSTREE, EXTENDIBLEHASH, RTREE, SEQUENTIAL), found {self.curr.text}"
             )
         return CreateIndexStatement("index_name", table_name, column_name, index_type)
+
+    def parse_create_spimi_statement(self) -> CreateIndexStatement:
+        index_type: IndexType = IndexType.SPIMI
+
+        if not self.match(TokenType.ON):
+            raise SyntaxError(f"Expected ON after SPIMI, found {self.curr.text}")
+
+        if not self.match(TokenType.USER_IDENTIFIER):
+            raise SyntaxError(f"Expected table name after ON, found {self.curr.text}")
+        table_name = self.prev.text
+        return CreateIndexStatement("index_name", table_name, "column_name", index_type)
 
     def parse_drop_index_statement(self) -> DropIndexStatement:
         self.print_debug("Parsing DROP INDEX statement")
@@ -611,9 +642,11 @@ class Parser:
                 return self.parse_create_table_statement()
             elif self.match(TokenType.INDEX):
                 return self.parse_create_index_statement()
+            elif self.match(TokenType.SPIMI) or self.match(TokenType.SPIMIAUDIO):
+                return self.parse_create_spimi_statement()
             else:
                 raise SyntaxError(
-                    f"Expected TABLE or INDEX after CREATE, found {self.curr.text}"
+                    f"Expected TABLE or INDEX or SPIMI/SPIMIAUDIO after CREATE, found {self.curr.text}"
                 )
         elif self.match(TokenType.DROP):
             if self.match(TokenType.TABLE):
@@ -695,7 +728,16 @@ if __name__ == "__main__":
         "DROP TABLE student",
     ]
 
-    test_query_sets = [basic_creation_insertion_selection_test]
+    spimi_test = [
+        "CREATE TABLE IF NOT EXISTS article(id INT PRIMARY KEY, content TEXT);",
+        "CREATE SPIMI ON article;",
+    ]
+    audio_test = [
+        "CREATE TABLE IF NOT EXISTS songs(id INT primary key, audio SOUND);"
+        "CREATE INDEX ON songs(audio) USING SPIMIAUDIO;"
+    ]
+
+    test_query_sets = [audio_test]
 
     printVisitor = PrintVisitor()
     runVisitor = RunVisitor()
@@ -707,7 +749,7 @@ if __name__ == "__main__":
             # scanner.test()
             parser = Parser(scanner, debug=False)
             program = parser.parse_program()
-            # printVisitor.visit_program(program)
+            printVisitor.visit_program(program)
             result: QueryResult = runVisitor.visit_program(program)
             if result.data is not None:
                 print(f"Query Result: {result.data}")
