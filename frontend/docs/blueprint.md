@@ -2,16 +2,19 @@
 
 ## Core Features:
 
-- SQL Editor: SQL Editor: A Monaco editor component to provide a customizable text editor.
-- Schema Browser: Schema Browser: Display database schema information in a collapsible tree view, allowing users to browse tables, columns, and relationships.
-- Query Execution: Query Execution: Enable users to execute SQL queries and display results in a tabular format. Implement error handling and display informative error messages.
-- SQL Autocompletion: SQL Autocompletion: Provide real-time SQL autocompletion suggestions as users type queries. Use a tool that leverages AI to analyze the schema and suggest relevant table and column names.
+- Schema Explorer: Display a schema explorer panel that GETs a database schema and visualizes the tables, fields and indexes. The panel will include a refresh button to AVANZA ESTO re-fetching the schema.
+- SQL Editor: Implement an SQL editor using Monaco Editor, allowing users to write and edit SQL queries.
+- Query Execution and Results: Implement a 'Run Query' button that POSTs the SQL query and displays the tabular results (columns and rows). If any TEXT field size is too long then it includes a '...' button that on press opens a popup to show full content.
+- SOUND Data Type: Handle SOUND file types. The Result area's tabular rows should use a button to allow the file sounds to play.
+- Audio Panel: Display an audio panel with the list of available sound files GET from an API endpoint.
+- Audio Management: In Audio Panel Implement 'Update' button which GETs data and implement a '+' button, with an upload function when pressing the + button to AVANZA ESTO adds audio with POST multipar and updates list of all audios .
 
 ## Style Guidelines:
 
-- Primary color: Midnight blue (#2C3E50) to evoke a sense of professionalism.
-- Background color: Dark gray (#34495E), creating a comfortable and focused working environment.
-- Accent color: Cyan (#5DBCD2), highlighting key interactive elements without being distracting.
-- Monospace font, with good readability.
-- Clean and sharp icons representing database objects and actions.
-- Panels with adjustable resizing, allow customization based on different screen resolutions
+- Primary color: Deep blue (#1A237E) to convey a sense of authority and intelligence.
+- Background color: Dark grey (#212121) for a professional look and to reduce eye strain during extended use.
+- Accent color: Teal (#008080) to provide contrast and highlight interactive elements, as in the Run Query button.
+- Body and headline font: 'Inter', a grotesque-style sans-serif, providing a modern, neutral, and readable feel.
+- Code font: 'Source Code Pro' for the SQL editor and displaying any code snippets.
+- Use minimalist icons for database elements and controls, ensuring clarity and ease of use.
+- Use subtle animations to signal loading states and transitions.
