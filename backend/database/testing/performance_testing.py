@@ -18,6 +18,7 @@ class SuppressPrints:
 
 csv_path = os.path.join(os.path.dirname(__file__), "news_large.csv")
 table_name = "news_text"
+output_path = os.path.join(os.path.dirname(__file__), "performance_results.csv")
 
 def load_to_db(df: pd.DataFrame) -> float:
     schema = [
@@ -111,6 +112,7 @@ def test_performance():
         if db_time > 4*60*60:  # 4 hours
             print(f"Search took too long with {size} records, stopping test.")
             break
-    print("\nTime results (s):\n", pd.DataFrame(times))
+    print("\nTime results (s):\n", pd.DataFrame(times), f"\nExporting to file {output_path}")
+    pd.DataFrame(times).to_csv(output_path, index=False)
 
 test_performance()
