@@ -8,3 +8,6 @@ nltk
 matplotlib
 gdown
 librosa
+fastapi 
+uvicorn 
+python-multipart
