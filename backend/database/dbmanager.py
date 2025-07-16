@@ -20,7 +20,7 @@ from database import build_acoustic_model
 from storage.Sound import Sound
 from storage.HistogramFile import HistogramFile
 
-from database import build_acoustic_model
+from database import build_acoustic_model, search_text, knn_search
 
 from logger import Logger
 
@@ -732,3 +732,15 @@ class DBManager:
     def fetch_all_offsets(self, table_name: str) -> set[int]:
         DBManager.verify_table_exists(table_name)
         return HeapFile(DBManager.table_path(table_name)).get_all_offsets()
+
+    def do_audio_knn(self, table_name: str, column_name: str, query_text: str, k: int):
+        result: list[Tuple[Record, float]] = knn_search(
+            table_name, column_name, query_text, k
+        )  # TODO: check if index exists and use it
+        return [(rec.values[0], score) for rec, score in result]
+
+    def do_text_search(
+        self, table_name: str, query_text: str, k: int
+    ) -> list[Tuple[Record, float]]:
+        result: list[Tuple[Record, float]] = search_text(table_name, query_text, k)
+        return [(rec.values[0], score) for rec, score in result]

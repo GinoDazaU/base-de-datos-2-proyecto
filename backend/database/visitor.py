@@ -10,6 +10,13 @@ from fancytypes.column_types import (
 from dbmanager import DBManager
 
 from statement import (
+    AndCondition,
+    BetweenComparison,
+    ConstantCondition,
+    NotCondition,
+    OrCondition,
+    PrimaryCondition,
+    SimpleComparison,
     Statement,
     CreateTableStatement,
     CreateIndexStatement,
@@ -23,17 +30,12 @@ from statement import (
     ColumnExpression,
     SelectStatement,
     WhereStatement,
+    KnnStatement,
+    TextSearchStatement,
     Program,
     Point2DExpression,
     Point3DExpression,
     Condition,
-    OrCondition,
-    AndCondition,
-    NotCondition,
-    PrimaryCondition,
-    ConstantCondition,
-    SimpleComparison,
-    BetweenComparison,
 )
 
 from logger import Logger
@@ -242,6 +244,35 @@ class RunVisitor:
     def visit_wherestatement(self, st: WhereStatement) -> set[int]:
         return st.or_condition.accept(self)
 
+    def visit_knnstatement(self, st: KnnStatement):
+        try:
+            result = DBManager().do_audio_knn(
+                st.table_name, st.column_name, st.query_path, st.k
+            )
+            Logger.log_info(
+                f"KNN({st.k}) executed on {st.table_name}.{st.column_name} with query '{st.query_path}'."
+            )
+            return QueryResult(
+                True,
+                f"KNN({st.k}) executed on {st.table_name}.{st.column_name} with query '{st.query_path}'.",
+                result,
+            )
+        except Exception as e:
+            Logger.log_error(str(e))
+            return QueryResult(
+                False, f"There was an error while processing KNN: {str(e)}"
+            )
+
+    def visit_textsearchstatement(self, st: TextSearchStatement):
+        try:
+            result = DBManager().do_text_search(st.table_name, st.query_text, st.k)
+            return QueryResult(True, "Visited TEXTSEARCH statement", result)
+        except Exception as e:
+            Logger.log_error(str(e))
+            return QueryResult(
+                False, f"There was an error while processing TEXTSEARCH: {str(e)}"
+            )
+
     def visit_orcondition(self, condition: OrCondition):
         left = condition.and_condition.accept(self)
         if condition.or_condition:
@@ -400,6 +431,16 @@ class PrintVisitor(Visitor):
         if st.limit is not None:
             self.print_line(f" LIMIT {st.limit}", "")
         self.print_line(";")
+
+    def visit_knnstatement(self, st: KnnStatement):
+        self.print_line(
+            f"KNN({st.k}) SOUND('{st.query_path}') IN {st.table_name}.{st.column_name};",
+        )
+
+    def visit_textsearchstatement(self, st: TextSearchStatement):
+        self.print_line(
+            f"TEXTSEARCH '{st.query_text}' IN {st.table_name};",
+        )
 
     # region PrintVisitor Conditions
     def visit_orcondition(self, condition: OrCondition):

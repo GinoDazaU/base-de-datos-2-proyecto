@@ -83,3 +83,11 @@ ValueList -> Constant[, ValueList]
 UpdateStatement -> UPDATE UserIdentifier SET UpdateList [WhereStatement]
 UpdateList -> SetExp[,UpdateList]
 SetExp -> UserIdentifier = ValueExp
+
+==================================================================================
+
+KnnStatement -> KNN(INT_CONSTANT) SOUND(STRING_CONSTANT) IN UserIdentifier.UserIdentifier
+
+==================================================================================
+
+TextSearchStatement -> TEXTSEARCH(INT_CONSTANT) STRING_CONSTANT IN UserIdentifier
