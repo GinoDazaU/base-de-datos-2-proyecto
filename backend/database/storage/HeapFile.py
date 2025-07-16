@@ -558,3 +558,42 @@ class HeapFile:
                     fh.write(record.pack())
                     return True
         return False
+
+    def search_offsets_by_field(self, field: str, value):
+        """
+        Similar a search_by_field pero devuelve una lista de offsets (posiciones) en lugar de Records.
+        """
+        # validar campo
+        names = [n for n, _ in self.schema]
+        if field not in names:
+            raise KeyError(f"Campo '{field}' no existe en el esquema.")
+        fld_idx = names.index(field)
+        # info de PK/tombstone
+        pk_idx, pk_sentinel = None, None
+        stop_early = False
+        if self.primary_key is not None:
+            pk_idx, pk_fmt = self._pk_idx_fmt()
+            pk_sentinel = self._sentinel(pk_fmt)
+            stop_early = field == self.primary_key
+
+        offsets = []
+        with open(self.filename, "rb") as fh:
+            fh.seek(METADATA_SIZE)
+            pos = 0
+            while pos < self.heap_size:
+                buf = fh.read(self.rec_data_size)
+                if len(buf) < self.rec_data_size:
+                    break
+                rec = Record.unpack(buf, self.schema)
+                # saltar huecos
+                if pk_idx is not None and rec.values[pk_idx] == pk_sentinel:
+                    fh.seek(PTR_SIZE, os.SEEK_CUR)
+                    pos += 1
+                    continue
+                if rec.values[fld_idx] == value:
+                    offsets.append(pos)
+                    if stop_early:
+                        break
+                fh.seek(PTR_SIZE, os.SEEK_CUR)
+                pos += 1
+        return offsets

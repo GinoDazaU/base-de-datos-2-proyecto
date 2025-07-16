@@ -602,7 +602,7 @@ def build_acoustic_model(table_name: str, field_name: str, num_clusters: int):
 
 def knn_search(
     table_name: str, field_name: str, query_audio_path: str, k: int
-) -> list[tuple[Record, float]]:
+) -> set[int]:
     """
     Realiza una búsqueda k-NN en un campo de audio.
     """
@@ -708,7 +708,7 @@ def knn_search_index(
     return results[:k]
 
 
-def search_text(table_name: str, query: str, k: int = 5) -> list[tuple[Record, float]]:
+def search_text(table_name: str, query: str, k: int = 5) -> set[int]:
     """
     Búsqueda textual eficiente usando similitud coseno con TF-IDF
     - Precarga solo las normas necesarias
@@ -781,13 +781,7 @@ def search_text(table_name: str, query: str, k: int = 5) -> list[tuple[Record, f
     top_k = scored_docs[:k]
 
     # 7. Recuperar registros completos
-    results = []
-    source_table = HeapFile(_table_path(table_name))
+    heap_file = HeapFile(_table_path(table_name))
+    offsets: set[int] = {heap_file.search_offsets_by_field("id", doc_id)[0] for doc_id, _ in top_k}
 
-    for doc_id, score in top_k:
-        # Buscar documento por su ID (asume que la PK es 'id')
-        matching_recs = source_table.search_by_field("id", doc_id)
-        if matching_recs:
-            results.append((matching_recs[0], score))
-
-    return results
+    return offsets

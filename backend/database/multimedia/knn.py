@@ -34,7 +34,7 @@ def cosine_similarity(vec1, vec2):
 
 def knn_sequential_search(
     query_audio_path: str, heap_file: HeapFile, field_name: str, k: int
-):
+) -> set[int]:
     """
     Realiza una búsqueda k-NN secuencial en un campo de audio.
     """
@@ -47,12 +47,12 @@ def knn_sequential_search(
 
     codebook = load_codebook(heap_file.table_name, field_name)
     if codebook is None:
-        return []
+        return set()
 
     # Construir el histograma y el vector TF-IDF para la consulta
     query_histogram = build_histogram(query_audio_path, codebook)
     if query_histogram is None:
-        return []
+        return set()
 
     N = heap_file.heap_size
     query_tfidf = np.zeros(len(codebook["centroids"]))
@@ -81,7 +81,7 @@ def knn_sequential_search(
         doc_tfidf = np.zeros(len(codebook["centroids"]))
         for centroid_id, count in histogram:
             doc_tfidf[centroid_id] = tf_idf(count, codebook["doc_freq"][centroid_id], N)
-        Logger.log_debug(doc_tfidf)
+        Logger.log_debug(str(doc_tfidf))
         # Calcular la similitud de coseno
         similarity = cosine_similarity(query_tfidf, doc_tfidf)
 
@@ -95,10 +95,6 @@ def knn_sequential_search(
     results = sorted(priority_queue, key=lambda x: x[0], reverse=True)
 
     # Obtener los registros completos
-    final_results = []
-    for similarity, record_id in results:
-        final_results.append(
-            (heap_file.search_by_field("id", record_id)[0], similarity)
-        )
+    offsets: set[int] = {heap_file.search_offsets_by_field("id", record_id)[0] for _, record_id in results}
 
-    return final_results
+    return offsets

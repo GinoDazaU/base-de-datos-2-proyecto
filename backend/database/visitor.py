@@ -245,33 +245,10 @@ class RunVisitor:
         return st.or_condition.accept(self)
 
     def visit_knnstatement(self, st: KnnStatement):
-        try:
-            result = DBManager().do_audio_knn(
-                st.table_name, st.column_name, st.query_path, st.k
-            )
-            Logger.log_info(
-                f"KNN({st.k}) executed on {st.table_name}.{st.column_name} with query '{st.query_path}'."
-            )
-            return QueryResult(
-                True,
-                f"KNN({st.k}) executed on {st.table_name}.{st.column_name} with query '{st.query_path}'.",
-                result,
-            )
-        except Exception as e:
-            Logger.log_error(str(e))
-            return QueryResult(
-                False, f"There was an error while processing KNN: {str(e)}"
-            )
+        return DBManager().do_audio_knn(st.table_name, st.column_name, st.query_path, st.k)
 
     def visit_textsearchstatement(self, st: TextSearchStatement):
-        try:
-            result = DBManager().do_text_search(st.table_name, st.query_text, st.k)
-            return QueryResult(True, "Visited TEXTSEARCH statement", result)
-        except Exception as e:
-            Logger.log_error(str(e))
-            return QueryResult(
-                False, f"There was an error while processing TEXTSEARCH: {str(e)}"
-            )
+        return DBManager().do_text_search(st.table_name, st.query_text, st.k)
 
     def visit_orcondition(self, condition: OrCondition):
         left = condition.and_condition.accept(self)
