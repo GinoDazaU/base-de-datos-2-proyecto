@@ -1,6 +1,8 @@
 import struct
 import os
 
+from logger import Logger
+
 # Esta clase Record representa un registro binario genérico.
 # A diferencia de versiones más rígidas (como las que usan FORMAT fijo),
 # esta clase permite definir cualquier combinación de campos y tipos
@@ -42,6 +44,7 @@ class Record:
     def pack(self) -> bytes:
         processed = []
         for (_, fmt), val in zip(self.schema, self.values):
+            Logger.log_debug(f"Packing value '{val}' with format '{fmt}'")
             #print(f"Packing value '{val}' with format '{fmt}'")
             if fmt.upper() == "SOUND":
                 processed.extend(val)
