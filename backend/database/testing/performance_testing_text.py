@@ -18,7 +18,7 @@ class SuppressPrints:
 
 csv_path = os.path.join(os.path.dirname(__file__), "news_large.csv")
 table_name = "news_text"
-output_path = os.path.join(os.path.dirname(__file__), "performance_results.csv")
+output_path = os.path.join(os.path.dirname(__file__), "performance_results_text.csv")
 
 def load_to_db(df: pd.DataFrame) -> float:
     schema = [
@@ -98,15 +98,15 @@ def test_performance():
             "search_db": 0.0,
             "search_pg": 0.0
         }
-        db_time, db_titles = search_db("trump obama republican politics", 5)
-        pg_time, pg_titles = search_pg("trump obama republican politics", 5)
+        db_time, db_titles = search_db("trump obama republican politics democrat", 5)
+        pg_time, pg_titles = search_pg("trump obama republican politics democrat", 5)
         row["search_db"] = db_time
         row["search_pg"] = pg_time
         times.append(row)
-        print(f"Search results with {size} records:\nOur DB:")
+        print(f"Search results with {size} records:\nOur DB: ({db_time} s)")
         for title in db_titles:
             print(f"- {title}")
-        print(f"\nPostgreSQL:")
+        print(f"\nPostgreSQL: ({pg_time} s)")
         for title in pg_titles:
             print(f"- {title}")
         if db_time > 4*60*60:  # 4 hours
