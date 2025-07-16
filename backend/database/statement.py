@@ -1,4 +1,4 @@
-from backend.database.fancytypes.column_types import (
+from fancytypes.column_types import (
     ColumnType,
     IndexType,
     OperationType,

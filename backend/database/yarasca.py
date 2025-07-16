@@ -1,6 +1,6 @@
 from visitor import PrintVisitor, RunVisitor
 from scanner import Scanner, Token, TokenType
-from backend.database.fancytypes.column_types import (
+from fancytypes.column_types import (
     ColumnType,
     QueryResult,
     OperationType,
@@ -763,7 +763,7 @@ if __name__ == "__main__":
             # scanner.test()
             parser = Parser(scanner, debug=False)
             program = parser.parse_program()
-            printVisitor.visit_program(program)
+            # printVisitor.visit_program(program)
             result: QueryResult = runVisitor.visit_program(program)
             if result.data is not None:
                 print(f"Query Result: {result.data}")

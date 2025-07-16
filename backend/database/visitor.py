@@ -129,7 +129,7 @@ class RunVisitor:
         for st in program.statement_list:
             lastResult = st.accept(self)
             Logger.log_info(
-                "Program parsed successfully with message:", lastResult.message
+                f"Program parsed successfully with final message: {lastResult.message}"
             )
         return lastResult
 
@@ -148,6 +148,7 @@ class RunVisitor:
             DBManager().create_table(st.table_name, st.columns)
             return QueryResult(True, f"Table '{st.table_name}' created successfully.")
         except Exception as e:
+            Logger.log_error(str(e))
             return QueryResult(
                 False, f"There was an error while creating the table: {str(e)}"
             )
@@ -155,8 +156,10 @@ class RunVisitor:
     def visit_droptablestatement(self, st: DropTableStatement):
         try:
             DBManager().drop_table(st.table_name)
+            Logger.log_info(f"Table '{st.table_name}' dropped successfully.")
             return QueryResult(True, f"Table '{st.table_name}' dropped successfully.")
         except Exception as e:
+            Logger.log_error(str(e))
             return QueryResult(
                 False, f"There was an error while droppping the table: {str(e)}"
             )
@@ -164,11 +167,15 @@ class RunVisitor:
     def visit_createindexstatement(self, st: CreateIndexStatement):
         try:
             DBManager().create_index(st.table_name, st.column_name, st.index_type)
+            Logger.log_info(
+                f"{st.index_type} on {st.table_name}.{st.column_name} created successfully."
+            )
             return QueryResult(
                 True,
                 f"{st.index_type} on {st.table_name}.{st.column_name} created successfully.",
             )
         except Exception as e:
+            Logger.log_error(str(e))
             return QueryResult(
                 False, f"There was an error while creating the index: {str(e)}"
             )
@@ -176,39 +183,59 @@ class RunVisitor:
     def visit_dropindexstatement(self, st: DropIndexStatement):
         try:
             DBManager().drop_index(st.table_name, st.column_name, st.index_type)
+            Logger.log_info(
+                f"{st.index_type} on {st.table_name}.{st.column_name} dropped successfully."
+            )
             return QueryResult(
                 True,
                 f"{st.index_type} on {st.table_name}.{st.column_name} dropped successfully.",
             )
         except Exception as e:
+            Logger.log_error(str(e))
             return QueryResult(
                 False, f"There was an error while dropping the index: {str(e)}"
             )
 
     def visit_insertstatement(self, st: InsertStatement):
-        values = [exp.accept(self) for exp in st.values]
-        DBManager().insert(st.table_name, st.column_names, values)
-        return QueryResult(
-            True,
-            f"Record inserted into table '{st.table_name}' successfully.",
-        )
+        try:
+            values = [exp.accept(self) for exp in st.values]
+            DBManager().insert(st.table_name, st.column_names, values)
+            Logger.log_info(
+                f"Record inserted into table '{st.table_name}' successfully."
+            )
+            return QueryResult(
+                True,
+                f"Record inserted into table '{st.table_name}' successfully.",
+            )
+        except Exception as e:
+            Logger.log_error(str(e))
+            return QueryResult(False, f"There was an error while inserting: {str(e)}")
 
     def visit_selectstatement(self, st: SelectStatement):
-        self.current_table = st.from_table
-        offsets: set[int] = (
-            DBManager().fetch_all_offsets(st.from_table)
-            if not st.where_statement
-            else st.where_statement.accept(self)
-        )
-        columns = None if st.select_all else st.select_columns
-        results = DBManager().records_projection(st.from_table, offsets, columns)
-        if st.limit is not None:
-            results = results[: st.limit]
-        return QueryResult(
-            True,
-            f"Selected {len(results)} records from table '{st.from_table}'.",
-            results,
-        )
+        try:
+            self.current_table = st.from_table
+            offsets: set[int] = (
+                DBManager().fetch_all_offsets(st.from_table)
+                if not st.where_statement
+                else st.where_statement.accept(self)
+            )
+            columns = None if st.select_all else st.select_columns
+            results = DBManager().records_projection(st.from_table, offsets, columns)
+            if st.limit is not None:
+                results = results[: st.limit]
+            Logger.log_info(
+                f"Selected {len(results)} records from table '{st.from_table}'."
+            )
+            return QueryResult(
+                True,
+                f"Selected {len(results)} records from table '{st.from_table}'.",
+                results,
+            )
+        except Exception as e:
+            Logger.log_error(str(e))
+            return QueryResult(
+                False, f"There was an error while selecting records: {str(e)}"
+            )
 
     # region RunVisitor Conditions
 

@@ -8,6 +8,8 @@ from .Record import Record
 from .TextFile import TextFile
 from .Sound import Sound
 
+from logger import Logger
+
 # --------------------------------------------------------
 #  Valores centinela para marcar registros eliminados
 # --------------------------------------------------------
@@ -181,7 +183,7 @@ class HeapFile:
                 fh.write(record.pack())
                 fh.write(struct.pack("i", 0))
             self._write_header(fh)  # actualizar cabecera
-            print("Registro:", record, " insertado correctamente")
+            Logger.log_info(f"Registro: {record} insertado correctamente")
             return slot_off
 
     def insert_record_free(self, record: Record) -> int:
@@ -209,11 +211,8 @@ class HeapFile:
                 fh.write(struct.pack("i", 0))
 
             self._write_header(fh)
-            print(
-                "Registro (sin restricción PK):",
-                record,
-                "insertado en offset",
-                slot_off,
+            Logger.log_info(
+                f"Registro (sin restricción PK): {record} insertado en offset {slot_off}"
             )
             return slot_off
 
@@ -252,12 +251,8 @@ class HeapFile:
                 fh.write(struct.pack("i", self.free_head))
                 self.free_head = pos
                 self._write_header(fh)
-                print(
-                    "Registro con PK:",
-                    key,
-                    "con contenido:",
-                    old_rec,
-                    "borrado correctamente",
+                Logger.log_info(
+                    "Registro con PK: {key}, con contenido: {old_rec} borrado correctamente"
                 )
                 return True, pos, old_rec
         return False, -1, None

@@ -1,6 +1,7 @@
 import os
 import glob
 import time
+
 from typing import List, Tuple, Optional, Union, Set
 from storage.HeapFile import HeapFile
 from storage.Record import Record
@@ -11,15 +12,17 @@ from indexing.IndexRecord import IndexRecord, re_string
 from indexing.RTreeIndex import RTreeIndex
 from indexing.Spimi import SPIMIIndexer
 from indexing.SpimiAudio import SpimiAudioIndexer
-from backend.database.fancytypes.column_types import IndexType, ColumnType
+from fancytypes.column_types import IndexType, ColumnType
 from statement import CreateColumnDefinition
 from fancytypes.schema import SchemaType
-from backend.database.fancytypes.column_types import OperationType
+from fancytypes.column_types import OperationType
 from database import build_acoustic_model
 from storage.Sound import Sound
 from storage.HistogramFile import HistogramFile
 
-from database import build_acoustic_index, build_acoustic_model, build_spimi_index
+from database import build_acoustic_model
+
+from logger import Logger
 
 
 class DBManager:
@@ -284,7 +287,7 @@ class DBManager:
                 f"Índice secuencial para {field} en la tabla {table_name} no existe."
             )
         os.remove(index_path)
-        print(
+        Logger.log_dbmanager(
             f"Índice secuencial para {field} en la tabla {table_name} eliminado con éxito."
         )
 
@@ -300,7 +303,9 @@ class DBManager:
                     f"Índice Hash para {field} en la tabla {table_name} no existe."
                 )
             os.remove(index_path)
-        print(f"Índice hash para {field} en la tabla {table_name} eliminado con éxito.")
+        Logger.log_dbmanager(
+            f"Índice hash para {field} en la tabla {table_name} eliminado con éxito."
+        )
 
     @staticmethod
     def drop_btree_idx(table_name: str, field) -> None:
@@ -311,7 +316,7 @@ class DBManager:
                 f"Índice B+Tree para {field} en la tabla {table_name} no existe."
             )
         os.remove(index_path)
-        print(
+        Logger.log_dbmanager(
             f"Índice B+Tree para {field} en la tabla {table_name} eliminado con éxito."
         )
 
@@ -325,7 +330,7 @@ class DBManager:
                     f"Índice R-Tree para {field} en la tabla {table_name} no existe."
                 )
             os.remove(index_path)
-        print(
+        Logger.log_dbmanager(
             f"Índice R-Tree para {field} en la tabla {table_name} eliminado con éxito."
         )
 
@@ -496,7 +501,7 @@ class DBManager:
         HeapFile.build_file(
             DBManager.table_path(table_name), schema, primary_key
         )  # "text" might be sent here
-        print(f"Tabla {table_name} creada con éxito.")
+        Logger.log_dbmanager(f"Tabla {table_name} creada con éxito.")
 
     @staticmethod
     def drop_table_aux(table_name: str) -> None:
@@ -555,7 +560,7 @@ class DBManager:
         for field_name, field_type in schema:
             if field_type.upper() == "SOUND":
                 HistogramFile.build_file(DBManager.table_path(table_name), field_name)
-        print(f"Tabla '{table_name}' creada con éxito.")
+        Logger.log_dbmanager(f"Tabla '{table_name}' creada con éxito.")
         DBManager.create_table_aux(table_name, schema, pk)
 
     def drop_table(self, table_name: str) -> None:
@@ -628,7 +633,7 @@ class DBManager:
 
         # the values array might not be in the correct order for schema
         value_dict = dict(zip(columns, values, strict=True))
-        print(value_dict)
+        Logger.log_dbmanager(value_dict)
         ordered_values = []
         for name, fmt in schema:
             if name in value_dict:
