@@ -139,7 +139,6 @@ class HeapFile:
                     sound_file = Sound(self.filename.replace(".dat", ""), field_name)
                     sound_offset = sound_file.insert(sound_path)
                     record.values[idx] = (sound_offset, -1)
-                    
 
     def insert_record(self, record: Record) -> int:
         if record.schema != self.schema:
@@ -243,7 +242,9 @@ class HeapFile:
                         TextFile(self.table_name, field_name).delete(offset)
                     elif fmt.upper() == "SOUND":
                         sound_offset, _ = old_rec.values[i]
-                        Sound(self.filename.replace(".dat", ""), field_name).delete(sound_offset)
+                        Sound(self.filename.replace(".dat", ""), field_name).delete(
+                            sound_offset
+                        )
                 # marcar hueco: set PK = sentinel y next_free = free_head
                 rec.values[pk_idx] = sentinel
                 fh.seek(byte_off)
@@ -308,11 +309,15 @@ class HeapFile:
                     for i, (fname, fmt) in enumerate(self.schema):
                         if fmt.upper() == "TEXT":
                             offset = updated_values[i]
-                            updated_values[i] = TextFile(self.table_name, fname).read(offset)
+                            updated_values[i] = TextFile(self.table_name, fname).read(
+                                offset
+                            )
                         elif fmt.upper() == "SOUND":
                             if not crude_data:
                                 sound_offset, _ = updated_values[i]
-                                updated_values[i] = Sound(self.filename.replace(".dat", ""), fname).read(sound_offset)
+                                updated_values[i] = Sound(
+                                    self.filename.replace(".dat", ""), fname
+                                ).read(sound_offset)
 
                     resultados.append(Record(self.schema, updated_values))
 
@@ -363,12 +368,12 @@ class HeapFile:
     def fetch_record_by_offset(self, pos: int) -> Record:
         if pos < 0 or pos >= self.heap_size:
             raise IndexError("Offset fuera de rango")
-        
+
         with open(self.filename, "rb") as fh:
             fh.seek(METADATA_SIZE + pos * self.slot_size)
             buf = fh.read(self.rec_data_size)
             record = Record.unpack(buf, self.schema)
-            
+
             # Procesar campos de texto
             updated_values = list(record.values)
             for i, (fname, fmt) in enumerate(self.schema):
@@ -377,8 +382,10 @@ class HeapFile:
                     updated_values[i] = TextFile(self.table_name, fname).read(offset)
                 elif fmt.upper() == "SOUND":
                     sound_offset, _ = updated_values[i]
-                    updated_values[i] = Sound(self.filename.replace(".dat", ""), fname).read(sound_offset)
-            
+                    updated_values[i] = Sound(
+                        self.filename.replace(".dat", ""), fname
+                    ).read(sound_offset)
+
             return Record(self.schema, updated_values)
 
     # ------------------------------------------------------------------
@@ -523,8 +530,12 @@ class HeapFile:
                 if rec.values[pk_idx] == pk_value:
                     # Decode string values before packing
                     for i, (fname, fmt) in enumerate(self.schema):
-                        if 's' in Record.get_format_char_static(fmt) and isinstance(record.values[i], bytes):
-                            record.values[i] = record.values[i].decode('utf-8').strip('\x00')
+                        if "s" in Record.get_format_char_static(fmt) and isinstance(
+                            record.values[i], bytes
+                        ):
+                            record.values[i] = (
+                                record.values[i].decode("utf-8").strip("\x00")
+                            )
                     fh.seek(byte_off)
                     fh.write(record.pack())
                     return True

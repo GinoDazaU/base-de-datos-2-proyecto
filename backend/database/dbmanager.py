@@ -240,7 +240,7 @@ class DBManager:
 
     @staticmethod
     def create_spimi_idx(table_name: str) -> None:
-        SPIMIIndexer(DBManager.table_path).build_index(table_name)
+        SPIMIIndexer().build_index(table_name)
 
     @staticmethod
     def create_spimi_audio_idx(table_name: str, field_name) -> None:
