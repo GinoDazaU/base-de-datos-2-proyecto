@@ -1,4 +1,22 @@
-# Proyecto 2: Mapeando el Caos  
+meta charset="UTF-8">
+
+<h1 align="center">Mini DataBase Manager</h3>
+
+---
+
+<h3 align="center">📚 Curso: Database II 📚</h3>
+
+<div align="center">
+    <img src="./images/01.png" alt="Proveedores Cloud" style="width: 100%;">
+</div>
+
+<h3>👨‍💻 Integrantes</h3>
+
+<div align="center">
+    <img src="./images/03.png" alt="Proveedores Cloud" style="width: 100%;">
+</div>
+
+
 ## Indexación y Organización de Datos No Estructurados para Datos Multimedia
 
 ---
@@ -394,18 +412,81 @@ La búsqueda textual se implementa usando el modelo vectorial con similitud de c
 
 ### 9.1. Requisitos del Sistema
 
-- Lenguaje / versiones  
-- Librerías / dependencias  
+- Python / versiones  
+- NextJS / dependencias  
 
 ### 9.2. Instrucciones de Ejecución
 
 ```bash
 # Clonar el repositorio
-git clone https://github.com/usuario/proyecto2.git
-cd proyecto2
+git clone https://github.com/GinoDazaU/base-de-datos-2-proyecto.git
+cd base-de-datos-2-proyecto
+```
 
-# Instalar dependencias
+
+# Inicia el backend
+
+Instalar las dependencias
+
+```bash
 pip install -r requirements.txt
+```
 
-# Ejecutar la aplicación
-python app.py
+Ejecutar la aplicacion
+
+```bash
+ python .\backend\api\main.py
+
+```
+
+# Iniciar el frontend
+
+Ingresar al directorio de frontend
+
+```bash
+cd frontend
+```
+
+Crear un archivo `.env` con el siguiente contenido
+
+```bash
+NEXT_PUBLIC_BACK_API_URL=http://localhost:8000
+```
+
+Instalar las dependencias
+```bash
+npm install
+```
+
+Ejecutar la aplicacion
+```bash
+npm run dev
+```
+
+## 10. Visualización de frontend
+
+
+Disponemos de un panel donde agregar los audios visualizarlos
+
+<div align="center">
+    <img src="./images/05.jpg" alt="Proveedores Cloud" style="width: 100%;">
+</div>
+
+Podemos añadir mas archivos de audio a la colección, que seran usadas para las consultas 
+
+<div align="center">
+    <img src="./images/06.jpg" alt="Proveedores Cloud" style="width: 100%;">
+</div>
+
+Cada consulta retorna una tabla donde si es un archivo de audio podremos reproducirlo 
+
+<div align="center">
+    <img src="./images/07.jpg" alt="Proveedores Cloud" style="width: 100%;">
+</div>
+
+De la misma forma podremos abrir todo el contenido de un campo textual para su verificación.
+
+<div align="center">
+    <img src="./images/08.jpg" alt="Proveedores Cloud" style="width: 100%;">
+</div>
+
