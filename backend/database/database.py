@@ -69,8 +69,6 @@ def create_table(
         if field_type.upper() == "SOUND":
             HistogramFile.build_file(_table_path(table_name), field_name)
     HeapFile.build_file(_table_path(table_name), schema, primary_key)
-    print(f"Tabla '{table_name}' creada con éxito.")
-
 
 def create_table_with_btree_pk(
     table_name: str,
@@ -125,8 +123,6 @@ def drop_table(table_name: str) -> None:
             f"El archivo de esquema de la tabla '{table_name}' no existe."
         )
     os.remove(schema_path)
-
-    print(f"Tabla '{table_name}' eliminada correctamente.")
 
 
 # =============================================================================
@@ -466,7 +462,6 @@ def drop_inverted_idx(table_name: str, field_name: str) -> None:
         raise FileNotFoundError("No se encontró ningún archivo de índice invertido para eliminar.")
     for fpath in files:
         os.remove(fpath)
-    print(f"Índice invertido eliminado")
 
 def drop_all_indexes_for_field(table_name: str, field_name: str) -> None:
     if check_seq_idx(table_name, field_name):
