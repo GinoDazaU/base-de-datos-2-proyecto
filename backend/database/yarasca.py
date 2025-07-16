@@ -1,6 +1,6 @@
 from visitor import PrintVisitor, RunVisitor
 from scanner import Scanner, Token, TokenType
-from backend.database.fancytypes.column_types import (
+from fancytypes.column_types import (
     ColumnType,
     QueryResult,
     OperationType,

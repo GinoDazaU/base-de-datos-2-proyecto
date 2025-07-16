@@ -4,7 +4,7 @@ class Logger:
     def __init__(self, info_enabled: bool):
         self.info_enabled = info_enabled
 
-    @staticmethod
-    def log_info(self, message: str):
-        if self.info_enabled:
-            print(f"[INFO] {message}")
+    @classmethod
+    def log_info(cls, *args):
+        if cls.info_enabled:
+            print("[INFO]", *args)

@@ -4,7 +4,10 @@ from sklearn.cluster import KMeans
 from storage.HeapFile import HeapFile
 from multimedia.feature_extraction import extract_features
 from storage.Sound import Sound
-
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils import Utils
 
 def build_codebook(heap_file: HeapFile, field_name: str, num_clusters: int):
     """
@@ -50,7 +53,7 @@ def build_codebook(heap_file: HeapFile, field_name: str, num_clusters: int):
             codebook["doc_freq"][label] += 1
 
     # Guardar el codebook
-    codebook_path = f"{heap_file.table_name}.{field_name}.codebook.pkl"
+    codebook_path = Utils.build_path("tables",f"{heap_file.table_name}.{field_name}.codebook.pkl")
     with open(codebook_path, "wb") as f:
         pickle.dump(codebook, f)
 

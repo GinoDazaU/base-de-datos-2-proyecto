@@ -444,6 +444,33 @@ class HeapFile:
                 pos += 1
         return offsets
 
+    def get_all_records(self) -> List[Record]:
+        """Devuelve todos los registros no eliminados en una lista."""
+        records = []
+        with open(self.filename, "rb") as f:
+            f.seek(METADATA_SIZE)
+            pk_idx, pk_sentinel = None, None
+
+            # get pk for deleted files
+            if self.primary_key is not None:
+                pk_idx, pk_fmt = self._pk_idx_fmt()
+                pk_sentinel = self._sentinel(pk_fmt)
+
+            for _ in range(self.heap_size):
+                buf = f.read(self.rec_data_size)
+                if len(buf) < self.rec_data_size:
+                    break
+
+                rec = Record.unpack(buf, self.schema)
+
+                # skips del records
+                if pk_idx is not None and rec.values[pk_idx] == pk_sentinel:
+                    f.seek(PTR_SIZE, os.SEEK_CUR)
+                    continue
+                records.append(rec)
+                f.seek(PTR_SIZE, os.SEEK_CUR)
+        return records
+    
     @staticmethod
     def to_dataframe(heapfile: "HeapFile", alias=None) -> pd.DataFrame:
         with open(heapfile.filename, "rb") as f:

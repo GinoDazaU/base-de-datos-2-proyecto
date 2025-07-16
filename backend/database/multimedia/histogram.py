@@ -1,7 +1,10 @@
 import numpy as np
 import pickle
 from multimedia.feature_extraction import extract_features
-
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils import Utils
 
 def build_histogram(audio_path, codebook):
     """
@@ -43,7 +46,7 @@ def load_codebook(table_name, field_name):
     Returns:
         dict: Codebook.
     """
-    codebook_path = f"{table_name}.{field_name}.codebook.pkl"
+    codebook_path = Utils.build_path("tables",f"{table_name}.{field_name}.codebook.pkl")
     try:
         with open(codebook_path, "rb") as f:
             return pickle.load(f)

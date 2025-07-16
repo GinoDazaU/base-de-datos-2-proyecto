@@ -1,21 +1,24 @@
 import struct
 import os
+import sys
+from utils import Utils
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Inicializar un Sound solo requiere el nombre, ya construye la ruta
 
 class Sound:
     """Manejo de almacenamiento externo de rutas a archivos de sonido."""
 
     INT_SIZE = 4
     SENTINEL = -1  # Valor de n para indicar eliminación lógica
-
     def __init__(self, table_name: str, field_name: str):
-        self.filename = os.path.join("backend/database/tables", f"{table_name}.{field_name}.dat")
+        self.filename = Utils.build_path("tables",f"{table_name}.{field_name}.dat")
         if not os.path.exists(self.filename):
             raise FileNotFoundError(f"Archivo {self.filename} no existe. Llame a build_file primero.")
 
     @staticmethod
     def build_file(table_name: str, field_name: str) -> None:
         """Crea el archivo <table_name>.<field_name>.dat vacío si no existe."""
-        filename = os.path.join("backend/database/tables", f"{table_name}.{field_name}.dat")
+        filename = Utils.build_path("tables",f"{table_name}.{field_name}.dat")
         if not os.path.exists(filename):
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             with open(filename, "wb") as f:

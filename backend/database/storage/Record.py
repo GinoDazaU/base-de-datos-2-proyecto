@@ -42,7 +42,7 @@ class Record:
     def pack(self) -> bytes:
         processed = []
         for (_, fmt), val in zip(self.schema, self.values):
-            print(f"Packing value '{val}' with format '{fmt}'")
+            #print(f"Packing value '{val}' with format '{fmt}'")
             if fmt.upper() == "SOUND":
                 processed.extend(val)
             elif "s" in self.get_format_char(fmt):  # cadena fija
