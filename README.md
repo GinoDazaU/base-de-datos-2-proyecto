@@ -430,8 +430,7 @@ git clone https://github.com/GinoDazaU/base-de-datos-2-proyecto.git
 cd base-de-datos-2-proyecto
 ```
 
-
-# Inicia el backend
+#### Inicia el backend
 
 Instalar las dependencias
 
@@ -446,7 +445,7 @@ Ejecutar la aplicacion
 
 ```
 
-# Iniciar el frontend
+#### Iniciar el frontend
 
 Ingresar al directorio de frontend
 
