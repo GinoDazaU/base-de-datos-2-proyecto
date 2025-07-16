@@ -19,7 +19,7 @@ class SuppressPrints:
 csv_path = os.path.join(os.path.dirname(__file__), "news_large.csv")
 table_name = "news_text"
 
-def load_to_our_db(df: pd.DataFrame) -> float:
+def load_to_db(df: pd.DataFrame) -> float:
     schema = [
         ("id", "i"),
         ("title", "text")
@@ -35,8 +35,8 @@ def load_to_our_db(df: pd.DataFrame) -> float:
         ]
         rec = Record(schema, values)
         insert_record(table_name, rec)
-    end = time.time()
     build_spimi_index(table_name)
+    end = time.time()
     return end - start
 
 def load_to_postgres(df: pd.DataFrame) -> float:
@@ -47,13 +47,20 @@ def load_to_postgres(df: pd.DataFrame) -> float:
     postgres.execute(f"""
         create table if not exists {table_name} (
             id integer primary key,
-            title text
+            title text,
+            title_tsv tsvector
         )
     """)
     records: list = df.to_records(index=False).tolist()
     start = time.time()
     execute_values(postgres, f"insert into {table_name} (id, title) values %s",
                    records)
+    postgres.execute(f"""
+        update {table_name} set title_tsv = to_tsvector('english', title)
+    """)
+    postgres.execute(f"""
+        create index if not exists idx_{table_name}_title_tsv on {table_name} using gin(title_tsv)
+    """)
     end = time.time()
     return end - start
 
@@ -66,8 +73,8 @@ def test_insertion():
         subset = df.head(size)
         row = {
             "size": size,
-            "our_db": load_to_our_db(subset),
-            "postgres": load_to_postgres(subset)
+            "creation_db": load_to_db(subset),
+            "creation_pg": load_to_postgres(subset)
         }
         results.append(row)
     print(pd.DataFrame(results))
