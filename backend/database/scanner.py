@@ -88,6 +88,14 @@ class TokenType(Enum):
     TEXTSEARCH = auto()
     IN = auto()  # for KNN and TEXTSEARCH
 
+    # operators
+    PLUS = auto()
+    MINUS = auto()
+    MULTIPLY = auto()
+    DIVIDE = auto()
+    MODULO = auto()
+    DISTANCE = auto()  # <->
+
 
 class Token:
     TYPE_TO_TEXT = {
