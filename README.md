@@ -410,7 +410,6 @@ La búsqueda textual se implementa usando el modelo vectorial con similitud de c
 
 | N canciones | Tiempo KNN Secuencial (s) | Tiempo KNN Indexado (s) |
 |-------------|----------------------------|--------------------------|
-| 60          | 1.3                        | 0.9                      |
 | 1,000       | 21.7                       | 2.3                      |
 | 2,000       | 43.3                       | 3.1                      |
 | 4,000       | 86.7                       | 4.5                      |
