@@ -7,14 +7,14 @@ from storage.Record import Record
 from indexing.SequentialIndex import SequentialIndex
 from indexing.ExtendibleHashIndex import ExtendibleHashIndex
 from indexing.BPlusTreeIndex import BPlusTreeIndex, BPlusTreeIndexWrapper
-from indexing.IndexRecord import IndexRecord, re_string, re_tuple
+from indexing.IndexRecord import IndexRecord, re_string
 from indexing.RTreeIndex import RTreeIndex
 from indexing.Spimi import SPIMIIndexer
 from indexing.SpimiAudio import SpimiAudioIndexer
-from column_types import IndexType, ColumnType
-from statement import CreateColumnDefinition, ConstantExpression
+from backend.database.fancytypes.column_types import IndexType, ColumnType
+from statement import CreateColumnDefinition
 from fancytypes.schema import SchemaType
-from column_types import OperationType
+from backend.database.fancytypes.column_types import OperationType
 from database import build_acoustic_model
 from storage.Sound import Sound
 from storage.HistogramFile import HistogramFile

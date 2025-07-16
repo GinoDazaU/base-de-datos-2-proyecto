@@ -1,38 +1,16 @@
 from contextlib import contextmanager
-from column_types import ColumnType, QueryResult, OperationType, IndexType
-from statement import (
-    Condition,
-    ColumnExpression,
-    SelectStatement,
-    WhereStatement,
-    Program,
-    Statement,
-)
 
-from database import (
-    create_table,
-    create_seq_idx,
-    create_btree_idx,
-    create_rtree_idx,
-    create_hash_idx,
-    check_table_exists,
-    drop_table,
-    get_table_schema,
-    check_seq_idx,
-    check_btree_idx,
-    check_hash_idx,
-    check_rtree_idx,
-    drop_seq_idx,
-    drop_btree_idx,
-    drop_hash_idx,
-    drop_rtree_idx,
-    insert_record,
-    _table_path,
+from fancytypes.column_types import (
+    ColumnType,
+    QueryResult,
+    OperationType,
+    IndexType,
 )
 
 from dbmanager import DBManager
 
 from statement import (
+    Statement,
     CreateTableStatement,
     CreateIndexStatement,
     InsertStatement,
@@ -48,6 +26,7 @@ from statement import (
     Program,
     Point2DExpression,
     Point3DExpression,
+    Condition,
     OrCondition,
     AndCondition,
     NotCondition,
@@ -56,6 +35,8 @@ from statement import (
     SimpleComparison,
     BetweenComparison,
 )
+
+from logger import Logger
 
 
 def fmt_to_column_type(fmt: str) -> ColumnType:
@@ -147,38 +128,62 @@ class RunVisitor:
         lastResult: QueryResult = None
         for st in program.statement_list:
             lastResult = st.accept(self)
-            print(lastResult.message)
+            Logger.log_info(
+                "Program parsed successfully with message:", lastResult.message
+            )
         return lastResult
 
     def visit_createtablestatement(self, st: CreateTableStatement):
-        if DBManager.check_table_exists(st.table_name):
-            if not st.if_not_exists:
-                raise ValueError(f"Table '{st.table_name}' already exists.")
-            else:
+        table_exists: bool = DBManager.check_table_exists(st.table_name)
+
+        if table_exists:
+            if st.if_not_exists:
                 return QueryResult(
                     True, f"Table '{st.table_name}' already exists, skipping creation."
                 )
+            else:
+                return QueryResult(False, f"Table '{st.table_name}' already exists.")
 
-        DBManager().create_table(st.table_name, st.columns)
-        return QueryResult(True, f"Table '{st.table_name}' created successfully.")
+        try:
+            DBManager().create_table(st.table_name, st.columns)
+            return QueryResult(True, f"Table '{st.table_name}' created successfully.")
+        except Exception as e:
+            return QueryResult(
+                False, f"There was an error while creating the table: {str(e)}"
+            )
 
     def visit_droptablestatement(self, st: DropTableStatement):
-        DBManager().drop_table(st.table_name)
-        return QueryResult(True, f"Table '{st.table_name}' dropped successfully.")
+        try:
+            DBManager().drop_table(st.table_name)
+            return QueryResult(True, f"Table '{st.table_name}' dropped successfully.")
+        except Exception as e:
+            return QueryResult(
+                False, f"There was an error while droppping the table: {str(e)}"
+            )
 
     def visit_createindexstatement(self, st: CreateIndexStatement):
-        DBManager().create_index(st.table_name, st.column_name, st.index_type)
-        return QueryResult(
-            True,
-            f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' created successfully.",
-        )
+        try:
+            DBManager().create_index(st.table_name, st.column_name, st.index_type)
+            return QueryResult(
+                True,
+                f"{st.index_type} on {st.table_name}.{st.column_name} created successfully.",
+            )
+        except Exception as e:
+            return QueryResult(
+                False, f"There was an error while creating the index: {str(e)}"
+            )
 
     def visit_dropindexstatement(self, st: DropIndexStatement):
-        DBManager().drop_index(st.table_name, st.column_name, st.index_type)
-        return QueryResult(
-            True,
-            f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' dropped successfully.",
-        )
+        try:
+            DBManager().drop_index(st.table_name, st.column_name, st.index_type)
+            return QueryResult(
+                True,
+                f"{st.index_type} on {st.table_name}.{st.column_name} dropped successfully.",
+            )
+        except Exception as e:
+            return QueryResult(
+                False, f"There was an error while dropping the index: {str(e)}"
+            )
 
     def visit_insertstatement(self, st: InsertStatement):
         values = [exp.accept(self) for exp in st.values]

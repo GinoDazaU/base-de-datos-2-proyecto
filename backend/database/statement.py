@@ -1,4 +1,9 @@
-from column_types import ColumnType, IndexType, OperationType, QueryResult
+from backend.database.fancytypes.column_types import (
+    ColumnType,
+    IndexType,
+    OperationType,
+    QueryResult,
+)
 
 
 class Visitable:

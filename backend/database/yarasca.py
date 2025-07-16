@@ -1,6 +1,10 @@
 from visitor import PrintVisitor, RunVisitor
 from scanner import Scanner, Token, TokenType
-from column_types import ColumnType, QueryResult, OperationType
+from backend.database.fancytypes.column_types import (
+    ColumnType,
+    QueryResult,
+    OperationType,
+)
 from statement import (
     Statement,
     Program,
@@ -22,7 +26,6 @@ from statement import (
     ColumnExpression,
     Point2DExpression,
     Point3DExpression,
-    # sadsads
     OrCondition,
     AndCondition,
     NotCondition,
