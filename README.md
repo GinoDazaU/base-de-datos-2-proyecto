@@ -1,4 +1,3 @@
-meta charset="UTF-8">
 
 <h1 align="center">Mini DataBase Manager</h3>
 
@@ -17,8 +16,16 @@ meta charset="UTF-8">
 </div>
 
 
-## Indexación y Organización de Datos No Estructurados para Datos Multimedia
+<div align="center">
 
+# Indexación y Organización de Datos No Estructurados para Datos Multimedia
+
+</div>
+
+
+🔗 <u><strong><a href="https://deepwiki.com/GinoDazaU/base-de-datos-2-proyecto" target="_blank">
+Haz clic aquí para ver la documentación del proyecto
+</a></strong></u>
 ---
 
 ## 1. Introducción
