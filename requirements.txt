@@ -7,6 +7,12 @@ scikit-learn
 nltk
 matplotlib
 gdown
+pympler
+fastapi 
+uvicorn 
+python-multipart
+mutagen
+tabulate
 librosa
 fastapi 
 uvicorn 

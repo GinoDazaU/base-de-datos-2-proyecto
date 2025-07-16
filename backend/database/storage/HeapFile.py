@@ -8,6 +8,8 @@ from .Record import Record
 from .TextFile import TextFile
 from .Sound import Sound
 
+from logger import Logger
+
 # --------------------------------------------------------
 #  Valores centinela para marcar registros eliminados
 # --------------------------------------------------------
@@ -142,14 +144,14 @@ class HeapFile:
 
     def insert_record(self, record: Record) -> int:
         if record.schema != self.schema:
-            raise ValueError("Esquema del registro no coincide.")
+            raise ValueError("Record and Heapfile schema mismatch.")
 
         # ── 1. Verificar unicidad de PK en una SOLA pasada ─────────────
         if self.primary_key:
             pk_idx, pk_fmt = self._pk_idx_fmt()
             pk_val = record.values[pk_idx]
             if pk_val == self._sentinel(pk_fmt):
-                raise ValueError("Valor centinela no permitido en PK.")
+                raise ValueError("Sentinel value not allowed in PK.")
 
             with open(self.filename, "rb") as fh:  # una sola apertura
                 fh.seek(METADATA_SIZE)
@@ -158,7 +160,7 @@ class HeapFile:
                     if len(buf) < self.rec_data_size:
                         break
                     if Record.unpack(buf, self.schema).values[pk_idx] == pk_val:
-                        raise ValueError(f"PK duplicada: {pk_val}")
+                        raise ValueError(f"Duplicated primary key with value: {pk_val}")
                     fh.seek(PTR_SIZE, os.SEEK_CUR)  # saltar next_free
 
         self._process_text_fields(record)
@@ -181,13 +183,13 @@ class HeapFile:
                 fh.write(record.pack())
                 fh.write(struct.pack("i", 0))
             self._write_header(fh)  # actualizar cabecera
-            print("Registro:", record, " insertado correctamente")
+            Logger.log_info(f"Record: {record} inserted correctly")
             return slot_off
 
     def insert_record_free(self, record: Record) -> int:
         """Inserta un registro sin verificar unicidad de PK. Usa free-list si hay huecos."""
         if record.schema != self.schema:
-            raise ValueError("Esquema del registro no coincide.")
+            raise ValueError("Record and Heapfile schema mismatch.")
 
         self._process_text_fields(record)
         self._process_sound_fields(record)
@@ -209,11 +211,8 @@ class HeapFile:
                 fh.write(struct.pack("i", 0))
 
             self._write_header(fh)
-            print(
-                "Registro (sin restricción PK):",
-                record,
-                "insertado en offset",
-                slot_off,
+            Logger.log_info(
+                f"Record with no PK restriction: {record} inserted at offset {slot_off}"
             )
             return slot_off
 
@@ -242,7 +241,9 @@ class HeapFile:
                         TextFile(self.table_name, field_name).delete(offset)
                     elif fmt.upper() == "SOUND":
                         sound_offset, _ = old_rec.values[i]
-                        Sound(self.filename.replace(".dat", ""), field_name).delete(sound_offset)
+                        Sound(self.filename.replace(".dat", ""), field_name).delete(
+                            sound_offset
+                        )
                 # marcar hueco: set PK = sentinel y next_free = free_head
                 rec.values[pk_idx] = sentinel
                 fh.seek(byte_off)
@@ -250,12 +251,8 @@ class HeapFile:
                 fh.write(struct.pack("i", self.free_head))
                 self.free_head = pos
                 self._write_header(fh)
-                print(
-                    "Registro con PK:",
-                    key,
-                    "con contenido:",
-                    old_rec,
-                    "borrado correctamente",
+                Logger.log_info(
+                    "Record with PK: {key}, with content: {old_rec} deleted correctly."
                 )
                 return True, pos, old_rec
         return False, -1, None
@@ -307,11 +304,15 @@ class HeapFile:
                     for i, (fname, fmt) in enumerate(self.schema):
                         if fmt.upper() == "TEXT":
                             offset = updated_values[i]
-                            updated_values[i] = TextFile(self.table_name, fname).read(offset)
+                            updated_values[i] = TextFile(self.table_name, fname).read(
+                                offset
+                            )
                         elif fmt.upper() == "SOUND":
                             if not crude_data:
                                 sound_offset, _ = updated_values[i]
-                                updated_values[i] = Sound(self.filename.replace(".dat", ""), fname).read(sound_offset)
+                                updated_values[i] = Sound(
+                                    self.filename.replace(".dat", ""), fname
+                                ).read(sound_offset)
 
                     resultados.append(Record(self.schema, updated_values))
 
@@ -362,12 +363,12 @@ class HeapFile:
     def fetch_record_by_offset(self, pos: int) -> Record:
         if pos < 0 or pos >= self.heap_size:
             raise IndexError("Offset fuera de rango")
-        
+
         with open(self.filename, "rb") as fh:
             fh.seek(METADATA_SIZE + pos * self.slot_size)
             buf = fh.read(self.rec_data_size)
             record = Record.unpack(buf, self.schema)
-            
+
             # Procesar campos de texto
             updated_values = list(record.values)
             for i, (fname, fmt) in enumerate(self.schema):
@@ -376,8 +377,10 @@ class HeapFile:
                     updated_values[i] = TextFile(self.table_name, fname).read(offset)
                 elif fmt.upper() == "SOUND":
                     sound_offset, _ = updated_values[i]
-                    updated_values[i] = Sound(self.filename.replace(".dat", ""), fname).read(sound_offset)
-            
+                    updated_values[i] = Sound(
+                        self.filename.replace(".dat", ""), fname
+                    ).read(sound_offset)
+
             return Record(self.schema, updated_values)
 
     # ------------------------------------------------------------------
@@ -393,7 +396,6 @@ class HeapFile:
             for i in range(self.heap_size):
                 buf = fh.read(self.rec_data_size)
                 rec = Record.unpack(buf, self.schema)
-
                 # Reemplazar offsets por texto real
                 for idx, (name, fmt) in enumerate(self.schema):
                     if fmt.upper() == "TEXT":
@@ -413,6 +415,29 @@ class HeapFile:
     # ------------------------------------------------------------------
     # Utilidades de parser ---------------------------------------------
     # ------------------------------------------------------------------
+
+    def get_all_offsets(self) -> set[int]:
+        offsets: set[int] = set()
+        pk_idx, pk_sentinel = None, None
+        if self.primary_key is not None:
+            pk_idx, pk_fmt = self._pk_idx_fmt()
+            pk_sentinel = self._sentinel(pk_fmt)
+
+        with open(self.filename, "rb") as f:
+            f.seek(METADATA_SIZE)
+            pos = 0
+            while pos < self.heap_size:
+                buf = f.read(self.rec_data_size)
+                if len(buf) < self.rec_data_size:
+                    break
+                rec = Record.unpack(buf, self.schema)
+                # si no es hueco, lo incluimos
+                if not (pk_idx is not None and rec.values[pk_idx] == pk_sentinel):
+                    offsets.add(pos)
+                # saltar puntero next_free
+                f.seek(PTR_SIZE, os.SEEK_CUR)
+                pos += 1
+        return offsets
 
     def get_all_records(self) -> List[Record]:
         """Devuelve todos los registros no eliminados en una lista."""
@@ -523,9 +548,52 @@ class HeapFile:
                 if rec.values[pk_idx] == pk_value:
                     # Decode string values before packing
                     for i, (fname, fmt) in enumerate(self.schema):
-                        if 's' in Record.get_format_char_static(fmt) and isinstance(record.values[i], bytes):
-                            record.values[i] = record.values[i].decode('utf-8').strip('\x00')
+                        if "s" in Record.get_format_char_static(fmt) and isinstance(
+                            record.values[i], bytes
+                        ):
+                            record.values[i] = (
+                                record.values[i].decode("utf-8").strip("\x00")
+                            )
                     fh.seek(byte_off)
                     fh.write(record.pack())
                     return True
         return False
+
+    def search_offsets_by_field(self, field: str, value):
+        """
+        Similar a search_by_field pero devuelve una lista de offsets (posiciones) en lugar de Records.
+        """
+        # validar campo
+        names = [n for n, _ in self.schema]
+        if field not in names:
+            raise KeyError(f"Campo '{field}' no existe en el esquema.")
+        fld_idx = names.index(field)
+        # info de PK/tombstone
+        pk_idx, pk_sentinel = None, None
+        stop_early = False
+        if self.primary_key is not None:
+            pk_idx, pk_fmt = self._pk_idx_fmt()
+            pk_sentinel = self._sentinel(pk_fmt)
+            stop_early = field == self.primary_key
+
+        offsets = []
+        with open(self.filename, "rb") as fh:
+            fh.seek(METADATA_SIZE)
+            pos = 0
+            while pos < self.heap_size:
+                buf = fh.read(self.rec_data_size)
+                if len(buf) < self.rec_data_size:
+                    break
+                rec = Record.unpack(buf, self.schema)
+                # saltar huecos
+                if pk_idx is not None and rec.values[pk_idx] == pk_sentinel:
+                    fh.seek(PTR_SIZE, os.SEEK_CUR)
+                    pos += 1
+                    continue
+                if rec.values[fld_idx] == value:
+                    offsets.append(pos)
+                    if stop_early:
+                        break
+                fh.seek(PTR_SIZE, os.SEEK_CUR)
+                pos += 1
+        return offsets

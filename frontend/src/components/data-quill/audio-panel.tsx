@@ -13,10 +13,11 @@ import { useToast } from '@/hooks/use-toast';
 
 interface AudioPanelProps {
   audioFiles: AudioFile[];
+  num_sounds: number;
   onRefresh: () => Promise<void>;
 }
 
-export function AudioPanel({ audioFiles, onRefresh }: AudioPanelProps) {
+export function AudioPanel({ audioFiles, num_sounds,onRefresh }: AudioPanelProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [playingFile, setPlayingFile] = useState<string | null>(null);
@@ -49,8 +50,9 @@ export function AudioPanel({ audioFiles, onRefresh }: AudioPanelProps) {
         <CardHeader className="flex flex-row items-center justify-between py-3 px-4 border-b border-border/50">
           <CardTitle className="text-lg font-semibold flex items-center gap-2">
             <Music2 className="h-5 w-5 text-primary" />
-            Audio Library
-            </CardTitle>
+            <span>Audio Library</span>
+            <span className="text-sm text-muted-foreground">({num_sounds} sound)</span>
+          </CardTitle>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" onClick={() => setIsUploadOpen(true)} aria-label="Add audio">
               <Plus className="h-4 w-4" />

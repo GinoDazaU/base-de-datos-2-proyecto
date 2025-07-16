@@ -1,6 +1,16 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),)))
+
+
 from visitor import PrintVisitor, RunVisitor
 from scanner import Scanner, Token, TokenType
-from column_types import ColumnType, QueryResult, OperationType
+from fancytypes.column_types import (
+    ColumnType,
+    QueryResult,
+    OperationType,
+)
 from statement import (
     Statement,
     Program,
@@ -17,12 +27,13 @@ from statement import (
     BoolExpression,
     StringExpression,
     SelectStatement,
+    KnnStatement,
+    TextSearchStatement,
     WhereStatement,
     ValueExpression,
     ColumnExpression,
     Point2DExpression,
     Point3DExpression,
-    # sadsads
     OrCondition,
     AndCondition,
     NotCondition,
@@ -34,12 +45,11 @@ from statement import (
 import time
 import random
 from faker import Faker
+from logger import Logger
 
 
 def operation_token_to_type(token_type: TokenType) -> OperationType:
-    if (
-        token_type == TokenType.EQUAL or token_type == TokenType.ASSIGN
-    ):  # used interchangeably aadssadsadsa
+    if token_type == TokenType.EQUAL or token_type == TokenType.ASSIGN:  # used interchangeably aadssadsadsa
         return OperationType.EQUAL
     elif token_type == TokenType.NOT_EQUAL:
         return OperationType.NOT_EQUAL
@@ -51,20 +61,19 @@ def operation_token_to_type(token_type: TokenType) -> OperationType:
         return OperationType.GREATER__EQUAL
     elif token_type == TokenType.LESS_EQUAL:
         return OperationType.LESS__EQUAL
+    elif token_type == TokenType.ATAT:  # @@ for text search
+        return OperationType.ATAT
+    elif token_type == TokenType.DISTANCE:  # <-> for audio search
+        return OperationType.DISTANCE
     else:
         raise ValueError(f"Invalid operation token: {token_type}")
 
 
 class Parser:
-    def __init__(self, scanner: Scanner, debug: bool = False):
-        self.debug = debug
+    def __init__(self, scanner: Scanner):
         self.scanner = scanner
         self.prev: Token = None
         self.curr: Token = self.scanner.next_token()
-
-    def print_debug(self, message: str):
-        if self.debug:
-            print(f"DEBUG: {message} | Current Token: {self.curr}")
 
     def check(self, token_type: TokenType) -> bool:
         if self.is_at_end():
@@ -91,7 +100,7 @@ class Parser:
         return False
 
     def parse_column_definition(self) -> CreateColumnDefinition:
-        self.print_debug("Parsing column definition")
+        Logger.log_parser("Parsing column definition")
 
         column_name: str = ""
         column_type: ColumnType
@@ -115,22 +124,20 @@ class Parser:
             column_type = ColumnType.POINT2D  # TODO: integrate rtree
         elif self.match(TokenType.POINT3D):
             column_type = ColumnType.POINT3D  # TODO: integrate rtree
+        elif self.match(TokenType.TEXT):
+            column_type = ColumnType.TEXT
+        elif self.match(TokenType.SOUND):
+            column_type = ColumnType.SOUND
         elif self.match(TokenType.VARCHAR):
             if not self.match(TokenType.LEFT_PARENTHESIS):
                 raise SyntaxError(f"Expected '(' after VARCHAR, found {self.curr.text}")
             if not self.match(TokenType.INT_CONSTANT):
-                raise SyntaxError(
-                    f"Expected integer constant for VARCHAR length, found {self.curr.text}"
-                )
+                raise SyntaxError(f"Expected integer constant for VARCHAR length, found {self.curr.text}")
             varchar_length = int(self.prev.text)
             if varchar_length <= 0:
-                raise SyntaxError(
-                    f"Invalid VARCHAR length {varchar_length}, must be greater than 0"
-                )
+                raise SyntaxError(f"Invalid VARCHAR length {varchar_length}, must be greater than 0")
             if not self.match(TokenType.RIGHT_PARENTHESIS):
-                raise SyntaxError(
-                    f"Expected ')' after VARCHAR length, found {self.curr.text}"
-                )
+                raise SyntaxError(f"Expected ')' after VARCHAR length, found {self.curr.text}")
             column_type = ColumnType.VARCHAR
         else:
             raise SyntaxError(f"Invalid column type {self.curr.text} for column {column_name}")
@@ -145,7 +152,7 @@ class Parser:
         return CreateColumnDefinition(column_name, column_type, varchar_length, is_pk)
 
     def parse_column_definition_list(self) -> list[CreateColumnDefinition]:
-        self.print_debug("Parsing column definition list")
+        Logger.log_parser("Parsing column definition list")
         columns: list[CreateColumnDefinition] = []
 
         while not self.check(TokenType.RIGHT_PARENTHESIS):
@@ -160,34 +167,38 @@ class Parser:
 
     # TODO: primary key
     def parse_create_table_statement(self) -> CreateTableStatement:
-        self.print_debug("Parsing CREATE TABLE statement")
+        Logger.log_parser("Parsing CREATE TABLE statement")
+
+        if_not_exists = False
+
+        if self.match(TokenType.IF):
+            if not self.match(TokenType.NOT):
+                raise SyntaxError(f"Expected NOT after IF, found {self.curr.text}")
+            if not self.match(TokenType.EXISTS):
+                raise SyntaxError(f"Expected EXISTS after IF NOT, found {self.curr.text}")
+            if_not_exists = True
+
         table_name = None
         if not self.match(TokenType.USER_IDENTIFIER):
-            raise SyntaxError(
-                f"Expected table name after CREATE TABLE, found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected table name after CREATE TABLE, found {self.curr.text}")
         table_name = self.prev.text
 
         if not self.match(TokenType.LEFT_PARENTHESIS):
             raise SyntaxError(f"Expected '(' after table name, found {self.curr.text}")
         columns: list[CreateColumnDefinition] = self.parse_column_definition_list()
         if not self.match(TokenType.RIGHT_PARENTHESIS):
-            raise SyntaxError(
-                f"Expected ')' after column definitions, found {self.curr.text}"
-            )
-        return CreateTableStatement(table_name, columns)
+            raise SyntaxError(f"Expected ')' after column definitions, found {self.curr.text}")
+        return CreateTableStatement(table_name, columns, if_not_exists)
 
     def parse_drop_table_statement(self) -> DropTableStatement:
-        self.print_debug("Parsing DROP TABLE statement")
+        Logger.log_parser("Parsing DROP TABLE statement")
         if not self.match(TokenType.USER_IDENTIFIER):
-            raise SyntaxError(
-                f"Expected table name after DROP TABLE, found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected table name after DROP TABLE, found {self.curr.text}")
         table_name = self.prev.text
         return DropTableStatement(table_name)
 
     def parse_create_index_statement(self) -> CreateIndexStatement:
-        self.print_debug("Parsing CREATE INDEX statement")
+        Logger.log_parser("Parsing CREATE INDEX statement")
 
         # current index implementation doesnt support index name, so we omit it
         # if not self.match(TokenType.USER_IDENTIFIER):
@@ -213,9 +224,7 @@ class Parser:
             raise SyntaxError(f"Expected ')' after column name, found {self.curr.text}")
 
         if not self.match(TokenType.USING):
-            raise SyntaxError(
-                f"Expected USING after column name, found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected USING after column name, found {self.curr.text}")
 
         if self.match(TokenType.BPLUSTREE):
             index_type = IndexType.BPLUSTREE
@@ -225,14 +234,25 @@ class Parser:
             index_type = IndexType.RTREE
         elif self.match(TokenType.SEQUENTIAL):
             index_type = IndexType.SEQUENTIAL
+        elif self.match(TokenType.SPIMIAUDIO):
+            index_type = IndexType.SPIMIAUDIO
         else:
-            raise SyntaxError(
-                f"Expected index type (BPLUSTREE, EXTENDIBLEHASH, RTREE, SEQUENTIAL), found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected index type (BPLUSTREE, EXTENDIBLEHASH, RTREE, SEQUENTIAL), found {self.curr.text}")
         return CreateIndexStatement("index_name", table_name, column_name, index_type)
 
+    def parse_create_spimi_statement(self) -> CreateIndexStatement:
+        index_type: IndexType = IndexType.SPIMI
+
+        if not self.match(TokenType.ON):
+            raise SyntaxError(f"Expected ON after SPIMI, found {self.curr.text}")
+
+        if not self.match(TokenType.USER_IDENTIFIER):
+            raise SyntaxError(f"Expected table name after ON, found {self.curr.text}")
+        table_name = self.prev.text
+        return CreateIndexStatement("index_name", table_name, "column_name", index_type)
+
     def parse_drop_index_statement(self) -> DropIndexStatement:
-        self.print_debug("Parsing DROP INDEX statement")
+        Logger.log_parser("Parsing DROP INDEX statement")
 
         if self.match(TokenType.BPLUSTREE):
             index_type = IndexType.BPLUSTREE
@@ -243,9 +263,7 @@ class Parser:
         elif self.match(TokenType.SEQUENTIAL):
             index_type = IndexType.SEQUENTIAL
         else:
-            raise SyntaxError(
-                f"Expected index type (BPLUSTREE, EXTENDIBLEHASH, RTREE, SEQUENTIAL), found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected index type (BPLUSTREE, EXTENDIBLEHASH, RTREE, SEQUENTIAL), found {self.curr.text}")
 
         if not self.match(TokenType.ON):
             raise SyntaxError(f"Expected ON after index type, found {self.curr.text}")
@@ -276,74 +294,42 @@ class Parser:
             if self.check(TokenType.COMMA):
                 self.advance()
             elif not self.check(TokenType.RIGHT_PARENTHESIS):
-                raise SyntaxError(
-                    f"Expected ',' or ')' after column name, found {self.curr.text}"
-                )
+                raise SyntaxError(f"Expected ',' or ')' after column name, found {self.curr.text}")
         return columns
 
     def parse_point_2d_expression(self) -> Point2DExpression:
         if not self.match(TokenType.LEFT_PARENTHESIS):
             raise SyntaxError(f"Expected '(' after POINT3D, found {self.curr.text}")
-        if not (
-            self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)
-        ):
-            raise SyntaxError(
-                f"Expected x coordinate (FLOAT or INT) after '(', found {self.curr.text}"
-            )
+        if not (self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)):
+            raise SyntaxError(f"Expected x coordinate (FLOAT or INT) after '(', found {self.curr.text}")
         point_x = float(self.prev.text)
         if not self.match(TokenType.COMMA):
-            raise SyntaxError(
-                f"Expected ',' after x coordinate, found {self.curr.text}"
-            )
-        if not (
-            self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)
-        ):
-            raise SyntaxError(
-                f"Expected y coordinate (FLOAT or INT) after ',', found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected ',' after x coordinate, found {self.curr.text}")
+        if not (self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)):
+            raise SyntaxError(f"Expected y coordinate (FLOAT or INT) after ',', found {self.curr.text}")
         point_y = float(self.prev.text)
         if not self.match(TokenType.RIGHT_PARENTHESIS):
-            raise SyntaxError(
-                f"Expected ')' after y coordinate, found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected ')' after y coordinate, found {self.curr.text}")
         return Point2DExpression(point_x, point_y)
 
     def parse_point_3d_expression(self) -> Point3DExpression:
         if not self.match(TokenType.LEFT_PARENTHESIS):
             raise SyntaxError(f"Expected '(' after POINT3D, found {self.curr.text}")
-        if not (
-            self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)
-        ):
-            raise SyntaxError(
-                f"Expected x coordinate (FLOAT or INT) after '(', found {self.curr.text}"
-            )
+        if not (self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)):
+            raise SyntaxError(f"Expected x coordinate (FLOAT or INT) after '(', found {self.curr.text}")
         point_x = float(self.prev.text)
         if not self.match(TokenType.COMMA):
-            raise SyntaxError(
-                f"Expected ',' after x coordinate, found {self.curr.text}"
-            )
-        if not (
-            self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)
-        ):
-            raise SyntaxError(
-                f"Expected y coordinate (FLOAT or INT) after ',', found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected ',' after x coordinate, found {self.curr.text}")
+        if not (self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)):
+            raise SyntaxError(f"Expected y coordinate (FLOAT or INT) after ',', found {self.curr.text}")
         point_y = float(self.prev.text)
         if not self.match(TokenType.COMMA):
-            raise SyntaxError(
-                f"Expected ',' after y coordinate, found {self.curr.text}"
-            )
-        if not (
-            self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)
-        ):
-            raise SyntaxError(
-                f"Expected z coordinate (FLOAT or INT) after ',', found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected ',' after y coordinate, found {self.curr.text}")
+        if not (self.match(TokenType.FLOAT_CONSTANT) or self.match(TokenType.INT_CONSTANT)):
+            raise SyntaxError(f"Expected z coordinate (FLOAT or INT) after ',', found {self.curr.text}")
         point_z = float(self.prev.text)
         if not self.match(TokenType.RIGHT_PARENTHESIS):
-            raise SyntaxError(
-                f"Expected ')' after z coordinate, found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected ')' after z coordinate, found {self.curr.text}")
         return Point3DExpression(point_x, point_y, point_z)
 
     def parse_insert_statement_values(self) -> list[ConstantExpression]:
@@ -368,9 +354,7 @@ class Parser:
             if self.check(TokenType.COMMA):
                 self.advance()
             elif not self.check(TokenType.RIGHT_PARENTHESIS):
-                raise SyntaxError(
-                    f"Expected ',' or ')' after constant value, found {self.curr.text}"
-                )
+                raise SyntaxError(f"Expected ',' or ')' after constant value, found {self.curr.text}")
         return constants
 
     def parse_insert_statement(self) -> InsertStatement:
@@ -387,14 +371,10 @@ class Parser:
         columns: list[str] = self.parse_insert_statement_columns()
 
         if not self.match(TokenType.RIGHT_PARENTHESIS):
-            raise SyntaxError(
-                f"Expected ')' after column names, found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected ')' after column names, found {self.curr.text}")
 
         if not self.match(TokenType.VALUES):
-            raise SyntaxError(
-                f"Expected VALUES after column names, found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected VALUES after column names, found {self.curr.text}")
 
         if not self.match(TokenType.LEFT_PARENTHESIS):
             raise SyntaxError(f"Expected '(' after VALUES, found {self.curr.text}")
@@ -402,9 +382,7 @@ class Parser:
         constants: list[ConstantExpression] = self.parse_insert_statement_values()
 
         if not self.match(TokenType.RIGHT_PARENTHESIS):
-            raise SyntaxError(
-                f"Expected ')' after constant values, found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected ')' after constant values, found {self.curr.text}")
 
         return InsertStatement(table_name, columns, constants)
 
@@ -428,13 +406,14 @@ class Parser:
             table_name = None
             if self.match(TokenType.DOT):
                 table_name = column_name
+                if not self.match(TokenType.USER_IDENTIFIER):
+                    raise SyntaxError(f"Expected table name after '.', found {self.curr.text}")
                 column_name = self.prev.text
+            Logger.log_parser(f"Column expression: {column_name}, table: {table_name}")
             return ColumnExpression(column_name, table_name)
         else:
             # TODO: handle function calls or nested subqueries (im not doing nested subqueries ty very much)
-            raise SyntaxError(
-                f"Expected constant value (INT, FLOAT, BOOL, STRING) or column reference, found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected constant value (INT, FLOAT, BOOL, STRING) or column reference, found {self.curr.text}")
 
     # region Condition Parsing and Where
     def parse_primary_condition(self) -> PrimaryCondition:
@@ -443,9 +422,7 @@ class Parser:
         if self.match(TokenType.LEFT_PARENTHESIS):
             condition = self.parse_or_condition()
             if not self.match(TokenType.RIGHT_PARENTHESIS):
-                raise SyntaxError(
-                    f"Expected ')' after condition, found {self.curr.text}"
-                )
+                raise SyntaxError(f"Expected ')' after condition, found {self.curr.text}")
             return PrimaryCondition(condition)
 
         # constant condition
@@ -464,6 +441,8 @@ class Parser:
             or self.match(TokenType.LESS_EQUAL)
             or self.match(TokenType.GREATER_THAN)
             or self.match(TokenType.GREATER_EQUAL)
+            or self.match(TokenType.ATAT)  # @@ for text search
+            or self.match(TokenType.DISTANCE)  # <-> for audio search
         ):
             op: OperationType = operation_token_to_type(self.prev.token_type)
             right_expr = self.parse_value_expression()
@@ -476,9 +455,7 @@ class Parser:
             upper = self.parse_value_expression()
             return PrimaryCondition(BetweenComparison(value_expr, lower, upper))
         # run visitor handles invalid stuff, like string < 5 or 12.5 = "hello"
-        raise SyntaxError(
-            f"Expected condition (constant, simple comparison, or BETWEEN), found {self.curr.text}"
-        )
+        raise SyntaxError(f"Expected condition (constant, simple comparison, or BETWEEN), found {self.curr.text}")
 
     def parse_not_condition(self) -> NotCondition:
         is_not = False
@@ -519,23 +496,17 @@ class Parser:
 
             if self.match(TokenType.DOT):
                 if not self.match(TokenType.USER_IDENTIFIER):
-                    raise SyntaxError(
-                        f"Expected table name after '.', found {self.curr.text}"
-                    )
+                    raise SyntaxError(f"Expected table name after '.', found {self.curr.text}")
                 table_name = column_name
                 column_name = self.prev.text
-            select_columns.append(
-                f"{f'{table_name}.' if table_name is not None else ''}{column_name}"
-            )
+            select_columns.append(f"{f'{table_name}.' if table_name is not None else ''}{column_name}")
 
             # TODO: handle column aliases
 
             if self.check(TokenType.COMMA):
                 self.advance()
             elif not self.check(TokenType.FROM):
-                raise SyntaxError(
-                    f"Expected ',' or FROM after column name, found {self.curr.text}"
-                )
+                raise SyntaxError(f"Expected ',' or FROM after column name, found {self.curr.text}")
 
         if len(select_columns) == 0:
             raise SyntaxError("At least one column must be selected")
@@ -557,9 +528,7 @@ class Parser:
             select_columns = self.parse_select_list()
 
         if not self.match(TokenType.FROM):
-            raise SyntaxError(
-                f"Expected FROM after selected columns, found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected FROM after selected columns, found {self.curr.text}")
 
         if not self.match(TokenType.USER_IDENTIFIER):
             raise SyntaxError(f"Expected table name after FROM, found {self.curr.text}")
@@ -574,9 +543,7 @@ class Parser:
             if not self.match(TokenType.BY):
                 raise SyntaxError(f"Expected BY after ORDER, found {self.curr.text}")
             if not self.match(TokenType.USER_IDENTIFIER):
-                raise SyntaxError(
-                    f"Expected column name after ORDER BY, found {self.curr.text}"
-                )
+                raise SyntaxError(f"Expected column name after ORDER BY, found {self.curr.text}")
             order_by_column = self.prev.text
             ascending = True
             if self.match(TokenType.DESC):
@@ -584,9 +551,7 @@ class Parser:
 
         if self.match(TokenType.LIMIT):
             if not self.match(TokenType.INT_CONSTANT):
-                raise SyntaxError(
-                    f"Expected integer constant after LIMIT, found {self.curr.text}"
-                )
+                raise SyntaxError(f"Expected integer constant after LIMIT, found {self.curr.text}")
             limit = int(self.prev.text)
 
         return SelectStatement(
@@ -605,25 +570,80 @@ class Parser:
     def parse_delete_statement(self) -> Statement:
         raise NotImplementedError("DELETE statement parsing is not implemented yet")
 
+    def parse_knn_statement(self) -> Statement:
+        if not self.match(TokenType.LEFT_PARENTHESIS):
+            raise SyntaxError(f"Expected '(' after KNN, found {self.curr.text}")
+        if not self.match(TokenType.INT_CONSTANT):
+            raise SyntaxError(f"Expected integer constant K for KNN, found {self.curr.text}")
+        k = int(self.prev.text)
+
+        if not self.match(TokenType.RIGHT_PARENTHESIS):
+            raise SyntaxError(f"Expected ')' after KNN K value, found {self.curr.text}")
+
+        if not self.match(TokenType.SOUND):
+            raise SyntaxError(f"Expected SOUND after KNN, found {self.curr.text}")
+        if not self.match(TokenType.LEFT_PARENTHESIS):
+            raise SyntaxError(f"Expected '(' after SOUND, found {self.curr.text}")
+        if not self.match(TokenType.STRING_CONSTANT):
+            raise SyntaxError(f"Expected sound file name after '(', found {self.curr.text}")
+        sound_file = self.prev.text.strip('"').strip("'")
+        if not self.match(TokenType.RIGHT_PARENTHESIS):
+            raise SyntaxError(f"Expected ')' after sound file name, found {self.curr.text}")
+
+        if not self.match(TokenType.IN):
+            raise SyntaxError(f"Expected IN after KNN SOUND, found {self.curr.text}")
+
+        if not self.match(TokenType.USER_IDENTIFIER):
+            raise SyntaxError(f"Expected table name after IN, found {self.curr.text}")
+        table_name = self.prev.text
+
+        if not self.match(TokenType.DOT):
+            raise SyntaxError(f"Expected '.' after table name, found {self.curr.text}")
+
+        if not self.match(TokenType.USER_IDENTIFIER):
+            raise SyntaxError(f"Expected column name after table name, found {self.curr.text}")
+        column_name = self.prev.text
+
+        return KnnStatement(table_name, column_name, sound_file, k)
+
+    def parse_text_search_statement(self) -> Statement:
+        if not self.match(TokenType.LEFT_PARENTHESIS):
+            raise SyntaxError(f"Expected '(' after TEXTSEARCH, found {self.curr.text}")
+        if not self.match(TokenType.INT_CONSTANT):
+            raise SyntaxError(f"Expected integer constant for TEXTSEARCH K, found {self.curr.text}")
+        k = int(self.prev.text)
+        if not self.match(TokenType.RIGHT_PARENTHESIS):
+            raise SyntaxError(f"Expected ')' after TEXTSEARCH K, found {self.curr.text}")
+
+        if not self.match(TokenType.STRING_CONSTANT):
+            raise SyntaxError(f"Expected search term (STRING) after TEXTSEARCH, found {self.curr.text}")
+        query_text = self.prev.text.strip('"').strip("'")
+
+        if not self.match(TokenType.IN):
+            raise SyntaxError(f"Expected IN after TEXTSEARCH, found {self.curr.text}")
+        if not self.match(TokenType.USER_IDENTIFIER):
+            raise SyntaxError(f"Expected table name after IN, found {self.curr.text}")
+        table_name = self.prev.text
+
+        return TextSearchStatement(table_name, query_text, k)
+
     def parse_statement(self) -> Statement:
         if self.match(TokenType.CREATE):
             if self.match(TokenType.TABLE):
                 return self.parse_create_table_statement()
             elif self.match(TokenType.INDEX):
                 return self.parse_create_index_statement()
+            elif self.match(TokenType.SPIMI) or self.match(TokenType.SPIMIAUDIO):
+                return self.parse_create_spimi_statement()
             else:
-                raise SyntaxError(
-                    f"Expected TABLE or INDEX after CREATE, found {self.curr.text}"
-                )
+                raise SyntaxError(f"Expected TABLE or INDEX or SPIMI/SPIMIAUDIO after CREATE, found {self.curr.text}")
         elif self.match(TokenType.DROP):
             if self.match(TokenType.TABLE):
                 return self.parse_drop_table_statement()
             elif self.match(TokenType.INDEX):
                 return self.parse_drop_index_statement()
             else:
-                raise SyntaxError(
-                    f"Expected TABLE or INDEX after DROP, found {self.curr.text}"
-                )
+                raise SyntaxError(f"Expected TABLE or INDEX after DROP, found {self.curr.text}")
         elif self.match(TokenType.INSERT):
             return self.parse_insert_statement()
         elif self.match(TokenType.SELECT):
@@ -632,13 +652,16 @@ class Parser:
             return self.parse_update_statement()
         elif self.match(TokenType.DELETE):
             return self.parse_delete_statement()
+
+        elif self.match(TokenType.KNN):
+            return self.parse_knn_statement()  # TODO: implement KNN statement
+        elif self.match(TokenType.TEXTSEARCH):
+            return self.parse_text_search_statement()
         else:
-            raise SyntaxError(
-                f"Expected statement keyword (CREATE, DROP, etc.), found {self.curr.text}"
-            )
+            raise SyntaxError(f"Expected statement keyword (CREATE, DROP, etc.), found {self.curr.text}")
 
     def parse_statement_list(self) -> list[Statement]:
-        self.print_debug("Parsing statement list")
+        Logger.log_parser("Parsing statement list")
         statement_list: list[Statement] = []
 
         if self.is_at_end():
@@ -656,7 +679,7 @@ class Parser:
             statement_list = self.parse_statement_list()
             return Program(statement_list)
         except Exception as e:
-            print(f"Error parsing program: {e}")
+            Logger.log_parser(f"Error parsing program: {e}")
             return None
 
 
@@ -679,10 +702,17 @@ def generate_random_inserts(num_records: int = 10) -> list[str]:
 
     return queries
 
+def query_run(query:str):
+    runVisitor = RunVisitor()
+    scanner = Scanner(query)
+    parser = Parser(scanner)
+    program = parser.parse_program()
+    result: QueryResult = runVisitor.visit_program(program)
+    return result
 
 if __name__ == "__main__":
     basic_creation_insertion_selection_test = [
-        "CREATE TABLE student(id INT PRIMARY KEY, name VARCHAR(128), age INT, grade FLOAT)",
+        "CREATE TABLE IF NOT EXISTS student(id INT PRIMARY KEY, name VARCHAR(128), age INT, grade FLOAT)",
         "INSERT INTO student(name, grade, age, id) VALUES('Alice', 16.5, 19, 1)",
         "INSERT INTO student(id, age, grade, name) VALUES(2, 20, 12, 'Bob')",
         "INSERT INTO student(grade, id, age, name) VALUES(18, 3, 20, 'Charlie')",
@@ -695,20 +725,55 @@ if __name__ == "__main__":
         "DROP TABLE student",
     ]
 
-    test_query_sets = [basic_creation_insertion_selection_test]
+    spimi_test = [
+        "CREATE TABLE IF NOT EXISTS article(id INT PRIMARY KEY, content TEXT);",
+        "INSERT INTO article(id, content) VALUES(1, 'The cat jumped over the wall.');",
+        "INSERT INTO article(id, content) VALUES(2, 'The dog barked at the cat.');",
+        "INSERT INTO article(id, content) VALUES(3, 'The wall was painted blue yesterday.');",
+        "INSERT INTO article(id, content) VALUES(4, 'Yesterday the cat slept on the sofa.');",
+        "INSERT INTO article(id, content) VALUES(5, 'The dog chased the ball across the yard.');",
+        "INSERT INTO article(id, content) VALUES(6, 'The blue ball rolled under the sofa.');",
+        "INSERT INTO article(id, content) VALUES(7, 'The yard was quiet except for the cat.');",
+        "INSERT INTO article(id, content) VALUES(8, 'The wall and the yard were cleaned yesterday.');",
+        "INSERT INTO article(id, content) VALUES(9, 'The dog and cat shared the sofa.');",
+        "INSERT INTO article(id, content) VALUES(10, 'The ball bounced off the wall.');",
+        "CREATE SPIMI ON article;",
+        "SELECT id, content FROM article WHERE content @@ 'dog' LIMIT 5",
+    ]  # Should return ids 1, 2, 4, 7, 9
+
+    audio_spimi_test = [
+        "CREATE TABLE IF NOT EXISTS songs(id INT primary key, title VARCHAR(100), genre VARCHAR(50), soundfile SOUND);"
+        "INSERT INTO songs(id, title, genre, soundfile) VALUES(1, 'Song A', 'Pop', '000002.mp3');",
+        "INSERT INTO songs(id, title, genre, soundfile) VALUES(2, 'Song B', 'Rock', '000005.mp3');",
+        "INSERT INTO songs(id, title, genre, soundfile) VALUES(3, 'Song C', 'Jazz', '000005.mp3');",
+        "INSERT INTO songs(id, title, genre, soundfile) VALUES(4, 'Song D', 'Pop', '000140.mp3');",
+        "INSERT INTO songs(id, title, genre, soundfile) VALUES(5, 'Song E', 'Rock', '000141.mp3');",
+        "INSERT INTO songs(id, title, genre, soundfile) VALUES(6, 'Song F', 'Jazz', '000148.mp3');",
+        "CREATE INDEX ON songs(soundfile) USING SPIMIAUDIO;",
+        "SELECT id, title, genre from songs WHERE soundfile <-> '000002.mp3' LIMIT 5",
+    ]
+    audio_spimi_test2 = [
+        "SELECT * from songs WHERE sound_file <-> '000002.mp3' LIMIT 5"
+    ]
+
+    test_query_sets = [
+        audio_spimi_test2,
+    ]
 
     printVisitor = PrintVisitor()
     runVisitor = RunVisitor()
     instruction_delay = 0.1
 
+    Logger.debug_enabled = True
+    # Logger.info_enabled = True
+
     for queryset in test_query_sets:
         for query in queryset:
             scanner = Scanner(query)
             # scanner.test()
-            parser = Parser(scanner, debug=False)
+            parser = Parser(scanner)
             program = parser.parse_program()
             # printVisitor.visit_program(program)
             result: QueryResult = runVisitor.visit_program(program)
-            if result.data is not None:
-                print(f"Query Result: {result.data}")
-            time.sleep(instruction_delay)
+            print(result)
+            # time.sleep(instruction_delay)

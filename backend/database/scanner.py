@@ -76,6 +76,20 @@ class TokenType(Enum):
     POINT2D = auto()  # for RTREE
     POINT3D = auto()  # for RTREE
 
+    # new
+    SPIMI = auto()
+    TEXT = auto()
+    SPIMIAUDIO = auto()
+    SOUND = auto()
+    IF = auto()
+    EXISTS = auto()
+
+    ATAT = auto()
+    KNN = auto()
+    TEXTSEARCH = auto()
+    IN = auto()
+    DISTANCE = auto()  # <-> for KNN
+
 
 class Token:
     TYPE_TO_TEXT = {
@@ -142,6 +156,18 @@ class Token:
         # aaaa
         TokenType.POINT2D: "POINT2D",
         TokenType.POINT3D: "POINT3D",
+        # wasa
+        TokenType.SPIMI: "SPIMI",
+        TokenType.TEXT: "TEXT",
+        TokenType.SPIMIAUDIO: "SPIMIAUDIO",
+        TokenType.SOUND: "SOUND",
+        TokenType.IF: "IF",
+        TokenType.EXISTS: "EXISTS",
+        TokenType.ATAT: "ATAT",
+        TokenType.KNN: "KNN",
+        TokenType.TEXTSEARCH: "TEXTSEARCH",
+        TokenType.IN: "IN",
+        TokenType.DISTANCE: "DISTANCE",
     }
 
     TEXT_TO_TYPE = {text: key for key, text in TYPE_TO_TEXT.items()}
@@ -161,6 +187,7 @@ class Scanner:
     def __init__(self, source: str):
         self.source = source
         self.position = 0
+        self.line = 0
         self.current_char = self.source[self.position] if self.source else None
 
     def is_postgres_date(self, text: str) -> bool:
@@ -194,6 +221,9 @@ class Scanner:
 
     def skip_whitespace(self):
         while self.current_char is not None and self.current_char.isspace():
+            if self.current_char == "\n":
+                self.line += 1
+                self.position = 0
             self.advance()
 
     def next_token(self) -> Token:
@@ -205,14 +235,10 @@ class Scanner:
             # ids, keywords
             if self.current_char.isalpha():
                 start_pos = self.position
-                while self.current_char is not None and (
-                    self.current_char.isalnum() or self.current_char == "_"
-                ):
+                while self.current_char is not None and (self.current_char.isalnum() or self.current_char == "_"):
                     self.advance()
                 text = self.source[start_pos : self.position]
-                token_type = Token.TEXT_TO_TYPE.get(
-                    text.upper(), TokenType.USER_IDENTIFIER
-                )
+                token_type = Token.TEXT_TO_TYPE.get(text.upper(), TokenType.USER_IDENTIFIER)
                 return Token(token_type, text)
 
             # Handle numeric constants
@@ -231,11 +257,13 @@ class Scanner:
                     return Token(TokenType.INT_CONSTANT, text)
 
             # Handle operators and symbols
+            if self.current_char == "@":
+                if self.position + 1 < len(self.source) and self.source[self.position + 1] == "@":
+                    self.advance()
+                    self.advance()
+                    return Token(TokenType.ATAT, "@@")
             if self.current_char == "=":
-                if (
-                    self.position + 1 < len(self.source)
-                    and self.source[self.position + 1] == "="
-                ):
+                if self.position + 1 < len(self.source) and self.source[self.position + 1] == "=":
                     self.advance()
                     self.advance()
                     return Token(TokenType.EQUAL, "==")
@@ -243,21 +271,21 @@ class Scanner:
                     self.advance()
                     return Token(TokenType.ASSIGN, "=")
             if self.current_char == "<":
-                if (
-                    self.position + 1 < len(self.source)
-                    and self.source[self.position + 1] == "="
-                ):
+                if self.position + 1 < len(self.source) and self.source[self.position + 1] == "=":
                     self.advance()
                     self.advance()
                     return Token(TokenType.LESS_EQUAL, "<=")
+                elif self.position + 1 < len(self.source) and self.source[self.position + 1] == "-":
+                    if self.position + 2 < len(self.source) and self.source[self.position + 2] == ">":
+                        self.advance()
+                        self.advance()
+                        self.advance()
+                        return Token(TokenType.DISTANCE, "<->")
                 else:
                     self.advance()
                     return Token(TokenType.LESS_THAN, "<")
             if self.current_char == ">":
-                if (
-                    self.position + 1 < len(self.source)
-                    and self.source[self.position + 1] == "="
-                ):
+                if self.position + 1 < len(self.source) and self.source[self.position + 1] == "=":
                     self.advance()
                     self.advance()
                     return Token(TokenType.GREATER_EQUAL, ">=")
@@ -265,10 +293,7 @@ class Scanner:
                     self.advance()
                     return Token(TokenType.GREATER_THAN, ">")
             if self.current_char == "!":
-                if (
-                    self.position + 1 < len(self.source)
-                    and self.source[self.position + 1] == "="
-                ):
+                if self.position + 1 < len(self.source) and self.source[self.position + 1] == "=":
                     self.advance()
                     self.advance()
                     return Token(TokenType.NOT_EQUAL, "!=")
@@ -335,17 +360,14 @@ class Scanner:
                     self.advance()
                     while self.current_char is not None:
                         if self.current_char == "*" and (
-                            self.position + 1 < len(self.source)
-                            and self.source[self.position + 1] == "/"
+                            self.position + 1 < len(self.source) and self.source[self.position + 1] == "/"
                         ):
                             self.advance()
                             self.advance()
                             break
                         self.advance()
                     continue
-            return Token(
-                TokenType.ERROR, f"Unrecognized character: {self.current_char}"
-            )
+            return Token(TokenType.ERROR, f"Unrecognized character: {self.current_char}")
         return Token(TokenType.END)
 
     def test(self):

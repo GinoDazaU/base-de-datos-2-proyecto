@@ -14,6 +14,7 @@ export default function Home() {
   const [schema, setSchema] = useState<Schema | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [audioFiles, setAudioFiles] = useState<AudioFile[]>([]);
+  const [num_sounds, setNumSounds] = useState<number>(0);
   const [isQueryRunning, setIsQueryRunning] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
   const editorRef = useRef<SqlEditorHandle>(null);
@@ -26,6 +27,7 @@ export default function Home() {
   const fetchAudioFiles = useCallback(async () => {
     const data = await getAudioFiles();
     setAudioFiles(data.file_sounds);
+    setNumSounds(data.num_sounds);
   }, []);
 
   useEffect(() => {
@@ -91,7 +93,7 @@ export default function Home() {
           <PanelResizeHandle className="w-px bg-border/50 hover:bg-primary/50 transition-colors" />
           <Panel defaultSize={25} minSize={15}>
             <div className="h-full p-2">
-              <AudioPanel audioFiles={audioFiles} onRefresh={fetchAudioFiles} />
+              <AudioPanel audioFiles={audioFiles} num_sounds={num_sounds} onRefresh={fetchAudioFiles} />
             </div>
           </Panel>
         </PanelGroup>

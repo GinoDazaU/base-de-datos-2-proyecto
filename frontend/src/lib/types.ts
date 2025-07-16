@@ -40,4 +40,5 @@ export interface AudioFile {
 
 export interface AudioFileList {
     file_sounds: AudioFile[];
+    num_sounds: number;
 }

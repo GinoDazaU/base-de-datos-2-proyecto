@@ -1,31 +1,23 @@
 from contextlib import contextmanager
-from column_types import ColumnType, QueryResult, OperationType
-from statement import Condition, ColumnExpression, SelectStatement, WhereStatement, Program, Statement
 
-from database import (
-    create_table,
-    create_seq_idx,
-    create_btree_idx,
-    create_rtree_idx,
-    create_hash_idx,
-    check_table_exists,
-    drop_table,
-    get_table_schema,
-    check_seq_idx,
-    check_btree_idx,
-    check_hash_idx,
-    check_rtree_idx,
-    drop_seq_idx,
-    drop_btree_idx,
-    drop_hash_idx,
-    drop_rtree_idx,
-    insert_record,
-    _table_path,
+from fancytypes.column_types import (
+    ColumnType,
+    QueryResult,
+    OperationType,
+    IndexType,
 )
 
 from dbmanager import DBManager
 
 from statement import (
+    AndCondition,
+    BetweenComparison,
+    ConstantCondition,
+    NotCondition,
+    OrCondition,
+    PrimaryCondition,
+    SimpleComparison,
+    Statement,
     CreateTableStatement,
     CreateIndexStatement,
     InsertStatement,
@@ -38,17 +30,16 @@ from statement import (
     ColumnExpression,
     SelectStatement,
     WhereStatement,
+    KnnStatement,
+    TextSearchStatement,
     Program,
     Point2DExpression,
     Point3DExpression,
-    OrCondition,
-    AndCondition,
-    NotCondition,
-    PrimaryCondition,
-    ConstantCondition,
-    SimpleComparison,
-    BetweenComparison,
+    Condition,
 )
+
+from logger import Logger
+import pandas as pd
 
 
 def fmt_to_column_type(fmt: str) -> ColumnType:
@@ -63,6 +54,10 @@ def fmt_to_column_type(fmt: str) -> ColumnType:
             return ColumnType.POINT2D
         case "3f":
             return ColumnType.POINT3D
+        case "text":
+            return ColumnType.TEXT
+        case "sound":
+            return ColumnType.SOUND
         case _:
             pass  # TODO: implement dates
     if fmt.endswith("s"):
@@ -84,6 +79,10 @@ def column_type_to_fmt(column_type: ColumnType, varchar_length: int) -> str:
             return "2f"
         case ColumnType.POINT3D:
             return "3f"
+        case ColumnType.TEXT:
+            return "text"
+        case ColumnType.SOUND:
+            return "sound"
         case _:
             raise ValueError(f"Unsupported column type: {column_type}")
 
@@ -103,6 +102,7 @@ class RunVisitor:
 
     def __init__(self):
         self.current_table: str = ""
+        self.k = 10  # default
 
     def generic_visit(self, node):
         if isinstance(node, Statement):
@@ -130,52 +130,114 @@ class RunVisitor:
         return (expr.x, expr.y, expr.z)
 
     def visit_columnexpression(self, expr: ColumnExpression):
-        return expr.column_name
+        return "§" + self.current_table + "." + expr.column_name
 
     def visit_program(self, program: Program):
         lastResult: QueryResult = None
         for st in program.statement_list:
             lastResult = st.accept(self)
-            print(lastResult.message)
+
+            Logger.log_info(f"Program parsed successfully with final message: {lastResult.message}")
+
         return lastResult
 
     def visit_createtablestatement(self, st: CreateTableStatement):
-        DBManager().create_table(st.table_name, st.columns)
-        return QueryResult(True, f"Table '{st.table_name}' created successfully.")
+        table_exists: bool = DBManager.check_table_exists(st.table_name)
+
+        if table_exists:
+            if st.if_not_exists:
+                return QueryResult(True, f"Table '{st.table_name}' already exists, skipping creation.")
+            else:
+                return QueryResult(False, f"Table '{st.table_name}' already exists.")
+
+        try:
+            DBManager().create_table(st.table_name, st.columns)
+            return QueryResult(True, f"Table '{st.table_name}' created successfully.")
+        except Exception as e:
+            Logger.log_error(str(e))
+            return QueryResult(False, f"There was an error while creating the table: {str(e)}")
 
     def visit_droptablestatement(self, st: DropTableStatement):
-        DBManager().drop_table(st.table_name)
-        return QueryResult(True, f"Table '{st.table_name}' dropped successfully.")
+        try:
+            DBManager().drop_table(st.table_name)
+            Logger.log_info(f"Table '{st.table_name}' dropped successfully.")
+            return QueryResult(True, f"Table '{st.table_name}' dropped successfully.")
+        except Exception as e:
+            Logger.log_error(str(e))
+            return QueryResult(False, f"There was an error while droppping the table: {str(e)}")
 
     def visit_createindexstatement(self, st: CreateIndexStatement):
-        DBManager().create_index(st.table_name, st.column_name, st.index_type)
-        return QueryResult(True, f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' created successfully.")
+        try:
+            DBManager().create_index(st.table_name, st.column_name, st.index_type)
+            Logger.log_info(f"{st.index_type} on {st.table_name}.{st.column_name} created successfully.")
+            return QueryResult(
+                True,
+                f"{st.index_type} on {st.table_name}.{st.column_name} created successfully.",
+            )
+        except Exception as e:
+            Logger.log_error(str(e))
+            return QueryResult(False, f"There was an error while creating the index: {str(e)}")
 
     def visit_dropindexstatement(self, st: DropIndexStatement):
-        DBManager().drop_index(st.table_name, st.column_name, st.index_type)
-        return QueryResult(True, f"Index {st.index_type} on column '{st.column_name}' in table '{st.table_name}' dropped successfully.")
+        try:
+            DBManager().drop_index(st.table_name, st.column_name, st.index_type)
+            Logger.log_info(f"{st.index_type} on {st.table_name}.{st.column_name} dropped successfully.")
+            return QueryResult(
+                True,
+                f"{st.index_type} on {st.table_name}.{st.column_name} dropped successfully.",
+            )
+        except Exception as e:
+            Logger.log_error(str(e))
+            return QueryResult(False, f"There was an error while dropping the index: {str(e)}")
 
     def visit_insertstatement(self, st: InsertStatement):
-        values = [exp.accept(self) for exp in st.values]
-        DBManager().insert(st.table_name, st.column_names, values)
-        return QueryResult(
-            True,
-            f"Record inserted into table '{st.table_name}' successfully.",
-        )
+        try:
+            values = [exp.accept(self) for exp in st.values]
+            DBManager().insert(st.table_name, st.column_names, values)
+            Logger.log_info(f"Record inserted into table '{st.table_name}' successfully.")
+            return QueryResult(
+                True,
+                f"Record inserted into table '{st.table_name}' successfully.",
+            )
+        except Exception as e:
+            Logger.log_error(str(e))
+            return QueryResult(False, f"There was an error while inserting: {str(e)}")
 
     def visit_selectstatement(self, st: SelectStatement):
-        self.current_table = st.from_table
-        offsets: set[int] = DBManager().fetch_all_offsets(st.from_table) if not st.where_statement else st.where_statement.accept(self)
-        columns = None if st.select_all else st.select_columns
-        results = DBManager().records_projection(st.from_table, offsets, columns)
-        if st.limit is not None:
-            results = results[:st.limit]
-        return QueryResult(True, f"Selected {len(results)} records from table '{st.from_table}'.", results)
+        try:
+            if st.limit is not None:
+                Logger.log_debug(f"SET K TO {st.limit}")
+                self.k = st.limit  # awful
+            self.current_table = st.from_table
+            offsets: set[int] = (
+                DBManager().fetch_all_offsets(st.from_table) if not st.where_statement else st.where_statement.accept(self)
+            )
+            columns = None if st.select_all else st.select_columns
+            results: pd.DataFrame = DBManager().records_projection(st.from_table, offsets, columns, as_df=True)
+            Logger.log_debug("PASSED PROJECTION")
+            if st.limit is not None:
+                results = results[: st.limit]
+
+            Logger.log_info(f"Selected {len(results)} records from table '{st.from_table}'.")
+            return QueryResult(
+                True,
+                f"Selected {len(results)} records from table '{st.from_table}'.",
+                results,
+            )
+        except Exception as e:
+            Logger.log_error(str(e))
+            return QueryResult(False, f"There was an error while selecting records: {str(e)}")
 
     # region RunVisitor Conditions
 
     def visit_wherestatement(self, st: WhereStatement) -> set[int]:
         return st.or_condition.accept(self)
+
+    def visit_knnstatement(self, st: KnnStatement):
+        return DBManager().do_audio_knn(st.table_name, st.column_name, st.query_path, st.k)
+
+    def visit_textsearchstatement(self, st: TextSearchStatement):
+        return DBManager().do_text_search(st.table_name, st.query_text, st.k)
 
     def visit_orcondition(self, condition: OrCondition):
         left = condition.and_condition.accept(self)
@@ -199,15 +261,15 @@ class RunVisitor:
         return DBManager().fetch_all_offsets(self.current_table) if condition.bool_constant.accept(self) else set()
 
     def visit_simplecomparison(self, condition: SimpleComparison):
-        column = condition.left_expression.accept(self)
-        value = condition.right_expression.accept(self)
-        return DBManager().fetch_condition_offsets(self.current_table, column, condition.operator, value)
+        left_value = condition.left_expression.accept(self)
+        right_value = condition.right_expression.accept(self)
+        return DBManager().fetch_condition_offsets(self.current_table, left_value, condition.operator, right_value, self.k)
 
     def visit_betweencomparison(self, condition: BetweenComparison):
-        column = condition.left_expression.accept(self)
+        left_value = condition.left_expression.accept(self)
         low = condition.lower_bound.accept(self)
         high = condition.upper_bound.accept(self)
-        return DBManager().fetch_condition_offsets(self.current_table, column, OperationType.BETWEEN, (low, high))
+        return DBManager().fetch_condition_offsets(self.current_table, left_value, OperationType.BETWEEN, (low, high), self.k)
 
     def visit_primarycondition(self, condition: PrimaryCondition):
         if isinstance(condition.condition, ConstantCondition):
@@ -276,29 +338,26 @@ class PrintVisitor(Visitor):
             st.accept(self)
 
     def visit_createtablestatement(self, st: CreateTableStatement):
-        self.print_line(f"CREATE TABLE {st.table_name}(")
+        self.print_line(f"CREATE TABLE {'IF NOT EXISTS ' if st.if_not_exists else ''}{st.table_name}(")
         with self.indented():
             for column in st.columns:
                 column_def = f"{column.column_name} {column.column_type}{' PRIMARY KEY' if column.is_pk else ''}"
                 if column.column_type == ColumnType.VARCHAR:
                     column_def += f"({column.varchar_length})"
-                self.print_line(
-                    f"{column_def}{',' if column != st.columns[-1] else ''}"
-                )
+                self.print_line(f"{column_def}{',' if column != st.columns[-1] else ''}")
         self.print_line(");")
 
     def visit_droptablestatement(self, statement: DropTableStatement):
         self.print_line(f"DROP TABLE {statement.table_name}")
 
     def visit_createindexstatement(self, st: CreateIndexStatement):
-        self.print_line(
-            f"CREATE INDEX ON {st.table_name}({st.column_name}) USING {st.index_type};"
-        )
+        if st.index_type not in [IndexType.SPIMI, IndexType.SPIMIAUDIO]:
+            self.print_line(f"CREATE INDEX ON {st.table_name}({st.column_name}) USING {st.index_type};")
+        else:
+            self.print_line(f"CREATE {str(st.index_type)} ON {st.table_name};")
 
     def visit_dropindexstatement(self, st: DropIndexStatement):
-        self.print_line(
-            f"DROP INDEX {st.index_type} ON {st.table_name}({st.column_name});"
-        )
+        self.print_line(f"DROP INDEX {st.index_type} ON {st.table_name}({st.column_name});")
 
     def visit_insertstatement(self, st: InsertStatement):
         self.print_line(f"INSERT INTO {st.table_name} VALUES(")
@@ -310,13 +369,24 @@ class PrintVisitor(Visitor):
 
     def visit_selectstatement(self, st: SelectStatement):
         self.print_line(
-            f"SELECT {', '.join(st.select_columns)} FROM {st.from_table}", ""
+            f"SELECT {'*' if st.select_all else ', '.join(st.select_columns)} FROM {st.from_table}",
+            "",
         )
         if st.where_statement:
             st.where_statement.accept(self)
         if st.limit is not None:
             self.print_line(f" LIMIT {st.limit}", "")
         self.print_line(";")
+
+    def visit_knnstatement(self, st: KnnStatement):
+        self.print_line(
+            f"KNN({st.k}) SOUND('{st.query_path}') IN {st.table_name}.{st.column_name};",
+        )
+
+    def visit_textsearchstatement(self, st: TextSearchStatement):
+        self.print_line(
+            f"TEXTSEARCH '{st.query_text}' IN {st.table_name};",
+        )
 
     # region PrintVisitor Conditions
     def visit_orcondition(self, condition: OrCondition):

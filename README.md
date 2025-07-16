@@ -1,4 +1,3 @@
-
 <h1 align="center">Mini DataBase Manager</h3>
 
 ---
@@ -385,44 +384,32 @@ La búsqueda textual se implementa usando el modelo vectorial con similitud de c
 
 ## 6. Evaluación y Comparación de Desempeño
 
-### 6.1. Comparación de Búsqueda en Texto
+Los experimentos de rendimiento y calidad de búsqueda se realizaron tanto para consultas textuales como multimedia (audio), comparando nuestra base de datos propia con PostgreSQL y sus extensiones especializadas.
 
-- Consultas equivalentes entre nuestro sistema y PostgreSQL  
-- Tiempos de respuesta, precisión de resultados  
-- Tecnologías usadas por PostgreSQL (GIN, GiST, ts_rank, etc.)
+Toda la metodología, resultados y análisis detallado se encuentran en el siguiente notebook:
 
-### 6.2. Comparación en Búsqueda Multimedia
+**[Notebook de Evaluación de Desempeño](./backend/database/testing/performance_testing.ipynb)**
 
-- Comparación entre KNN secuencial y KNN con índice invertido  
-- Tiempo de ejecución y escalabilidad  
-- Comparación con herramientas externas (pgVector, Faiss)  
-- Discusión sobre la maldición de la dimensionalidad
+### Resumen de los experimentos
 
-### 6.3. Resultados
+- **Búsqueda en texto:**  
+  - Se comparó el índice invertido SPIMI de nuestra base de datos con el índice GIN de PostgreSQL sobre el dataset Fake and Real News de Kaggle.  
+  - Se midieron tiempos de inserción, consulta y calidad de resultados para distintos tamaños de colección.
 
-- Tablas comparativas  
-- Gráficos de rendimiento  
-- Análisis crítico
+- **Búsqueda multimedia (audio):**  
+  - Se evaluaron los algoritmos KNN secuencial y KNN con indexación invertida sobre histogramas de palabras acústicas, y se comparó con la búsqueda vectorial en PostgreSQL usando pgvector.  
+  - Se analizaron la eficiencia y el impacto de la dimensionalidad en el rendimiento.
 
----
+Para ver tablas, gráficos y observaciones completas, revisa el notebook enlazado arriba.
 
-## 7. Datasets Utilizados
+## 7. Repositorio y Ejecución
 
-- Nombre del dataset  
-- Fuente (Kaggle, GitHub, etc.)  
-- Descripción del contenido  
-- Número de registros / imágenes / audios
-
----
-
-## 9. Repositorio y Ejecución
-
-### 9.1. Requisitos del Sistema
+### 7.1. Requisitos del Sistema
 
 - Python / versiones  
 - NextJS / dependencias  
 
-### 9.2. Instrucciones de Ejecución
+### 7.2. Instrucciones de Ejecución
 
 ```bash
 # Clonar el repositorio
@@ -469,7 +456,7 @@ Ejecutar la aplicacion
 npm run dev
 ```
 
-## 10. Visualización de frontend
+## 8. Visualización de frontend
 
 
 Disponemos de un panel donde agregar los audios visualizarlos
