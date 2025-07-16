@@ -144,14 +144,14 @@ class HeapFile:
 
     def insert_record(self, record: Record) -> int:
         if record.schema != self.schema:
-            raise ValueError("Esquema del registro no coincide.")
+            raise ValueError("Record and Heapfile schema mismatch.")
 
         # ── 1. Verificar unicidad de PK en una SOLA pasada ─────────────
         if self.primary_key:
             pk_idx, pk_fmt = self._pk_idx_fmt()
             pk_val = record.values[pk_idx]
             if pk_val == self._sentinel(pk_fmt):
-                raise ValueError("Valor centinela no permitido en PK.")
+                raise ValueError("Sentinel value not allowed in PK.")
 
             with open(self.filename, "rb") as fh:  # una sola apertura
                 fh.seek(METADATA_SIZE)
@@ -160,7 +160,7 @@ class HeapFile:
                     if len(buf) < self.rec_data_size:
                         break
                     if Record.unpack(buf, self.schema).values[pk_idx] == pk_val:
-                        raise ValueError(f"PK duplicada: {pk_val}")
+                        raise ValueError(f"Duplicated primary key with value: {pk_val}")
                     fh.seek(PTR_SIZE, os.SEEK_CUR)  # saltar next_free
 
         self._process_text_fields(record)
@@ -183,13 +183,13 @@ class HeapFile:
                 fh.write(record.pack())
                 fh.write(struct.pack("i", 0))
             self._write_header(fh)  # actualizar cabecera
-            Logger.log_info(f"Registro: {record} insertado correctamente")
+            Logger.log_info(f"Record: {record} inserted correctly")
             return slot_off
 
     def insert_record_free(self, record: Record) -> int:
         """Inserta un registro sin verificar unicidad de PK. Usa free-list si hay huecos."""
         if record.schema != self.schema:
-            raise ValueError("Esquema del registro no coincide.")
+            raise ValueError("Record and Heapfile schema mismatch.")
 
         self._process_text_fields(record)
         self._process_sound_fields(record)
@@ -212,7 +212,7 @@ class HeapFile:
 
             self._write_header(fh)
             Logger.log_info(
-                f"Registro (sin restricción PK): {record} insertado en offset {slot_off}"
+                f"Record with no PK restriction: {record} inserted at offset {slot_off}"
             )
             return slot_off
 
@@ -252,7 +252,7 @@ class HeapFile:
                 self.free_head = pos
                 self._write_header(fh)
                 Logger.log_info(
-                    "Registro con PK: {key}, con contenido: {old_rec} borrado correctamente"
+                    "Record with PK: {key}, with content: {old_rec} deleted correctly."
                 )
                 return True, pos, old_rec
         return False, -1, None
@@ -465,7 +465,7 @@ class HeapFile:
                 records.append(rec)
                 f.seek(PTR_SIZE, os.SEEK_CUR)
         return records
-    
+
     @staticmethod
     def to_dataframe(heapfile: "HeapFile", alias=None) -> pd.DataFrame:
         with open(heapfile.filename, "rb") as f:

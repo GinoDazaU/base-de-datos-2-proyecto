@@ -21,6 +21,8 @@ from statement import (
     BoolExpression,
     StringExpression,
     SelectStatement,
+    KnnStatement,
+    TextSearchStatement,
     WhereStatement,
     ValueExpression,
     ColumnExpression,
@@ -37,6 +39,7 @@ from statement import (
 import time
 import random
 from faker import Faker
+from logger import Logger
 
 
 def operation_token_to_type(token_type: TokenType) -> OperationType:
@@ -59,15 +62,10 @@ def operation_token_to_type(token_type: TokenType) -> OperationType:
 
 
 class Parser:
-    def __init__(self, scanner: Scanner, debug: bool = False):
-        self.debug = debug
+    def __init__(self, scanner: Scanner):
         self.scanner = scanner
         self.prev: Token = None
         self.curr: Token = self.scanner.next_token()
-
-    def print_debug(self, message: str):
-        if self.debug:
-            print(f"DEBUG: {message} | Current Token: {self.curr}")
 
     def check(self, token_type: TokenType) -> bool:
         if self.is_at_end():
@@ -94,7 +92,7 @@ class Parser:
         return False
 
     def parse_column_definition(self) -> CreateColumnDefinition:
-        self.print_debug("Parsing column definition")
+        Logger.log_parser("Parsing column definition")
 
         column_name: str = ""
         column_type: ColumnType
@@ -154,7 +152,7 @@ class Parser:
         return CreateColumnDefinition(column_name, column_type, varchar_length, is_pk)
 
     def parse_column_definition_list(self) -> list[CreateColumnDefinition]:
-        self.print_debug("Parsing column definition list")
+        Logger.log_parser("Parsing column definition list")
         columns: list[CreateColumnDefinition] = []
 
         while not self.check(TokenType.RIGHT_PARENTHESIS):
@@ -169,7 +167,7 @@ class Parser:
 
     # TODO: primary key
     def parse_create_table_statement(self) -> CreateTableStatement:
-        self.print_debug("Parsing CREATE TABLE statement")
+        Logger.log_parser("Parsing CREATE TABLE statement")
 
         if_not_exists = False
 
@@ -199,7 +197,7 @@ class Parser:
         return CreateTableStatement(table_name, columns, if_not_exists)
 
     def parse_drop_table_statement(self) -> DropTableStatement:
-        self.print_debug("Parsing DROP TABLE statement")
+        Logger.log_parser("Parsing DROP TABLE statement")
         if not self.match(TokenType.USER_IDENTIFIER):
             raise SyntaxError(
                 f"Expected table name after DROP TABLE, found {self.curr.text}"
@@ -208,7 +206,7 @@ class Parser:
         return DropTableStatement(table_name)
 
     def parse_create_index_statement(self) -> CreateIndexStatement:
-        self.print_debug("Parsing CREATE INDEX statement")
+        Logger.log_parser("Parsing CREATE INDEX statement")
 
         # current index implementation doesnt support index name, so we omit it
         # if not self.match(TokenType.USER_IDENTIFIER):
@@ -266,7 +264,7 @@ class Parser:
         return CreateIndexStatement("index_name", table_name, "column_name", index_type)
 
     def parse_drop_index_statement(self) -> DropIndexStatement:
-        self.print_debug("Parsing DROP INDEX statement")
+        Logger.log_parser("Parsing DROP INDEX statement")
 
         if self.match(TokenType.BPLUSTREE):
             index_type = IndexType.BPLUSTREE
@@ -639,6 +637,77 @@ class Parser:
     def parse_delete_statement(self) -> Statement:
         raise NotImplementedError("DELETE statement parsing is not implemented yet")
 
+    def parse_knn_statement(self) -> Statement:
+        if not self.match(TokenType.LEFT_PARENTHESIS):
+            raise SyntaxError(f"Expected '(' after KNN, found {self.curr.text}")
+        if not self.match(TokenType.INT_CONSTANT):
+            raise SyntaxError(
+                f"Expected integer constant K for KNN, found {self.curr.text}"
+            )
+        k = int(self.prev.text)
+
+        if not self.match(TokenType.RIGHT_PARENTHESIS):
+            raise SyntaxError(f"Expected ')' after KNN K value, found {self.curr.text}")
+
+        if not self.match(TokenType.SOUND):
+            raise SyntaxError(f"Expected SOUND after KNN, found {self.curr.text}")
+        if not self.match(TokenType.LEFT_PARENTHESIS):
+            raise SyntaxError(f"Expected '(' after SOUND, found {self.curr.text}")
+        if not self.match(TokenType.STRING_CONSTANT):
+            raise SyntaxError(
+                f"Expected sound file name after '(', found {self.curr.text}"
+            )
+        sound_file = self.prev.text.strip('"').strip("'")
+        if not self.match(TokenType.RIGHT_PARENTHESIS):
+            raise SyntaxError(
+                f"Expected ')' after sound file name, found {self.curr.text}"
+            )
+
+        if not self.match(TokenType.IN):
+            raise SyntaxError(f"Expected IN after KNN SOUND, found {self.curr.text}")
+
+        if not self.match(TokenType.USER_IDENTIFIER):
+            raise SyntaxError(f"Expected table name after IN, found {self.curr.text}")
+        table_name = self.prev.text
+
+        if not self.match(TokenType.DOT):
+            raise SyntaxError(f"Expected '.' after table name, found {self.curr.text}")
+
+        if not self.match(TokenType.USER_IDENTIFIER):
+            raise SyntaxError(
+                f"Expected column name after table name, found {self.curr.text}"
+            )
+        column_name = self.prev.text
+
+        return KnnStatement(table_name, column_name, sound_file, k)
+
+    def parse_text_search_statement(self) -> Statement:
+        if not self.match(TokenType.LEFT_PARENTHESIS):
+            raise SyntaxError(f"Expected '(' after TEXTSEARCH, found {self.curr.text}")
+        if not self.match(TokenType.INT_CONSTANT):
+            raise SyntaxError(
+                f"Expected integer constant for TEXTSEARCH K, found {self.curr.text}"
+            )
+        k = int(self.prev.text)
+        if not self.match(TokenType.RIGHT_PARENTHESIS):
+            raise SyntaxError(
+                f"Expected ')' after TEXTSEARCH K, found {self.curr.text}"
+            )
+
+        if not self.match(TokenType.STRING_CONSTANT):
+            raise SyntaxError(
+                f"Expected search term (STRING) after TEXTSEARCH, found {self.curr.text}"
+            )
+        query_text = self.prev.text.strip('"').strip("'")
+
+        if not self.match(TokenType.IN):
+            raise SyntaxError(f"Expected IN after TEXTSEARCH, found {self.curr.text}")
+        if not self.match(TokenType.USER_IDENTIFIER):
+            raise SyntaxError(f"Expected table name after IN, found {self.curr.text}")
+        table_name = self.prev.text
+
+        return TextSearchStatement(table_name, query_text, k)
+
     def parse_statement(self) -> Statement:
         if self.match(TokenType.CREATE):
             if self.match(TokenType.TABLE):
@@ -668,13 +737,17 @@ class Parser:
             return self.parse_update_statement()
         elif self.match(TokenType.DELETE):
             return self.parse_delete_statement()
+        elif self.match(TokenType.KNN):
+            return self.parse_knn_statement()  # TODO: implement KNN statement
+        elif self.match(TokenType.TEXTSEARCH):
+            return self.parse_text_search_statement()
         else:
             raise SyntaxError(
                 f"Expected statement keyword (CREATE, DROP, etc.), found {self.curr.text}"
             )
 
     def parse_statement_list(self) -> list[Statement]:
-        self.print_debug("Parsing statement list")
+        Logger.log_parser("Parsing statement list")
         statement_list: list[Statement] = []
 
         if self.is_at_end():
@@ -692,7 +765,7 @@ class Parser:
             statement_list = self.parse_statement_list()
             return Program(statement_list)
         except Exception as e:
-            print(f"Error parsing program: {e}")
+            Logger.log_parser(f"Error parsing program: {e}")
             return None
 
 
@@ -733,10 +806,21 @@ if __name__ == "__main__":
 
     spimi_test = [
         "CREATE TABLE IF NOT EXISTS article(id INT PRIMARY KEY, content TEXT);",
-        "INSERT INTO article(id, content) VALUES(1, 'This is the first article.');",
+        "INSERT INTO article(id, content) VALUES(1, 'The cat jumped over the wall.');",
+        "INSERT INTO article(id, content) VALUES(2, 'The dog barked at the cat.');",
+        "INSERT INTO article(id, content) VALUES(3, 'The wall was painted blue yesterday.');",
+        "INSERT INTO article(id, content) VALUES(4, 'Yesterday the cat slept on the sofa.');",
+        "INSERT INTO article(id, content) VALUES(5, 'The dog chased the ball across the yard.');",
+        "INSERT INTO article(id, content) VALUES(6, 'The blue ball rolled under the sofa.');",
+        "INSERT INTO article(id, content) VALUES(7, 'The yard was quiet except for the cat.');",
+        "INSERT INTO article(id, content) VALUES(8, 'The wall and the yard were cleaned yesterday.');",
+        "INSERT INTO article(id, content) VALUES(9, 'The dog and cat shared the sofa.');",
+        "INSERT INTO article(id, content) VALUES(10, 'The ball bounced off the wall.');",
         "CREATE SPIMI ON article;",
-    ]
-    audio_create_insert_test = [
+        "TEXTSEARCH(5) 'cat' IN article;",
+    ]  # Should return ids 1, 2, 4, 7, 9
+
+    audio_spimi_test = [
         "CREATE TABLE IF NOT EXISTS songs(id INT primary key, title VARCHAR(100), genre VARCHAR(50), soundfile SOUND);"
         "INSERT INTO songs(id, title, genre, soundfile) VALUES(1, 'Song A', 'Pop', '000002.mp3');",
         "INSERT INTO songs(id, title, genre, soundfile) VALUES(2, 'Song B', 'Rock', '000005.mp3');",
@@ -745,26 +829,28 @@ if __name__ == "__main__":
         "INSERT INTO songs(id, title, genre, soundfile) VALUES(5, 'Song E', 'Rock', '000141.mp3');",
         "INSERT INTO songs(id, title, genre, soundfile) VALUES(6, 'Song F', 'Jazz', '000148.mp3');",
         "CREATE INDEX ON songs(soundfile) USING SPIMIAUDIO;",
+        "KNN(6) SOUND('000002.mp3') IN songs.soundfile;",
     ]
 
     test_query_sets = [
-        basic_creation_insertion_selection_test,
-        spimi_test,
-        audio_create_insert_test,
+        audio_spimi_test,
     ]
 
     printVisitor = PrintVisitor()
     runVisitor = RunVisitor()
     instruction_delay = 0.1
 
+    Logger.debug_enabled = True
+
     for queryset in test_query_sets:
         for query in queryset:
             scanner = Scanner(query)
             # scanner.test()
-            parser = Parser(scanner, debug=False)
+            parser = Parser(scanner)
             program = parser.parse_program()
             # printVisitor.visit_program(program)
             result: QueryResult = runVisitor.visit_program(program)
+            print(result)
             if result.data is not None:
                 print(f"Query Result: {result.data}")
             time.sleep(instruction_delay)

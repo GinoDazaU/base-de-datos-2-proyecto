@@ -84,6 +84,18 @@ class TokenType(Enum):
     IF = auto()
     EXISTS = auto()
 
+    KNN = auto()
+    TEXTSEARCH = auto()
+    IN = auto()  # for KNN and TEXTSEARCH
+
+    # operators
+    PLUS = auto()
+    MINUS = auto()
+    MULTIPLY = auto()
+    DIVIDE = auto()
+    MODULO = auto()
+    DISTANCE = auto()  # <->
+
 
 class Token:
     TYPE_TO_TEXT = {
@@ -157,6 +169,9 @@ class Token:
         TokenType.SOUND: "SOUND",
         TokenType.IF: "IF",
         TokenType.EXISTS: "EXISTS",
+        TokenType.KNN: "KNN",
+        TokenType.TEXTSEARCH: "TEXTSEARCH",
+        TokenType.IN: "IN",
     }
 
     TEXT_TO_TYPE = {text: key for key, text in TYPE_TO_TEXT.items()}

@@ -85,7 +85,9 @@ class Condition(Visitable):
 
 
 class OrCondition(Condition):
-    def __init__(self, and_condition, or_condition=None):
+    def __init__(
+        self, and_condition: "AndCondition", or_condition: "OrCondition" = None
+    ):
         self.and_condition = and_condition
         self.or_condition = or_condition
 
@@ -227,6 +229,21 @@ class SelectStatement(Statement):
         self.order_by_column = order_by_column
         self.ascending = ascending
         self.limit = limit
+
+
+class KnnStatement(Statement):
+    def __init__(self, table_name: str, column_name: str, query_path: str, k: int):
+        self.table_name = table_name
+        self.column_name = column_name
+        self.query_path = query_path
+        self.k = k
+
+
+class TextSearchStatement(Statement):
+    def __init__(self, table_name: str, query_text: str, k: int):
+        self.table_name = table_name
+        self.query_text = query_text
+        self.k = k
 
 
 # endregion

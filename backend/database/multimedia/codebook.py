@@ -6,8 +6,11 @@ from multimedia.feature_extraction import extract_features
 from storage.Sound import Sound
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from global_utils import Utils
+from logger import Logger
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 
 def build_codebook(heap_file: HeapFile, field_name: str, num_clusters: int):
     """
@@ -28,7 +31,7 @@ def build_codebook(heap_file: HeapFile, field_name: str, num_clusters: int):
             all_features.append(features)
 
     if not all_features:
-        print("No features extracted, cannot build codebook.")
+        Logger.log_error("No features extracted, cannot build codebook.")
         return
 
     # Convertir a numpy array
@@ -53,8 +56,10 @@ def build_codebook(heap_file: HeapFile, field_name: str, num_clusters: int):
             codebook["doc_freq"][label] += 1
 
     # Guardar el codebook
-    codebook_path = Utils.build_path("tables",f"{heap_file.table_name}.{field_name}.codebook.pkl")
+    codebook_path = Utils.build_path(
+        "tables", f"{heap_file.table_name}.{field_name}.codebook.pkl"
+    )
     with open(codebook_path, "wb") as f:
         pickle.dump(codebook, f)
 
-    print(f"Codebook created and saved to {codebook_path}")
+    Logger.log_debug(f"Codebook created and saved to {codebook_path}")

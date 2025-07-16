@@ -6,6 +6,8 @@ from storage.HistogramFile import HistogramFile
 from multimedia.histogram import build_histogram, load_codebook
 from multimedia.feature_extraction import extract_features
 
+from logger import Logger
+
 
 def tf_idf(tftd, dft, N):
     """
@@ -36,6 +38,13 @@ def knn_sequential_search(
     """
     Realiza una búsqueda k-NN secuencial en un campo de audio.
     """
+    Logger.log_debug(
+        f"Starting sequential audio KNN for {query_audio_path} in {heap_file.table_name}.{field_name}"
+    )
+
+    Logger.log_debug("Heapfile data is:")
+    heap_file.print_all()
+
     codebook = load_codebook(heap_file.table_name, field_name)
     if codebook is None:
         return []
@@ -72,7 +81,7 @@ def knn_sequential_search(
         doc_tfidf = np.zeros(len(codebook["centroids"]))
         for centroid_id, count in histogram:
             doc_tfidf[centroid_id] = tf_idf(count, codebook["doc_freq"][centroid_id], N)
-        print(doc_tfidf)
+        Logger.log_debug(doc_tfidf)
         # Calcular la similitud de coseno
         similarity = cosine_similarity(query_tfidf, doc_tfidf)
 
