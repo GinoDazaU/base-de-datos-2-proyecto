@@ -22,7 +22,6 @@ from indexing.IndexRecord import IndexRecord
 from indexing.RTreeIndex import RTreeIndex
 from indexing.Spimi import SPIMIIndexer
 from indexing.utils_spimi import preprocess
-import pickle
 
 # Ruta base para almacenamiento de tablas
 base_dir = os.path.dirname(os.path.abspath(__file__))

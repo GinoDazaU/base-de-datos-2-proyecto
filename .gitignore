@@ -17,7 +17,6 @@
 *.mp3
 *.npy
 *.pkl
-*.ipynb
 *.venv
 sounds/
 
