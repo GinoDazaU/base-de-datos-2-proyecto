@@ -94,22 +94,37 @@ def create_table_with_hash_pk(
 
 
 def drop_table(table_name: str) -> None:
+    table_path = _table_path(table_name)
+
+    # Eliminar archivos de texto asociados si hay campos de tipo TEXT
+    try:
+        schema = get_table_schema(table_name)
+        for field_name, field_type in schema:
+            if field_type.lower() == "text":
+                txt_path = f"{table_path}.{field_name}.text"
+                if os.path.exists(txt_path):
+                    os.remove(txt_path)
+    except Exception:
+        # Si no existe la tabla o no se puede cargar el esquema, dejamos que
+        # el flujo siga para lanzar el error correspondiente más abajo
+        pass
+
     # Eliminar todos los índices asociados
     drop_all_indexes(table_name)
 
-    table_path = _table_path(table_name)
-    if not os.path.exists(f"{table_path}.dat"):
-        raise FileNotFoundError(f"La tabla '{table_name}' no existe.")
-
     # Eliminar el archivo principal de la tabla
-    os.remove(f"{table_path}.dat")
+    dat_path = f"{table_path}.dat"
+    if not os.path.exists(dat_path):
+        raise FileNotFoundError(f"La tabla '{table_name}' no existe.")
+    os.remove(dat_path)
 
-    if not os.path.exists(f"{table_path}.schema.json"):
+    # Eliminar el archivo de esquema JSON
+    schema_path = f"{table_path}.schema.json"
+    if not os.path.exists(schema_path):
         raise FileNotFoundError(
             f"El archivo de esquema de la tabla '{table_name}' no existe."
         )
-
-    os.remove(f"{table_path}.schema.json")
+    os.remove(schema_path)
 
     print(f"Tabla '{table_name}' eliminada correctamente.")
 
@@ -432,10 +447,7 @@ def drop_hash_idx(table_name: str, field_name: str) -> None:
         if not os.path.exists(idx_path):
             raise FileNotFoundError(f"Index file {idx_path} does not exist.")
         os.remove(idx_path)
-    print(
-        f"Índice Extendible Hash para '{field_name}' en la tabla '{table_name}' eliminado."
-    )
-
+    print(f"Índice Extendible Hash para '{field_name}' en la tabla '{table_name}' eliminado.")
 
 def drop_rtree_idx(table_name: str, field_name: str) -> None:
     table_path = _table_path(table_name)
@@ -446,6 +458,15 @@ def drop_rtree_idx(table_name: str, field_name: str) -> None:
         os.remove(idx_path)
     print(f"Índice R-Tree para '{field_name}' en la tabla '{table_name}' eliminado.")
 
+def drop_inverted_idx(table_name: str, field_name: str) -> None:
+    # Eliminar todos los archivos cuyo nombre empiece por "inverted_index"
+    pattern = os.path.join(tables_dir, "inverted_index*")
+    files = glob.glob(pattern)
+    if not files:
+        raise FileNotFoundError("No se encontró ningún archivo de índice invertido para eliminar.")
+    for fpath in files:
+        os.remove(fpath)
+    print(f"Índice invertido eliminado")
 
 def drop_all_indexes_for_field(table_name: str, field_name: str) -> None:
     if check_seq_idx(table_name, field_name):
@@ -456,7 +477,8 @@ def drop_all_indexes_for_field(table_name: str, field_name: str) -> None:
         drop_hash_idx(table_name, field_name)
     if check_rtree_idx(table_name, field_name):
         drop_rtree_idx(table_name, field_name)
-
+    if check_inverted_idx(table_name, field_name):
+        drop_inverted_idx(table_name, field_name)
 
 def drop_all_indexes(table_name: str) -> None:
     path = _table_path(table_name)
@@ -496,6 +518,8 @@ def check_rtree_idx(table_name: str, field_name: str) -> bool:
     idx_paths = (f"{table_path}.{field_name}.rtree.{ext}" for ext in ("idx", "dat"))
     return all(os.path.exists(idx_path) for idx_path in idx_paths)
 
+def check_inverted_idx(table_name: str, field_name: str) -> bool:
+    return bool(glob.glob(f"{_table_path('inverted_index')}*"))
 
 # =============================================================================
 # 🧾 Impresión de estructuras (depuración)

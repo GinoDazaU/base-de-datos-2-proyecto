@@ -20,3 +20,5 @@
 *.venv
 sounds/
 
+backend/database/testing/Fake.csv
+backend/database/testing/True.csv
