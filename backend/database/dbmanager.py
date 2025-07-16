@@ -603,9 +603,8 @@ class DBManager:
         DBManager.verify_table_exists(table_name)
         if len(columns) != len(values):
             raise ValueError("Column names and values length mismatch.")
-        schema: list[tuple[str, str]] = DBManager.get_table_schema(table_name)
+        schema: SchemaType = DBManager.get_table_schema(table_name)
         schema_dict: dict = dict(schema)
-        """
         for column, value in zip(columns, values):
             if column not in schema_dict:
                 raise ValueError(
@@ -613,21 +612,32 @@ class DBManager:
                 )
             column_type = DBManager.get_field_type(table_name, column)
             type_map: dict = {
-                ColumnType.INT: int,
-                ColumnType.FLOAT: float,
-                ColumnType.BOOL: bool,
-                ColumnType.POINT2D: tuple[float, float],
-                ColumnType.POINT3D: tuple[float, float, float],
-                ColumnType.VARCHAR: str,
-                ColumnType.TEXT: str,      
-                ColumnType.SOUND: str,
+                ColumnType.INT: [int],
+                ColumnType.FLOAT: [float, int],
+                ColumnType.BOOL: [bool],
+                ColumnType.POINT2D: [tuple[float, float]],
+                ColumnType.POINT3D: [tuple[float, float, float]],
+                ColumnType.VARCHAR: [str],
+                ColumnType.TEXT: [str],
+                ColumnType.SOUND: [str],
             }
-            if not isinstance(value, type_map[column_type]):
+            if type(value) not in type_map[column_type]:
                 raise TypeError(
                     f"Value for column '{column}' must be of type {column_type}, got {type(value)}."
                 )
-        """
-        DBManager.insert_record(table_name, Record(schema, values))
+
+        # the values array might not be in the correct order for schema
+        value_dict = dict(zip(columns, values, strict=True))
+        print(value_dict)
+        ordered_values = []
+        for name, fmt in schema:
+            if name in value_dict:
+                ordered_values.append(value_dict[name])
+            else:
+                raise ValueError(
+                    f"Column '{name}' is missing in the insert statement. NULL is not supported yet."
+                )
+        DBManager.insert_record(table_name, Record(schema, ordered_values))
 
     def fetch_condition_offsets(
         self, table_name: str, field: str, op: OperationType, value

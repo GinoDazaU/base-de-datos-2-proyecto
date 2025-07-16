@@ -360,7 +360,8 @@ class PrintVisitor(Visitor):
 
     def visit_selectstatement(self, st: SelectStatement):
         self.print_line(
-            f"SELECT {', '.join(st.select_columns)} FROM {st.from_table}", ""
+            f"SELECT {'*' if st.select_all else ', '.join(st.select_columns)} FROM {st.from_table}",
+            "",
         )
         if st.where_statement:
             st.where_statement.accept(self)

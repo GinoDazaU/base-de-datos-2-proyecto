@@ -13,12 +13,12 @@ import os
 # values = [3, "Caramelos", 1.75, 25]
 # registro = Record(schema, values)
 
-class Record:
 
+class Record:
     def __init__(self, schema, values):
         self.schema = schema
         self.values = values
-        self.format = ''.join(self.get_format_char(fmt) for _, fmt in schema)
+        self.format = "".join(self.get_format_char(fmt) for _, fmt in schema)
         self.size = struct.calcsize(self.format)
 
     def get_format_char(self, fmt):
@@ -42,44 +42,44 @@ class Record:
     def pack(self) -> bytes:
         processed = []
         for (_, fmt), val in zip(self.schema, self.values):
+            print(f"Packing value '{val}' with format '{fmt}'")
             if fmt.upper() == "SOUND":
                 processed.extend(val)
-            elif 's' in self.get_format_char(fmt): # cadena fija
+            elif "s" in self.get_format_char(fmt):  # cadena fija
                 size = int(self.get_format_char(fmt)[:-1])
-                processed.append(val.encode('utf-8')[:size].ljust(size, b'\x00'))
-            elif fmt[:-1].isdigit():               # 3i, 4f, etc.
+                processed.append(val.encode("utf-8")[:size].ljust(size, b"\x00"))
+            elif fmt[:-1].isdigit():  # 3i, 4f, etc.
                 if not (isinstance(val, (list, tuple)) and len(val) == int(fmt[:-1])):
                     raise ValueError(f"Se esperaban {fmt[:-1]} elementos para '{fmt}'")
-                processed.extend(val)              # aplanar
+                processed.extend(val)  # aplanar
             else:
                 processed.append(val)
         return struct.pack(self.format, *processed)
 
     @staticmethod
     def unpack(buf, schema):
-        fmt_str = ''.join(Record.get_format_char_static(fmt) for _, fmt in schema)
+        fmt_str = "".join(Record.get_format_char_static(fmt) for _, fmt in schema)
         vals = list(struct.unpack(fmt_str, buf))
         out = []
-        for (_, fmt) in schema:
+        for _, fmt in schema:
             if fmt.upper() == "SOUND":
                 out.append((vals.pop(0), vals.pop(0)))
-            elif 's' in fmt:
+            elif "s" in fmt:
                 size = int(fmt[:-1])
                 raw = vals.pop(0)
                 if isinstance(raw, bytes):
-                    out.append(raw.rstrip(b'\x00').decode('utf-8', errors='replace'))
+                    out.append(raw.rstrip(b"\x00").decode("utf-8", errors="replace"))
                 else:
-                    out.append(str(raw))  
+                    out.append(str(raw))
             elif fmt[:-1].isdigit():
                 n = int(fmt[:-1])
                 out.append(tuple(vals[:n]))
                 del vals[:n]
-            
+
             else:
                 out.append(vals.pop(0))
         return Record(schema, out)
 
-    
     @staticmethod
     def get_size(schema) -> int:
         format_str = "".join(Record.get_format_char_static(fmt) for _, fmt in schema)
@@ -94,35 +94,40 @@ class Record:
                     out_parts.append(os.path.basename(value))
                 else:
                     out_parts.append(str(value))
-            elif 's' in self.get_format_char(fmt): # cadena fija
+            elif "s" in self.get_format_char(fmt):  # cadena fija
                 if isinstance(value, bytes):
-                    out_parts.append(value.decode('utf-8').strip('\x00'))
+                    out_parts.append(value.decode("utf-8").strip("\x00"))
                 else:
                     out_parts.append(str(value))
-            elif fmt[:-1].isdigit():               # '4f', '3i', etc.
+            elif fmt[:-1].isdigit():  # '4f', '3i', etc.
                 # Formatear cada componente según su tipo base
                 base = fmt[-1]
-                if base == 'f':
+                if base == "f":
                     comp = ", ".join(f"{v:.2f}" for v in value)
                 else:
                     comp = ", ".join(str(v) for v in value)
                 out_parts.append(f"({comp})")
-            elif fmt[-1] == 'f':                   # float suelto
+            elif fmt[-1] == "f":  # float suelto
                 out_parts.append(f"{value:.2f}")
-            else:                                  # int, etc.
+            else:  # int, etc.
                 out_parts.append(str(value))
-        return (" | ".join(out_parts))
+        return " | ".join(out_parts)
 
 
 def main():
-
     # Crear varios registros
-    schema = [("id", "i"), ("nombre", "20s"), ("precio", "f"), ("cantidad", "i"), ("dbox", "4f")]
+    schema = [
+        ("id", "i"),
+        ("nombre", "20s"),
+        ("precio", "f"),
+        ("cantidad", "i"),
+        ("dbox", "4f"),
+    ]
 
-    values1 = [1, "Galletas", 3.5, 10, (2,3,4,1)]
-    values2 = [2, "Chocolate", 5.2, 8, (2,1,2,3)]
-    values3 = [3, "Caramelos", 1.75, 25, (1,2,3,4)]
-    values4 = [4, "Cereal", 4.0, 12, (3,4,5,6)]
+    values1 = [1, "Galletas", 3.5, 10, (2, 3, 4, 1)]
+    values2 = [2, "Chocolate", 5.2, 8, (2, 1, 2, 3)]
+    values3 = [3, "Caramelos", 1.75, 25, (1, 2, 3, 4)]
+    values4 = [4, "Cereal", 4.0, 12, (3, 4, 5, 6)]
 
     # Crear los objetos Record
     registro1 = Record(schema, values1)
@@ -135,7 +140,7 @@ def main():
         registro1.pack(),
         registro2.pack(),
         registro3.pack(),
-        registro4.pack()
+        registro4.pack(),
     ]
 
     registros = [Record.unpack(bin_data, schema) for bin_data in registros_bin]
@@ -143,4 +148,3 @@ def main():
     # Mostrar todos los registros
     for r in registros:
         r.print()
-        

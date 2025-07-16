@@ -715,7 +715,7 @@ def generate_random_inserts(num_records: int = 10) -> list[str]:
 
 if __name__ == "__main__":
     basic_creation_insertion_selection_test = [
-        "CREATE TABLE student(id INT PRIMARY KEY, name VARCHAR(128), age INT, grade FLOAT)",
+        "CREATE TABLE IF NOT EXISTS student(id INT PRIMARY KEY, name VARCHAR(128), age INT, grade FLOAT)",
         "INSERT INTO student(name, grade, age, id) VALUES('Alice', 16.5, 19, 1)",
         "INSERT INTO student(id, age, grade, name) VALUES(2, 20, 12, 'Bob')",
         "INSERT INTO student(grade, id, age, name) VALUES(18, 3, 20, 'Charlie')",
@@ -734,17 +734,21 @@ if __name__ == "__main__":
         "CREATE SPIMI ON article;",
     ]
     audio_create_insert_test = [
-        # "CREATE TABLE IF NOT EXISTS songs(id INT primary key, title VARCHAR(100), genre VARCHAR(50), soundfile SOUND);"
-        # "INSERT INTO songs(id, title, genre, soundfile) VALUES(1, 'Song A', 'Pop', '000002.mp3');",
-        # "INSERT INTO songs(id, title, genre, soundfile) VALUES(2, 'Song B', 'Rock', '000005.mp3');",
-        # "INSERT INTO songs(id, title, genre, soundfile) VALUES(3, 'Song C', 'Jazz', '000005.mp3');",
-        # "INSERT INTO songs(id, title, genre, soundfile) VALUES(4, 'Song D', 'Pop', '000140.mp3');",
-        # "INSERT INTO songs(id, title, genre, soundfile) VALUES(5, 'Song E', 'Rock', '000141.mp3');",
-        # "INSERT INTO songs(id, title, genre, soundfile) VALUES(6, 'Song F', 'Jazz', '000148.mp3');",
+        "CREATE TABLE IF NOT EXISTS songs(id INT primary key, title VARCHAR(100), genre VARCHAR(50), soundfile SOUND);"
+        "INSERT INTO songs(id, title, genre, soundfile) VALUES(1, 'Song A', 'Pop', '000002.mp3');",
+        "INSERT INTO songs(id, title, genre, soundfile) VALUES(2, 'Song B', 'Rock', '000005.mp3');",
+        "INSERT INTO songs(id, title, genre, soundfile) VALUES(3, 'Song C', 'Jazz', '000005.mp3');",
+        "INSERT INTO songs(id, title, genre, soundfile) VALUES(4, 'Song D', 'Pop', '000140.mp3');",
+        "INSERT INTO songs(id, title, genre, soundfile) VALUES(5, 'Song E', 'Rock', '000141.mp3');",
+        "INSERT INTO songs(id, title, genre, soundfile) VALUES(6, 'Song F', 'Jazz', '000148.mp3');",
         "CREATE INDEX ON songs(soundfile) USING SPIMIAUDIO;",
     ]
 
-    test_query_sets = [spimi_test]
+    test_query_sets = [
+        basic_creation_insertion_selection_test,
+        spimi_test,
+        audio_create_insert_test,
+    ]
 
     printVisitor = PrintVisitor()
     runVisitor = RunVisitor()
