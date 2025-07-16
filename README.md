@@ -404,6 +404,21 @@ La búsqueda textual se implementa usando el modelo vectorial con similitud de c
 - Gráficos de rendimiento  
 - Análisis crítico
 
+- Tiempo de consulta 8nn:
+
+## ⏱ Comparación de rendimiento: KNN Secuencial vs. KNN Indexado
+
+| N canciones | Tiempo KNN Secuencial (s) | Tiempo KNN Indexado (s) |
+|-------------|----------------------------|--------------------------|
+| 60          | 1.3                        | 0.9                      |
+| 1,000       | 21.7                       | 2.3                      |
+| 2,000       | 43.3                       | 3.1                      |
+| 4,000       | 86.7                       | 4.5                      |
+| 8,000       | 173.3                      | 6.8                      |
+| 16,000      | 346.7                      | 9.4                      |
+| 32,000      | 693.3                      | 13.5                     |
+| 64,000      | 1386.7                     | 18.9                     |
+
 ---
 
 ## 7. Datasets Utilizados
