@@ -7,7 +7,7 @@ from storage.Sound import Sound
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils import Utils
+from global_utils import Utils
 
 def build_codebook(heap_file: HeapFile, field_name: str, num_clusters: int):
     """

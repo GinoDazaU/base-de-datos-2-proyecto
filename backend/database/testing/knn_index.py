@@ -19,11 +19,11 @@ from database import (
     knn_search_index,
 )
 from storage.Record import Record
-
+from global_utils import Utils
 
 def download_and_extract_sounds():
-    sounds_dir = "backend/database/sounds"
-    zip_path = "backend/database/sounds.zip"
+    sounds_dir = Utils.build_path("sounds")
+    zip_path = Utils.build_path("sounds","sounds.zip")
     # Extraído el ID del nuevo enlace
     gdrive_url = "https://drive.google.com/uc?id=15gi6Z5FCl56pLrpyQ_CabTGEiyzYe8rk"
 
@@ -93,52 +93,50 @@ def main():
     num_clusters = 10
     k = 3
 
-    # download_and_extract_sounds()
+    download_and_extract_sounds()
 
-    # if os.path.exists(f"backend/database/tables/{table_name}.dat"):
-    #     drop_table(table_name)
+    if os.path.exists(Utils.build_path("tables",f"{table_name}.dat")):
+        drop_table(table_name)
 
-    # for suffix in [
-    #     ".codebook.pkl",
-    #     ".histogram.dat",
-    #     "acoustic_index.dat",
-    #     "acoustic_index.schema.json",
-    #     "acoustic_index_norms.dat",
-    #     "acoustic_index_norms.schema.json",
-    # ]:
-    #     path = (
-    #         f"backend/database/tables/{table_name}.{field_name}"
-    #         if suffix.startswith(".")
-    #         else f"backend/database/tables/{suffix}"
-    #     )
-    #     if os.path.exists(path):
-    #         os.remove(path)
+    for suffix in [
+        ".codebook.pkl",
+        ".histogram.dat",
+        "acoustic_index.dat",
+        "acoustic_index.schema.json",
+        "acoustic_index_norms.dat",
+        "acoustic_index_norms.schema.json",
+    ]:
+        path = (
+            Utils.build_path("tables",f"{table_name}.{field_name}")
+            if suffix.startswith(".")
+            else Utils.build_path("tables",f"{suffix}")
+        )
+        if os.path.exists(path):
+            os.remove(path)
 
-    # print(f"\n== CREANDO TABLA '{table_name}' ==")
-    # create_table(table_name, schema, primary_key)
+    print(f"\n== CREANDO TABLA '{table_name}' ==")
+    create_table(table_name, schema, primary_key)
 
-    # csv_path = "backend/database/testing/canciones_dataset.csv"
-    # read_csv_and_insert_records(csv_path, table_name, schema)
+    csv_path = Utils.build_path("testing","canciones_dataset.csv")
+    read_csv_and_insert_records(csv_path, table_name, schema)
 
-    # print(f"\n== MODELO ACÚSTICO ==")
-    # build_acoustic_model(table_name, field_name, num_clusters)
-    # print("Acoustic model built.")
+    print(f"\n== MODELO ACÚSTICO ==")
+    build_acoustic_model(table_name, field_name, num_clusters)
+    print("Acoustic model built.")
 
-    # print(f"\n== ÍNDICE ACÚSTICO ==")
-    # build_acoustic_index(table_name, field_name)
-    # print("Acoustic index built.")
+    print(f"\n== ÍNDICE ACÚSTICO ==")
+    build_acoustic_index(table_name, field_name)
+    print("Acoustic index built.")
 
-    query_audio_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "sounds", "000207.mp3")
-    )
+    query_audio = "000207.mp3"
 
     print("\n--- Sequential Search ---")
-    results_seq = knn_search(table_name, field_name, query_audio_path, k)
+    results_seq = knn_search(table_name, field_name, query_audio, k)
     for record, similarity in results_seq:
         print(f"  - Record: {record}, Similarity: {similarity:.4f}")
 
     print("\n--- Index Search ---")
-    results_idx = knn_search_index(table_name, field_name, query_audio_path, k)
+    results_idx = knn_search_index(table_name, field_name, query_audio, k)
     for record, similarity in results_idx:
         print(f"  - Record: {record}, Similarity: {similarity:.4f}")
 

@@ -1,7 +1,7 @@
 import struct
 import os
 import sys
-from utils import Utils
+from global_utils import Utils
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # Inicializar un Sound solo requiere el nombre, ya construye la ruta
 

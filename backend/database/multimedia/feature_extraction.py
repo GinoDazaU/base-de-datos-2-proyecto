@@ -3,7 +3,7 @@ import numpy as np
 import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils import Utils
+from global_utils import Utils
 
 def extract_features(audio_path):
     """

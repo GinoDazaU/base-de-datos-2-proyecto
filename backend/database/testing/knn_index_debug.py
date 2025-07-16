@@ -17,11 +17,11 @@ from database import (
     knn_search_index,
 )
 from storage.Record import Record
-
+from global_utils import Utils
 
 def download_and_extract_sounds():
-    sounds_dir = "backend/database/sounds"
-    zip_path = "backend/database/sounds.zip"
+    sounds_dir = Utils.build_path("sounds")
+    zip_path = Utils.build_path("sounds","sounds.zip")
     gdrive_url = "https://drive.google.com/uc?id=11ZXg2TcG2TOaRFluhJDcojSwlp7MmOCr"
 
     # Create directory if it doesn't exist
@@ -70,7 +70,7 @@ def main():
 
     download_and_extract_sounds()
     # Clean up previous runs
-    if os.path.exists(f"backend/database/tables/{table_name}.dat"):
+    if os.path.exists(Utils.build_path("tables",f"{table_name}.dat")):
         drop_table(table_name)
     for suffix in [
         ".codebook.pkl",
@@ -81,9 +81,9 @@ def main():
         "acoustic_index_norms.schema.json",
     ]:
         path = (
-            f"backend/database/tables/{table_name}.{field_name}"
+            Utils.build_path("tables",f"{table_name}.{field_name}")
             if suffix.startswith(".")
-            else f"backend/database/tables/{suffix}"
+            else Utils.build_path("tables",f"{suffix}")
         )
         if os.path.exists(path):
             os.remove(path)
@@ -164,19 +164,17 @@ def main():
     print("Acoustic index built.")
 
     # 5. Perform k-NN search
-    query_audio_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "sounds", "000207.mp3")
-    )
+    query_audio = "000207.mp3"
 
     print("\n--- Sequential Search ---")
-    results_seq = knn_search(table_name, field_name, query_audio_path, k)
-    print(f"Top {k} most similar songs to '{os.path.basename(query_audio_path)}':")
+    results_seq = knn_search(table_name, field_name, query_audio, k)
+    print(f"Top {k} most similar songs to '{os.path.basename(query_audio)}':")
     for record, similarity in results_seq:
         print(f"  - Record: {record}, Similarity: {similarity:.4f}")
 
     print("\n--- Index Search ---")
-    results_idx = knn_search_index(table_name, field_name, query_audio_path, k)
-    print(f"Top {k} most similar songs to '{os.path.basename(query_audio_path)}':")
+    results_idx = knn_search_index(table_name, field_name, query_audio, k)
+    print(f"Top {k} most similar songs to '{os.path.basename(query_audio)}':")
     for record, similarity in results_idx:
         print(f"  - Record: {record}, Similarity: {similarity:.4f}")
 
@@ -208,9 +206,9 @@ def main():
         "acoustic_index_norms.schema.json",
     ]:
         path = (
-            f"backend/database/tables/{table_name}.{field_name}"
+            Utils.build_path("tables",f"{table_name}.{field_name}")
             if suffix.startswith(".")
-            else f"backend/database/tables/{suffix}"
+            else Utils.build_path("tables",f"{suffix}")
         )
         if os.path.exists(path):
             os.remove(path)

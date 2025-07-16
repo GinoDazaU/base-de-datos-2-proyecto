@@ -6,13 +6,12 @@ import sys
 import json
 import heapq
 from typing import Dict, List, Tuple, DefaultDict, Any, Union, Iterator
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..",".."))) # Esto permite importar archivos de padres y no solo de hijos
 from storage.HeapFile import HeapFile
 from storage.HistogramFile import HistogramFile
 from .ExtendibleHashIndex import ExtendibleHashIndex
 from storage.Record import Record
-
+from global_utils import Utils
 
 class SpimiAudioIndexer:
     def __init__(
@@ -22,7 +21,7 @@ class SpimiAudioIndexer:
         block_dir: str = "audio_index_blocks",
         index_table_name: str = "acoustic_index",
     ):
-        self.block_dir = os.path.join("backend/database/tables", block_dir)
+        self.block_dir = Utils.build_path("tables", block_dir)
         self.index_table_name = index_table_name
         self._table_path = _table_path
         self.field_name = field_name
@@ -36,7 +35,7 @@ class SpimiAudioIndexer:
 
     def _process_documents(self, table_name: str) -> None:
         heapfile = HeapFile(self._table_path(table_name))
-        histogram_handler = HistogramFile(self._table_path(table_name), self.field_name)
+        histogram_handler = HistogramFile(table_name, self.field_name)
 
         term_dict = defaultdict(lambda: defaultdict(int))
         block_number = 0
@@ -77,14 +76,14 @@ class SpimiAudioIndexer:
         """Merge externo con streaming que evita cargar todo en RAM"""
         # 1. Inicializar el archivo final de índice
         schema_idx = [("term", "i"), ("postings", "text")]
-        HeapFile.build_file(self._table_path(self.index_table_name), schema_idx, "term")
-        heapfile_idx = HeapFile(self._table_path(self.index_table_name))
+        HeapFile.build_file(Utils.build_path("tables",self.index_table_name), schema_idx, "term")
+        heapfile_idx = HeapFile(Utils.build_path("tables",self.index_table_name))
 
         # 2. Inicializar el archivo de normas
         schema_norms = [("doc_id", "i"), ("norm", "f")]
         norms_table_name = f"{self.index_table_name}_norms"
-        HeapFile.build_file(self._table_path(norms_table_name), schema_norms, "doc_id")
-        heapfile_norms = HeapFile(self._table_path(norms_table_name))
+        HeapFile.build_file(Utils.build_path("tables",norms_table_name), schema_norms, "doc_id")
+        heapfile_norms = HeapFile(Utils.build_path("tables",norms_table_name))
 
         # 3. Inicializar estructuras para el merge
         block_paths = [
