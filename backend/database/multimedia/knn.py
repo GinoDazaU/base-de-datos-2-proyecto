@@ -6,6 +6,7 @@ from storage.HistogramFile import HistogramFile
 from multimedia.histogram import build_histogram, load_codebook
 from multimedia.feature_extraction import extract_features
 
+
 def tf_idf(tftd, dft, N):
     """
     Calcula el peso TF-IDF para un término.
@@ -15,6 +16,7 @@ def tf_idf(tftd, dft, N):
     tf = 1 + np.log10(tftd)
     idf = np.log10(N / dft) if dft > 0 else 0
     return tf * idf
+
 
 def cosine_similarity(vec1, vec2):
     """
@@ -27,7 +29,10 @@ def cosine_similarity(vec1, vec2):
         return 0
     return dot_product / (norm_vec1 * norm_vec2)
 
-def knn_sequential_search(query_audio_path: str, heap_file: HeapFile, field_name: str, k: int):
+
+def knn_sequential_search(
+    query_audio_path: str, heap_file: HeapFile, field_name: str, k: int
+):
     """
     Realiza una búsqueda k-NN secuencial en un campo de audio.
     """
@@ -50,11 +55,13 @@ def knn_sequential_search(query_audio_path: str, heap_file: HeapFile, field_name
     priority_queue = []
 
     sound_handler = Sound(heap_file.filename.replace(".dat", ""), field_name)
-    histogram_handler = HistogramFile(heap_file.filename.replace(".dat", ""), field_name)
+    histogram_handler = HistogramFile(
+        heap_file.filename.replace(".dat", ""), field_name
+    )
 
     for record in heap_file.get_all_records():
         sound_offset, histogram_offset = record.values[
-            heap_file.schema.index((field_name, "SOUND"))
+            heap_file.schema.index((field_name, "sound"))
         ]
 
         if histogram_offset == -1:
@@ -81,6 +88,8 @@ def knn_sequential_search(query_audio_path: str, heap_file: HeapFile, field_name
     # Obtener los registros completos
     final_results = []
     for similarity, record_id in results:
-        final_results.append((heap_file.search_by_field("id", record_id)[0], similarity))
+        final_results.append(
+            (heap_file.search_by_field("id", record_id)[0], similarity)
+        )
 
     return final_results

@@ -220,8 +220,12 @@ def delete_record(table_name: str, pk_value):
 # =============================================================================
 
 
-def search_by_field(table_name: str, field_name: str, value, crude_data=False) -> List[Record]:
-    return HeapFile(_table_path(table_name)).search_by_field(field_name, value, crude_data)
+def search_by_field(
+    table_name: str, field_name: str, value, crude_data=False
+) -> List[Record]:
+    return HeapFile(_table_path(table_name)).search_by_field(
+        field_name, value, crude_data
+    )
 
 
 def search_seq_idx(table_name: str, field_name: str, field_value):
@@ -537,6 +541,7 @@ def build_acoustic_index(table_name: str, field_name: str) -> None:
     Construye el índice invertido para un campo de tipo 'SOUND'.
     """
     from indexing.SpimiAudio import SpimiAudioIndexer
+
     indexer = SpimiAudioIndexer(_table_path, field_name)
     indexer.build_index(table_name)
 
@@ -554,15 +559,18 @@ def build_acoustic_model(table_name: str, field_name: str, num_clusters: int):
 
     # 1. Construir el codebook
     from multimedia.codebook import build_codebook
+
     build_codebook(heap_file, field_name, num_clusters)
     # 2. Cargar el codebook
     from multimedia.histogram import load_codebook
+
     codebook = load_codebook(heap_file.table_name, field_name)
     if codebook is None:
         return
 
     # 3. Generar y almacenar histogramas
     from multimedia.histogram import build_histogram
+
     sound_handler = Sound(_table_path(table_name), field_name)
     histogram_handler = HistogramFile(_table_path(table_name), field_name)
 
@@ -576,25 +584,37 @@ def build_acoustic_model(table_name: str, field_name: str, num_clusters: int):
         histogram = build_histogram(audio_path, codebook)
         if histogram is not None:
             # Convertir el histograma a una lista de tuplas (ID, COUNT)
-            histogram_tuples = [(i, int(count)) for i, count in enumerate(histogram) if count > 0]
+            histogram_tuples = [
+                (i, int(count)) for i, count in enumerate(histogram) if count > 0
+            ]
 
             # Insertar el histograma y obtener el offset
             histogram_offset = histogram_handler.insert(histogram_tuples)
 
             # Actualizar el registro en el heap file con el offset del histograma
             record.values = list(record.values)
-            record.values[heap_file.schema.index((field_name, "sound"))] = (sound_offset, histogram_offset)
+            record.values[heap_file.schema.index((field_name, "sound"))] = (
+                sound_offset,
+                histogram_offset,
+            )
             heap_file.update_record(record)
 
-def knn_search(table_name: str, field_name: str, query_audio_path: str, k: int) -> list[tuple[Record, float]]:
+
+def knn_search(
+    table_name: str, field_name: str, query_audio_path: str, k: int
+) -> list[tuple[Record, float]]:
     """
     Realiza una búsqueda k-NN en un campo de audio.
     """
     from multimedia.knn import knn_sequential_search
+
     heap_file = HeapFile(_table_path(table_name))
     return knn_sequential_search(query_audio_path, heap_file, field_name, k)
 
-def knn_search_index(table_name: str, field_name: str, query_audio_path: str, k: int) -> list[tuple[Record, float]]:
+
+def knn_search_index(
+    table_name: str, field_name: str, query_audio_path: str, k: int
+) -> list[tuple[Record, float]]:
     """
     Realiza una búsqueda k-NN en un campo de audio utilizando el índice invertido.
     """
@@ -641,10 +661,14 @@ def knn_search_index(table_name: str, field_name: str, query_audio_path: str, k:
 
                 if doc_id not in doc_norms:
                     norms_table = HeapFile(_table_path("acoustic_index_norms"))
-                    hash_idx_norms = ExtendibleHashIndex(_table_path("acoustic_index_norms"), "doc_id")
+                    hash_idx_norms = ExtendibleHashIndex(
+                        _table_path("acoustic_index_norms"), "doc_id"
+                    )
                     norm_records = hash_idx_norms.search_record(doc_id)
                     if norm_records:
-                        record = norms_table.fetch_record_by_offset(norm_records[0].offset)
+                        record = norms_table.fetch_record_by_offset(
+                            norm_records[0].offset
+                        )
                         doc_norms[doc_id] = record.values[1]
 
     # 4. Calcular similitud coseno para documentos relevantes
@@ -683,6 +707,7 @@ def knn_search_index(table_name: str, field_name: str, query_audio_path: str, k:
 
     return results[:k]
 
+
 def search_text(table_name: str, query: str, k: int = 5) -> list[tuple[Record, float]]:
     """
     Búsqueda textual eficiente usando similitud coseno con TF-IDF
@@ -710,30 +735,30 @@ def search_text(table_name: str, query: str, k: int = 5) -> list[tuple[Record, f
     # 4. Buscar términos en índice invertido
     inverted_index = HeapFile(_table_path("inverted_index"))
     hash_idx = ExtendibleHashIndex(_table_path("inverted_index"), "term")
-    
+
     for term in unique_query_terms:
         # 4.1 Buscar término usando índice hash
         index_records = hash_idx.search_record(term)
         if not index_records:
             continue
-            
+
         # 4.2 Obtener el registro completo
         record = inverted_index.fetch_record_by_offset(index_records[0].offset)
         postings = json.loads(record.values[1])  # values[1] = postings JSON
-        
+
         # 4.3 Calcular IDF para el término
         df_t = len(postings)
         idf = math.log(inverted_index.heap_size / df_t) if df_t else 0
-        
+
         # 4.4 Peso del término en la consulta (TF normalizado * IDF)
         query_tf = query_term_freq[term] / len(query_terms)
         query_vector[term] = query_tf * idf
-        
+
         # 4.5 Procesar postings del término
         for doc_id, tfidf in postings:
             doc_scores[doc_id] += query_vector[term] * tfidf
             relevant_docs.add(doc_id)
-            
+
             # Almacenar norma si no está cargada
             if doc_id not in doc_norms:
                 # Buscar norma para este doc (implementación optimizada)
@@ -745,7 +770,7 @@ def search_text(table_name: str, query: str, k: int = 5) -> list[tuple[Record, f
     # 5. Calcular similitud coseno para documentos relevantes
     query_norm = math.sqrt(sum(tfidf**2 for tfidf in query_vector.values()))
     scored_docs = []
-    
+
     for doc_id in relevant_docs:
         doc_norm = doc_norms.get(doc_id, 1e-10)  # Evitar división por cero
         similarity = doc_scores[doc_id] / (query_norm * doc_norm)
@@ -758,7 +783,7 @@ def search_text(table_name: str, query: str, k: int = 5) -> list[tuple[Record, f
     # 7. Recuperar registros completos
     results = []
     source_table = HeapFile(_table_path(table_name))
-    
+
     for doc_id, score in top_k:
         # Buscar documento por su ID (asume que la PK es 'id')
         matching_recs = source_table.search_by_field("id", doc_id)

@@ -13,7 +13,7 @@ Statement -> CreateStatement | SelectStatement | DropStatement | DeleteStatement
 Identifier refers to anything that is not a token itself, like table names, types, etc
 
 
-CreateStatement -> CreateTableStatement | CreateIndexStatement
+CreateStatement -> CreateTableStatement | CreateIndexStatement | CreateSpimiStatement
 
 CreateTableStatement -> CREATE TABLE UserIdentifier(CreateTableColumns)
 CreateTableColumns -> CreateTableColumnDefinition[,CreateTableColumns]
@@ -21,9 +21,9 @@ CreateTableColumnDefinition -> UserIdentifier DataType ArgumentList
 DataType- > INT | FLOAT | VARCHAR | DATE | BOOL | POINT2D | POINT3D | DATE
 ArgumentList -> [PRIMARY KEY] [USING Method]
 
-CreateIndexStatement -> CREATE INDEX UserIdentifier ON UserIdentifier(UserIdentifier) [USING Method] | Spimi
-Method -> {BPLUSTREE | EXTENDIBLEHASH | RTREE | SEQUENTIAL}
-Spimi -> CREATE SPIMI ON UserIdentifier
+CreateIndexStatement -> CREATE INDEX UserIdentifier ON UserIdentifier(UserIdentifier) [USING Method]
+Method -> {BPLUSTREE | EXTENDIBLEHASH | RTREE | SEQUENTIAL | SPIMIAUDIO}
+CreateSpimiStatement -> CREATE SPIMI ON UserIdentifier
 
 ==================================================================================
 

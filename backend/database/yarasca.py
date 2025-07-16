@@ -730,15 +730,21 @@ if __name__ == "__main__":
 
     spimi_test = [
         "CREATE TABLE IF NOT EXISTS article(id INT PRIMARY KEY, content TEXT);",
+        "INSERT INTO article(id, content) VALUES(1, 'This is the first article.');",
         "CREATE SPIMI ON article;",
     ]
-    audio_test = [
-        "CREATE TABLE IF NOT EXISTS songs(id INT primary key, audio SOUND);"
-        "INSERT INTO songs(id, audio) VALUES(1, '000002.mp3');",
-        "CREATE INDEX ON songs(audio) USING SPIMIAUDIO;"
+    audio_create_insert_test = [
+        # "CREATE TABLE IF NOT EXISTS songs(id INT primary key, title VARCHAR(100), genre VARCHAR(50), soundfile SOUND);"
+        # "INSERT INTO songs(id, title, genre, soundfile) VALUES(1, 'Song A', 'Pop', '000002.mp3');",
+        # "INSERT INTO songs(id, title, genre, soundfile) VALUES(2, 'Song B', 'Rock', '000005.mp3');",
+        # "INSERT INTO songs(id, title, genre, soundfile) VALUES(3, 'Song C', 'Jazz', '000005.mp3');",
+        # "INSERT INTO songs(id, title, genre, soundfile) VALUES(4, 'Song D', 'Pop', '000140.mp3');",
+        # "INSERT INTO songs(id, title, genre, soundfile) VALUES(5, 'Song E', 'Rock', '000141.mp3');",
+        # "INSERT INTO songs(id, title, genre, soundfile) VALUES(6, 'Song F', 'Jazz', '000148.mp3');",
+        "CREATE INDEX ON songs(soundfile) USING SPIMIAUDIO;",
     ]
 
-    test_query_sets = [audio_test]
+    test_query_sets = [spimi_test]
 
     printVisitor = PrintVisitor()
     runVisitor = RunVisitor()

@@ -19,6 +19,8 @@ from database import build_acoustic_model
 from storage.Sound import Sound
 from storage.HistogramFile import HistogramFile
 
+from database import build_acoustic_index, build_acoustic_model, build_spimi_index
+
 
 class DBManager:
     _instance = None
@@ -62,7 +64,7 @@ class DBManager:
     def get_table_schema(table_name: str):
         DBManager.verify_table_exists(table_name)
         schema_path = DBManager.table_path(table_name) + ".schema.json"
-        heapfile=HeapFile(DBManager.table_path(table_name))
+        heapfile = HeapFile(DBManager.table_path(table_name))
         return heapfile.schema
 
     @staticmethod
@@ -242,7 +244,7 @@ class DBManager:
 
     @staticmethod
     def create_spimi_audio_idx(table_name: str, field_name) -> None:
-        build_acoustic_model(DBManager.table_path(table_name),field_name,1)
+        build_acoustic_model(DBManager.table_path(table_name), field_name, 1)
         SpimiAudioIndexer(DBManager.table_path, field_name).build_index(table_name)
 
     # region Index verification

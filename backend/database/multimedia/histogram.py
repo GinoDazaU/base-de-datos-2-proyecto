@@ -2,6 +2,7 @@ import numpy as np
 import pickle
 from multimedia.feature_extraction import extract_features
 
+
 def build_histogram(audio_path, codebook):
     """
     Construye un histograma de palabras acústicas para un archivo de audio.
@@ -19,9 +20,9 @@ def build_histogram(audio_path, codebook):
 
     # Predecir los clusters para cada descriptor
     from sklearn.metrics.pairwise import euclidean_distances
+
     distances = euclidean_distances(features.reshape(1, -1), codebook["centroids"])
     labels = np.argmin(distances, axis=1)
-
 
     # Construir el histograma
     histogram = np.zeros(len(codebook["centroids"]))
@@ -29,6 +30,7 @@ def build_histogram(audio_path, codebook):
         histogram[label] += 1
 
     return histogram
+
 
 def load_codebook(table_name, field_name):
     """

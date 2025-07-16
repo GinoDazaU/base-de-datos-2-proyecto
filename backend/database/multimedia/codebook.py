@@ -5,6 +5,7 @@ from storage.HeapFile import HeapFile
 from multimedia.feature_extraction import extract_features
 from storage.Sound import Sound
 
+
 def build_codebook(heap_file: HeapFile, field_name: str, num_clusters: int):
     """
     Construye un codebook a partir de las características de audio de una tabla.
@@ -31,12 +32,14 @@ def build_codebook(heap_file: HeapFile, field_name: str, num_clusters: int):
     all_features = np.vstack(all_features)
 
     # Aplicar K-Means
-    kmeans = KMeans(n_clusters=num_clusters, random_state=0, n_init=10).fit(all_features)
+    kmeans = KMeans(n_clusters=num_clusters, random_state=0, n_init=10).fit(
+        all_features
+    )
 
     # Crear el codebook
     codebook = {
         "centroids": kmeans.cluster_centers_,
-        "doc_freq": np.zeros(num_clusters)
+        "doc_freq": np.zeros(num_clusters),
     }
 
     # Calcular la frecuencia de documentos
@@ -45,7 +48,6 @@ def build_codebook(heap_file: HeapFile, field_name: str, num_clusters: int):
         unique_labels = np.unique(labels)
         for label in unique_labels:
             codebook["doc_freq"][label] += 1
-
 
     # Guardar el codebook
     codebook_path = f"{heap_file.table_name}.{field_name}.codebook.pkl"

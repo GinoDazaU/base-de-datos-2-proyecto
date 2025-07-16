@@ -30,7 +30,9 @@ def download_and_extract_sounds():
     os.makedirs(sounds_dir, exist_ok=True)
 
     # Contar archivos existentes
-    existing_files = [f for f in os.listdir(sounds_dir) if os.path.isfile(os.path.join(sounds_dir, f))]
+    existing_files = [
+        f for f in os.listdir(sounds_dir) if os.path.isfile(os.path.join(sounds_dir, f))
+    ]
     num_files = len(existing_files)
 
     if num_files >= 100:
@@ -38,7 +40,9 @@ def download_and_extract_sounds():
         return
     else:
         # Eliminar todos los archivos si hay menos de 100
-        print(f"Found only {num_files} files. Cleaning directory and downloading new files...")
+        print(
+            f"Found only {num_files} files. Cleaning directory and downloading new files..."
+        )
         for f in existing_files:
             os.remove(os.path.join(sounds_dir, f))
 
@@ -46,7 +50,7 @@ def download_and_extract_sounds():
     gdown.download(gdrive_url, zip_path, quiet=False)
 
     print("Extracting audio files...")
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
         zip_ref.extractall(sounds_dir)
 
     print("Cleaning up ZIP file...")
@@ -79,7 +83,7 @@ def main():
     schema = [
         ("id", "INT"),
         ("title", "VARCHAR(100)"),
-        (field_name, "SOUND"),
+        (field_name, "sound"),
         ("artist", "VARCHAR(100)"),
         ("duration", "VARCHAR(10)"),
         ("genre", "VARCHAR(50)"),
@@ -89,38 +93,44 @@ def main():
     num_clusters = 10
     k = 3
 
-    download_and_extract_sounds()
+    # download_and_extract_sounds()
 
-    if os.path.exists(f"backend/database/tables/{table_name}.dat"):
-        drop_table(table_name)
+    # if os.path.exists(f"backend/database/tables/{table_name}.dat"):
+    #     drop_table(table_name)
 
-    for suffix in [
-        ".codebook.pkl",
-        ".histogram.dat",
-        "acoustic_index.dat",
-        "acoustic_index.schema.json",
-        "acoustic_index_norms.dat",
-        "acoustic_index_norms.schema.json",
-    ]:
-        path = f"backend/database/tables/{table_name}.{field_name}" if suffix.startswith(".") else f"backend/database/tables/{suffix}"
-        if os.path.exists(path):
-            os.remove(path)
+    # for suffix in [
+    #     ".codebook.pkl",
+    #     ".histogram.dat",
+    #     "acoustic_index.dat",
+    #     "acoustic_index.schema.json",
+    #     "acoustic_index_norms.dat",
+    #     "acoustic_index_norms.schema.json",
+    # ]:
+    #     path = (
+    #         f"backend/database/tables/{table_name}.{field_name}"
+    #         if suffix.startswith(".")
+    #         else f"backend/database/tables/{suffix}"
+    #     )
+    #     if os.path.exists(path):
+    #         os.remove(path)
 
-    print(f"\n== CREANDO TABLA '{table_name}' ==")
-    create_table(table_name, schema, primary_key)
+    # print(f"\n== CREANDO TABLA '{table_name}' ==")
+    # create_table(table_name, schema, primary_key)
 
-    csv_path = "backend/database/testing/canciones_dataset.csv"
-    read_csv_and_insert_records(csv_path, table_name, schema)
+    # csv_path = "backend/database/testing/canciones_dataset.csv"
+    # read_csv_and_insert_records(csv_path, table_name, schema)
 
-    print(f"\n== MODELO ACÚSTICO ==")
-    build_acoustic_model(table_name, field_name,num_clusters)
-    print("Acoustic model built.")
+    # print(f"\n== MODELO ACÚSTICO ==")
+    # build_acoustic_model(table_name, field_name, num_clusters)
+    # print("Acoustic model built.")
 
-    print(f"\n== ÍNDICE ACÚSTICO ==")
-    build_acoustic_index(table_name, field_name)
-    print("Acoustic index built.")
+    # print(f"\n== ÍNDICE ACÚSTICO ==")
+    # build_acoustic_index(table_name, field_name)
+    # print("Acoustic index built.")
 
-    query_audio_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'sounds', '000207.mp3'))
+    query_audio_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "sounds", "000207.mp3")
+    )
 
     print("\n--- Sequential Search ---")
     results_seq = knn_search(table_name, field_name, query_audio_path, k)
@@ -135,7 +145,11 @@ def main():
     results_seq_gt_0 = {r[0].values[0] for r in results_seq if r[1] > 0}
     results_idx_gt_0 = {r[0].values[0] for r in results_idx if r[1] > 0}
 
-    if results_seq_gt_0 == results_idx_gt_0 and len(results_seq) == k and len(results_idx) == k:
+    if (
+        results_seq_gt_0 == results_idx_gt_0
+        and len(results_seq) == k
+        and len(results_idx) == k
+    ):
         print("\nTest PASSED! Search results are consistent.")
     else:
         print("\nTest FAILED! Search results are inconsistent.")
