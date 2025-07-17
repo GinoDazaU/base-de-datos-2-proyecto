@@ -83,7 +83,7 @@ def read_csv_and_insert_records(csv_path, table_name, schema):
 
 
 def main():
-    table_name = "songs_knn_index"
+    table_name = "songs"
     field_name = "sound_file"
     schema = [
         ("id", "INT"),
