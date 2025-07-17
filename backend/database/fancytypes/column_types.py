@@ -1,4 +1,5 @@
 from enum import Enum, auto
+from tabulate import tabulate
 
 
 class ColumnType(Enum):
@@ -68,4 +69,5 @@ class QueryResult:
         self.data = data
 
     def __repr__(self):
-        return f"QueryResult(success={self.success}, message='{self.message}', data={self.data})"
+        data = tabulate(self.data, headers="keys", tablefmt="psql")
+        return f"QueryResult(success={self.success}, message='{self.message}', data=\n{data})"
