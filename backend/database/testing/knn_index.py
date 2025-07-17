@@ -135,12 +135,12 @@ def main():
     query_audio = "000207.mp3"
 
     Logger.log_debug("\n--- Sequential Search ---")
-    results_seq = knn_search(table_name, field_name, query_audio_path, k)
+    results_seq = knn_search(table_name, field_name, query_audio, k)
     for record, similarity in results_seq:
         Logger.log_debug(f"  - Record: {record}, Similarity: {similarity:.4f}")
 
     Logger.log_debug("\n--- Index Search ---")
-    results_idx = knn_search_index(table_name, field_name, query_audio_path, k)
+    results_idx = knn_search_index(table_name, field_name, query_audio, k)
     for record, similarity in results_idx:
         Logger.log_debug(f"  - Record: {record}, Similarity: {similarity:.4f}")
 
