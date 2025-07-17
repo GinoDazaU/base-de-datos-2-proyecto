@@ -112,7 +112,7 @@ def test_performance():
         if db_time > 4*60*60:  # 4 hours
             print(f"Search took too long with {size} records, stopping test.")
             break
-    print("\nTime results (s):\n", pd.DataFrame(times), f"\nExporting to file {output_path}")
+    print("\nTime results(s):\n", pd.DataFrame(times), f"\nExporting to file {output_path}")
     pd.DataFrame(times).to_csv(output_path, index=False)
 
 test_performance()
