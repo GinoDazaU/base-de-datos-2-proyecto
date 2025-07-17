@@ -54,7 +54,7 @@ def knn_sequential_search(query_audio_path: str, heap_file: HeapFile, field_name
     query_histogram = build_histogram(query_audio_path, codebook)
     if query_histogram is None:
         return set()
-
+    Logger.log_spimi(query_histogram)
     N = heap_file.heap_size
     query_tfidf = np.zeros(len(codebook["centroids"]))
     for i, count in enumerate(query_histogram):
@@ -65,7 +65,10 @@ def knn_sequential_search(query_audio_path: str, heap_file: HeapFile, field_name
     priority_queue = []
 
     sound_handler = Sound(heap_file.filename.replace(".dat", ""), field_name)
-    histogram_handler = HistogramFile(heap_file.filename.replace(".dat", ""), field_name)
+    histogram_handler = HistogramFile(
+        heap_file.filename.replace(".dat", ""), field_name
+    )
+    Logger.log_spimi("Arays de secuencial doc_tfidf")
 
     for record in heap_file.get_all_records():
         sound_offset, histogram_offset = record.values[heap_file.schema.index((field_name, "sound"))]
@@ -75,10 +78,15 @@ def knn_sequential_search(query_audio_path: str, heap_file: HeapFile, field_name
 
         # Leer el histograma y construir el vector TF-IDF
         histogram = histogram_handler.read(histogram_offset)
+
         doc_tfidf = np.zeros(len(codebook["centroids"]))
+
         for centroid_id, count in histogram:
             doc_tfidf[centroid_id] = tf_idf(count, codebook["doc_freq"][centroid_id], N)
-        Logger.log_debug(str(doc_tfidf))
+
+        if record.values[0]==1:
+            Logger.log_spimi(str(doc_tfidf))
+
         # Calcular la similitud de coseno
         similarity = cosine_similarity(query_tfidf, doc_tfidf)
 
@@ -95,6 +103,7 @@ def knn_sequential_search(query_audio_path: str, heap_file: HeapFile, field_name
     offsets: set[int] = {heap_file.search_offsets_by_field("id", record_id)[0] for _, record_id in results}
 
     similarity_scores = [tup[0] for tup in results]
+    Logger.debug_enabled=True
 
     Logger.log_debug(f"Audio sequential KNN obtained offsets: {offsets}")
     Logger.log_debug(f"Audio sequentialKNN results: {similarity_scores}")

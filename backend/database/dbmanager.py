@@ -263,7 +263,7 @@ class DBManager:
         SpimiAudioIndexer(
             DBManager.table_path,
             field_name,
-            index_table_name=f"{table_name}.{field_name}",
+            index_table_name=f"{table_name}.{field_name}.idx",
         ).build_index(table_name)
 
     # region Index verification

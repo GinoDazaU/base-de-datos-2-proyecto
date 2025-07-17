@@ -1,7 +1,7 @@
 import struct
 import os
 
-from logger import Logger
+#from logger import Logger
 
 # Esta clase Record representa un registro binario genérico.
 # A diferencia de versiones más rígidas (como las que usan FORMAT fijo),

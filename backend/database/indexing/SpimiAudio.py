@@ -6,14 +6,14 @@ import sys
 import json
 import heapq
 from typing import Dict, List, Tuple, DefaultDict, Any, Union, Iterator
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..",".."))) # Esto permite importar archivos de padres y no solo de hijos
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from storage.HeapFile import HeapFile
 from storage.HistogramFile import HistogramFile
 from .ExtendibleHashIndex import ExtendibleHashIndex
 from storage.Record import Record
 from global_utils import Utils
 from logger import Logger
-from pympler import asizeof  # <-- IMPORTANTE
+from pympler import asizeof
 
 
 class SpimiAudioIndexer:
@@ -33,7 +33,7 @@ class SpimiAudioIndexer:
     def build_index(self, table_name: str) -> None:
         self.doc_count = 0
         self._process_documents(table_name)
-        self._streaming_merge_with_tfidf()
+        self._streaming_merge_with_tfidf(table_name)
         self._clean_blocks()
 
     def _process_documents(self, table_name: str) -> None:
@@ -42,7 +42,7 @@ class SpimiAudioIndexer:
 
         term_dict = defaultdict(lambda: defaultdict(int))
         block_number = 0
-        memory_limit = 1024 # 1024  # 1 KB
+        memory_limit = 4 * 1024  # 4 KB
 
         for record in heapfile.get_all_records():
             self.doc_count += 1
@@ -55,14 +55,16 @@ class SpimiAudioIndexer:
 
             histogram = histogram_handler.read(histogram_offset)
 
+            if isinstance(histogram, list) and isinstance(histogram[0], (int, float)):
+                histogram = [(i, int(c)) for i, c in enumerate(histogram) if c > 0]
+
             for centroid_id, count in histogram:
-                term_dict[centroid_id][record.values[0]] += count  # values[0] is the id
+                term_dict[centroid_id][record.values[0]] += count  # doc_id
 
                 if asizeof.asizeof(term_dict) >= memory_limit:
                     self._dump_block(term_dict, block_number)
                     block_number += 1
                     term_dict.clear()
-
         if term_dict:
             self._dump_block(term_dict, block_number)
         self.total_blocks = block_number + 1
@@ -71,27 +73,23 @@ class SpimiAudioIndexer:
         self, term_dict: Dict[int, Dict[int, int]], block_number: int
     ) -> None:
         path = os.path.join(self.block_dir, f"block_{block_number}.json")
-        Logger.spimi_enabled=True
-        Logger.log_spimi(path)
 
         sorted_dict = dict(sorted(term_dict.items()))
         with open(path, "w") as f:
             json.dump(sorted_dict, f)
 
-    def _streaming_merge_with_tfidf(self) -> None:
-        """Merge externo con streaming que evita cargar todo en RAM"""
-        # 1. Inicializar el archivo final de índice
+    def _streaming_merge_with_tfidf(self,tablename) -> None:
+        
         schema_idx = [("term", "i"), ("postings", "text")]
-        HeapFile.build_file(Utils.build_path("tables",self.index_table_name), schema_idx, "term")
-        heapfile_idx = HeapFile(Utils.build_path("tables",self.index_table_name))
 
-        # 2. Inicializar el archivo de normas
+        HeapFile.build_file(Utils.build_path("tables", self.index_table_name), schema_idx, "term")
+        heapfile_idx = HeapFile(Utils.build_path("tables", self.index_table_name))
+
         schema_norms = [("doc_id", "i"), ("norm", "f")]
         norms_table_name = f"{self.index_table_name}_norms"
-        HeapFile.build_file(Utils.build_path("tables",norms_table_name), schema_norms, "doc_id")
-        heapfile_norms = HeapFile(Utils.build_path("tables",norms_table_name))
+        HeapFile.build_file(Utils.build_path("tables", norms_table_name), schema_norms, "doc_id")
+        heapfile_norms = HeapFile(Utils.build_path("tables", norms_table_name))
 
-        # 3. Inicializar estructuras para el merge
         block_paths = [
             os.path.join(self.block_dir, f)
             for f in os.listdir(self.block_dir)
@@ -103,7 +101,6 @@ class SpimiAudioIndexer:
         document_norms = defaultdict(float)
         N = self.doc_count
 
-        # 4. Crear iteradores para cada bloque
         for i, path in enumerate(block_paths):
             with open(path, "r") as f:
                 block = json.load(f)
@@ -116,23 +113,20 @@ class SpimiAudioIndexer:
                 except StopIteration:
                     continue
 
-        # 5. Proceso de merge por streaming
         while heap:
             term, block_idx = heapq.heappop(heap)
 
-            # Combinar todas las ocurrencias del término
             combined_freqs = defaultdict(int)
             blocks_to_advance = []
 
             for i in list(current_terms.keys()):
                 current_term, freqs = current_terms[i]
-                if current_term == term:
+                if int(current_term) == term:
                     for doc_id, count in freqs.items():
                         combined_freqs[int(doc_id)] += count
                     blocks_to_advance.append(i)
                     del current_terms[i]
 
-            # Calcular TF-IDF
             df = len(combined_freqs)
             idf = math.log10(N / df) if df and N > 0 else 0
             postings_tfidf = []
@@ -143,30 +137,25 @@ class SpimiAudioIndexer:
                 postings_tfidf.append((doc_id, tfidf))
                 document_norms[doc_id] += tfidf**2
 
-            # Guardar término en el índice final (streaming)
             postings_json = json.dumps(
                 [[doc_id, tfidf] for doc_id, tfidf in postings_tfidf]
             )
             record = Record(schema_idx, [term, postings_json])
             heapfile_idx.insert_record_free(record)
 
-            # Avanzar los bloques procesados
             for i in blocks_to_advance:
                 try:
                     next_term, next_postings = next(block_iters[i])
                     heapq.heappush(heap, (int(next_term), i))
                     current_terms[i] = (int(next_term), next_postings)
                 except StopIteration:
-                    # Fin de este bloque
                     pass
-
-        # 6. Guardar normas (streaming)
+        
         for doc_id, norm_sum in document_norms.items():
             norm = math.sqrt(norm_sum)
             record = Record(schema_norms, [doc_id, norm])
             heapfile_norms.insert_record(record)
 
-        # 7. Crear índices hash
         ExtendibleHashIndex.build_index(
             self._table_path(self.index_table_name),
             lambda field_name: heapfile_idx.extract_index(field_name),

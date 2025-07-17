@@ -8,37 +8,42 @@ from logger import Logger
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
-def extract_features(audio_path):
+def extract_features(audio_path,n_mfcc=13, frame_length=2048, hop_length=512):
     """
-    Extrae características de un archivo de audio.
+    Extrae descriptores locales MFCC, delta y delta-delta de un archivo de audio.
 
     Args:
         audio_path (str): Ruta al archivo de audio.
+        n_mfcc (int): Número de coeficientes MFCC a extraer (por frame).
+        frame_length (int): Tamaño de ventana para análisis de STFT.
+        hop_length (int): Paso entre ventanas para STFT.
 
     Returns:
-        np.ndarray: Vector de características.
+        np.ndarray: Matriz de características locales con forma (n_frames, n_features).
+                    n_features = n_mfcc * 3 (MFCC + delta + delta-delta).
     """
     try:
-        # Completa la ruta del archivo de audio si solo se proporciona el nombre
         audio_path = Utils.build_path("sounds", audio_path)
 
-        y, sr = librosa.load(audio_path)
+        # Carga audio en mono y frecuencia original
+        y, sr = librosa.load(audio_path, sr=None, mono=True)
 
-        # Extraer MFCCs
-        mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-        mfccs_mean = np.mean(mfccs.T, axis=0)
+        # Extraer MFCCs: shape (n_mfcc, n_frames)
+        mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc,
+                                     n_fft=frame_length, hop_length=hop_length)
 
-        # Extraer deltas de MFCCs
+        # Extraer delta y delta-delta (derivadas de MFCC)
         delta_mfccs = librosa.feature.delta(mfccs)
-        delta_mfccs_mean = np.mean(delta_mfccs.T, axis=0)
-
-        # Extraer deltas-deltas de MFCCs
         delta2_mfccs = librosa.feature.delta(mfccs, order=2)
-        delta2_mfccs_mean = np.mean(delta2_mfccs.T, axis=0)
 
-        # Concatenar todas las características
-        features = np.concatenate((mfccs_mean, delta_mfccs_mean, delta2_mfccs_mean))
+        # Transponer para que cada fila sea un vector descriptor local (por frame)
+        mfccs = mfccs.T           # shape (n_frames, n_mfcc)
+        delta_mfccs = delta_mfccs.T
+        delta2_mfccs = delta2_mfccs.T
 
+        # Concatenar vectores locales en cada frame
+        features = np.hstack([mfccs, delta_mfccs, delta2_mfccs])  # (n_frames, n_mfcc*3)
+        #Logger.log_spimi(features)
         return features
     except Exception as e:
         Logger.log_error(f"Error extracting features from {audio_path}: {e}")

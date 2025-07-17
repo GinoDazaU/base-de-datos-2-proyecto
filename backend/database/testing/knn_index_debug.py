@@ -6,7 +6,7 @@ import gdown
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
+from logger import Logger
 from database import (
     create_table,
     insert_record,
@@ -67,7 +67,8 @@ def main():
     primary_key = "id"
     num_clusters = 3
     k = 3
-
+    Logger.debug_enabled=False
+    Logger.spimi_enabled=True
     download_and_extract_sounds()
     # Clean up previous runs
     if os.path.exists(Utils.build_path("tables",f"{table_name}.dat")):
@@ -164,7 +165,7 @@ def main():
     print("Acoustic index built.")
 
     # 5. Perform k-NN search
-    query_audio = "000207.mp3"
+    query_audio = "000182.mp3"
 
     print("\n--- Sequential Search ---")
     results_seq = knn_search(table_name, field_name, query_audio, k)
@@ -196,6 +197,7 @@ def main():
         print(f"Index len:      {len(results_idx)}")
 
     # 7. Clean up
+    """
     drop_table(table_name)
     for suffix in [
         ".codebook.pkl",
@@ -212,6 +214,7 @@ def main():
         )
         if os.path.exists(path):
             os.remove(path)
+    """
     print(f"Table '{table_name}' dropped and associated files removed.")
 
 

@@ -1,3 +1,9 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),)))
+
+
 from visitor import PrintVisitor, RunVisitor
 from scanner import Scanner, Token, TokenType
 from fancytypes.column_types import (
@@ -696,6 +702,13 @@ def generate_random_inserts(num_records: int = 10) -> list[str]:
 
     return queries
 
+def query_run(query:str):
+    runVisitor = RunVisitor()
+    scanner = Scanner(query)
+    parser = Parser(scanner)
+    program = parser.parse_program()
+    result: QueryResult = runVisitor.visit_program(program)
+    return result
 
 if __name__ == "__main__":
     basic_creation_insertion_selection_test = [
@@ -739,9 +752,12 @@ if __name__ == "__main__":
         "CREATE INDEX ON songs(soundfile) USING SPIMIAUDIO;",
         "SELECT id, title, genre from songs WHERE soundfile <-> '000002.mp3' LIMIT 5",
     ]
+    audio_spimi_test2 = [
+        "SELECT * from songs WHERE sound_file <-> '000002.mp3' LIMIT 5"
+    ]
 
     test_query_sets = [
-        audio_spimi_test,
+        audio_spimi_test2,
     ]
 
     printVisitor = PrintVisitor()

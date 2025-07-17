@@ -9,6 +9,7 @@ import pandas as pd
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from logger import Logger
+from storage.HeapFile import HeapFile
 
 
 from database import (
@@ -83,7 +84,7 @@ def read_csv_and_insert_records(csv_path, table_name, schema):
 
 
 def main():
-    table_name = "songs_knn_index"
+    table_name = "songs"
     field_name = "sound_file"
     schema = [
         ("id", "INT"),
@@ -125,27 +126,33 @@ def main():
 
     csv_path = Utils.build_path("testing","canciones_dataset_100.csv")
     read_csv_and_insert_records(csv_path, table_name, schema)
-
+    heapf=HeapFile(Utils.build_path("tables",table_name))
     Logger.log_debug(f"\n== MODELO ACÚSTICO ==")
     build_acoustic_model(table_name, field_name, num_clusters)
     Logger.log_debug("Acoustic model built.")
-
+    #heapf.print_all()
     Logger.log_spimi(f"\n== ÍNDICE ACÚSTICO ==")
     build_acoustic_index(table_name, field_name)
+    #heapf.print_all()
+
     Logger.log_spimi("Acoustic index built.")
+    query_audio = "000002.mp3"
 
-    query_audio = "000207.mp3"
-
+    heapf=HeapFile(Utils.build_path("tables",table_name))
     Logger.log_spimi("\n--- Sequential Search ---")
     results_seq = knn_search(table_name, field_name, query_audio, k)
-    for record, similarity in results_seq:
-        Logger.log_spimi(f"  - Record: {record}, Similarity: {similarity:.4f}")
+    for record in results_seq:
+        #Logger.log_spimi(f"  - Record: {record}, Similarity: {similarity:.4f}")
+        Logger.log_spimi(f"  - Record: {heapf.fetch_record_by_offset(record)}")
 
     Logger.log_spimi("\n--- Index Search ---")
     results_idx = knn_search_index(table_name, field_name, query_audio, k)
-    for record, similarity in results_idx:
-        Logger.log_spimi(f"  - Record: {record}, Similarity: {similarity:.4f}")
-
+    Logger.spimi_enabled=True
+    for record in results_idx:
+        #Logger.log_spimi(f"  - Record: {record}, Similarity: {similarity:.4f}")
+        Logger.log_spimi(f"  - Record: {heapf.fetch_record_by_offset(record)}")
+    
+    """
     results_seq_gt_0 = {r[0].values[0] for r in results_seq if r[1] > 0}
     results_idx_gt_0 = {r[0].values[0] for r in results_idx if r[1] > 0}
 
@@ -162,6 +169,7 @@ def main():
         Logger.log_info(f"Sequential len: {len(results_seq)}")
         Logger.log_info(f"Index len:      {len(results_idx)}")
 
+    """
     """
     drop_table(table_name)
     for suffix in [
