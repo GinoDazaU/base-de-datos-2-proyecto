@@ -384,46 +384,23 @@ La búsqueda textual se implementa usando el modelo vectorial con similitud de c
 
 ## 6. Evaluación y Comparación de Desempeño
 
-### 6.1. Comparación de Búsqueda en Texto
+Los experimentos de rendimiento y calidad de búsqueda se realizaron tanto para consultas textuales como multimedia (audio), comparando nuestra base de datos propia con PostgreSQL y sus extensiones especializadas.
 
-Para ver el experimento completo y los resultados detallados, consulta el siguiente notebook:
+Toda la metodología, resultados y análisis detallado se encuentran en el siguiente notebook:
 
-**[Notebook de Evaluación de Desempeño: Búsqueda en Texto](./backend/database/testing/performance_testing.ipynb)**
+**[Notebook de Evaluación de Desempeño](./backend/database/testing/performance_testing.ipynb)**
 
-Este notebook contiene:
-- Descripción del dataset utilizado
-- Procesamiento de datos
-- Ejecución de consultas equivalentes en ambos sistemas
-- Resultados y análisis comparativo
+### Resumen de los experimentos
 
-### 6.2. Comparación en Búsqueda Multimedia
+- **Búsqueda en texto:**  
+  - Se comparó el índice invertido SPIMI de nuestra base de datos con el índice GIN de PostgreSQL sobre el dataset Fake and Real News de Kaggle.  
+  - Se midieron tiempos de inserción, consulta y calidad de resultados para distintos tamaños de colección.
 
-- Comparación entre KNN secuencial y KNN con índice invertido  
-- Tiempo de ejecución y escalabilidad  
-- Comparación con herramientas externas (pgVector, Faiss)  
-- Discusión sobre la maldición de la dimensionalidad
+- **Búsqueda multimedia (audio):**  
+  - Se evaluaron los algoritmos KNN secuencial y KNN con indexación invertida sobre histogramas de palabras acústicas, y se comparó con la búsqueda vectorial en PostgreSQL usando pgvector.  
+  - Se analizaron la eficiencia y el impacto de la dimensionalidad en el rendimiento.
 
-### 6.3. Resultados
-
-- Tablas comparativas  
-- Gráficos de rendimiento  
-- Análisis crítico
-
-- Tiempo de consulta 8nn:
-
-## ⏱ Comparación de rendimiento: KNN Secuencial vs. KNN Indexado
-
-| N canciones | Tiempo KNN Secuencial (s) | Tiempo KNN Indexado (s) |
-|-------------|----------------------------|--------------------------|
-| 1,000       | 21.7                       | 2.3                      |
-| 2,000       | 43.3                       | 3.1                      |
-| 4,000       | 86.7                       | 4.5                      |
-| 8,000       | 173.3                      | 6.8                      |
-| 16,000      | 346.7                      | 9.4                      |
-| 32,000      | 693.3                      | 13.5                     |
-| 64,000      | 1386.7                     | 18.9                     |
-
----
+Para ver tablas, gráficos y observaciones completas, revisa el notebook enlazado arriba.
 
 ## 7. Datasets Utilizados
 
