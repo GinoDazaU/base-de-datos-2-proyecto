@@ -37,15 +37,11 @@ def cosine_similarity(vec1, vec2):
     return dot_product / (norm_vec1 * norm_vec2)
 
 
-def knn_sequential_search(
-    query_audio_path: str, heap_file: HeapFile, field_name: str, k: int
-) -> set[int]:
+def knn_sequential_search(query_audio_path: str, heap_file: HeapFile, field_name: str, k: int) -> set[int]:
     """
     Realiza una búsqueda k-NN secuencial en un campo de audio.
     """
-    Logger.log_debug(
-        f"Starting sequential audio KNN for {query_audio_path} in {heap_file.table_name}.{field_name}"
-    )
+    Logger.log_debug(f"Starting sequential audio KNN for {query_audio_path} in {heap_file.table_name}.{field_name}")
 
     Logger.log_debug("Heapfile data is:")
     # heap_file.print_all()
@@ -69,14 +65,10 @@ def knn_sequential_search(
     priority_queue = []
 
     sound_handler = Sound(heap_file.filename.replace(".dat", ""), field_name)
-    histogram_handler = HistogramFile(
-        heap_file.filename.replace(".dat", ""), field_name
-    )
+    histogram_handler = HistogramFile(heap_file.filename.replace(".dat", ""), field_name)
 
     for record in heap_file.get_all_records():
-        sound_offset, histogram_offset = record.values[
-            heap_file.schema.index((field_name, "sound"))
-        ]
+        sound_offset, histogram_offset = record.values[heap_file.schema.index((field_name, "sound"))]
 
         if histogram_offset == -1:
             continue
@@ -100,9 +92,11 @@ def knn_sequential_search(
     results = sorted(priority_queue, key=lambda x: x[0], reverse=True)
 
     # Obtener los registros completos
-    offsets: set[int] = {
-        heap_file.search_offsets_by_field("id", record_id)[0]
-        for _, record_id in results
-    }
+    offsets: set[int] = {heap_file.search_offsets_by_field("id", record_id)[0] for _, record_id in results}
+
+    similarity_scores = [tup[0] for tup in results]
+
+    Logger.log_debug(f"Audio sequential KNN obtained offsets: {offsets}")
+    Logger.log_debug(f"Audio sequentialKNN results: {similarity_scores}")
 
     return offsets

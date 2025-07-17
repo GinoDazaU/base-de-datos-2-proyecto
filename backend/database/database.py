@@ -54,9 +54,7 @@ def get_table_schema(table_name: str):
     if not check_table_exists(table_name):
         raise Exception(f"Table {table_name} does not exist")
     table_path = _table_path(table_name)
-    heap = HeapFile(
-        table_path
-    )  # TODO: load schema from file instead of creating heapfile
+    heap = HeapFile(table_path)  # TODO: load schema from file instead of creating heapfile
     return heap.schema
 
 
@@ -65,9 +63,7 @@ def get_table_schema(table_name: str):
 # =============================================================================
 
 
-def create_table(
-    table_name: str, schema: List[Tuple[str, str]], primary_key: str
-) -> None:
+def create_table(table_name: str, schema: List[Tuple[str, str]], primary_key: str) -> None:
     for field_name, field_type in schema:
         if field_type.upper() == "SOUND":
             HistogramFile.build_file(_table_path(table_name), field_name)
@@ -84,9 +80,7 @@ def create_table_with_btree_pk(
     create_btree_idx(table_name, primary_key)
 
 
-def create_table_with_hash_pk(
-    table_name: str, schema: List[Tuple[str, str]], primary_key: str
-) -> None:
+def create_table_with_hash_pk(table_name: str, schema: List[Tuple[str, str]], primary_key: str) -> None:
     create_table(table_name, schema, primary_key)
     create_hash_idx(table_name, primary_key)
 
@@ -108,9 +102,7 @@ def drop_table(table_name: str) -> None:
     os.remove(f"{table_path}.dat")
 
     if not os.path.exists(f"{table_path}.schema.json"):
-        raise FileNotFoundError(
-            f"El archivo de esquema de la tabla '{table_name}' no existe."
-        )
+        raise FileNotFoundError(f"El archivo de esquema de la tabla '{table_name}' no existe.")
 
     os.remove(f"{table_path}.schema.json")
 
@@ -222,22 +214,15 @@ def delete_record(table_name: str, pk_value):
 # =============================================================================
 
 
-def search_by_field(
-    table_name: str, field_name: str, value, crude_data=False
-) -> List[Record]:
-    return HeapFile(_table_path(table_name)).search_by_field(
-        field_name, value, crude_data
-    )
+def search_by_field(table_name: str, field_name: str, value, crude_data=False) -> List[Record]:
+    return HeapFile(_table_path(table_name)).search_by_field(field_name, value, crude_data)
 
 
 def search_seq_idx(table_name: str, field_name: str, field_value):
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
     seq_idx = SequentialIndex(table_path, field_name)
-    return [
-        heap.fetch_record_by_offset(r.offset)
-        for r in seq_idx.search_record(field_value)
-    ]
+    return [heap.fetch_record_by_offset(r.offset) for r in seq_idx.search_record(field_value)]
 
 
 def search_btree_idx(table_name: str, field_name: str, field_value):
@@ -260,9 +245,7 @@ def search_hash_idx(table_name: str, field_name: str, field_value):
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
     hidx = ExtendibleHashIndex(table_path, field_name)
-    return [
-        heap.fetch_record_by_offset(r.offset) for r in hidx.search_record(field_value)
-    ]
+    return [heap.fetch_record_by_offset(r.offset) for r in hidx.search_record(field_value)]
 
 
 def search_seq_idx_range(table_name: str, field_name: str, start_value, end_value):
@@ -273,9 +256,7 @@ def search_seq_idx_range(table_name: str, field_name: str, start_value, end_valu
     return [heap.fetch_record_by_offset(rec.offset) for rec in records]
 
 
-def search_rtree_record(
-    table_name: str, field_name: str, point: Tuple[Union[int, float], ...]
-) -> List[Record]:
+def search_rtree_record(table_name: str, field_name: str, point: Tuple[Union[int, float], ...]) -> List[Record]:
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
     rtree = RTreeIndex(table_path, field_name)
@@ -309,9 +290,7 @@ def search_rtree_radius(
     return [heap.fetch_record_by_offset(rec.offset) for rec in records]
 
 
-def search_rtree_knn(
-    table_name: str, field_name: str, point: Tuple[Union[int, float], ...], k: int
-) -> List[Record]:
+def search_rtree_knn(table_name: str, field_name: str, point: Tuple[Union[int, float], ...], k: int) -> List[Record]:
     table_path = _table_path(table_name)
     heap = HeapFile(table_path)
     rtree = RTreeIndex(table_path, field_name)
@@ -348,9 +327,7 @@ def _update_secondary_indexes(table_path: str, record: Record, offset: int) -> N
             RTreeIndex(table_path, field_name).insert_record(idx_rec)
 
 
-def _remove_from_secondary_indexes(
-    table_path: str, record: Optional[Record], offset: int
-) -> None:
+def _remove_from_secondary_indexes(table_path: str, record: Optional[Record], offset: int) -> None:
     if record is None:
         return  # No hay registro para eliminar
     schema = record.schema
@@ -394,9 +371,7 @@ def create_btree_idx(table_name: str, field_name: str):
 def create_hash_idx(table_name: str, field_name: str):
     path = _table_path(table_name)
     ExtendibleHashIndex.build_index(path, HeapFile(path).extract_index, field_name)
-    print(
-        f"Índice Extendible Hash creado para '{field_name}' en la tabla '{table_name}'."
-    )
+    print(f"Índice Extendible Hash creado para '{field_name}' en la tabla '{table_name}'.")
 
 
 def create_rtree_idx(table_name: str, field_name: str):
@@ -416,9 +391,7 @@ def drop_seq_idx(table_name: str, field_name: str) -> None:
     if not os.path.exists(idx_path):
         raise FileNotFoundError(f"Index file {idx_path} does not exist.")
     os.remove(idx_path)
-    print(
-        f"Índice secuencial para '{field_name}' en la tabla '{table_name}' eliminado."
-    )
+    print(f"Índice secuencial para '{field_name}' en la tabla '{table_name}' eliminado.")
 
 
 def drop_btree_idx(table_name: str, field_name: str) -> None:
@@ -432,16 +405,12 @@ def drop_btree_idx(table_name: str, field_name: str) -> None:
 
 def drop_hash_idx(table_name: str, field_name: str) -> None:
     table_path = _table_path(table_name)
-    idx_paths = (
-        f"{table_path}.{field_name}.hash.{ext}" for ext in ("db", "idx", "tree")
-    )
+    idx_paths = (f"{table_path}.{field_name}.hash.{ext}" for ext in ("db", "idx", "tree"))
     for idx_path in idx_paths:
         if not os.path.exists(idx_path):
             raise FileNotFoundError(f"Index file {idx_path} does not exist.")
         os.remove(idx_path)
-    print(
-        f"Índice Extendible Hash para '{field_name}' en la tabla '{table_name}' eliminado."
-    )
+    print(f"Índice Extendible Hash para '{field_name}' en la tabla '{table_name}' eliminado.")
 
 
 def drop_rtree_idx(table_name: str, field_name: str) -> None:
@@ -492,9 +461,7 @@ def check_btree_idx(table_name: str, field_name: str) -> bool:
 
 def check_hash_idx(table_name: str, field_name: str) -> bool:
     table_path = _table_path(table_name)
-    idx_paths = (
-        f"{table_path}.{field_name}.hash.{ext}" for ext in ("db", "idx", "tree")
-    )
+    idx_paths = (f"{table_path}.{field_name}.hash.{ext}" for ext in ("db", "idx", "tree"))
     return all(os.path.exists(idx_path) for idx_path in idx_paths)
 
 
@@ -544,9 +511,7 @@ def build_acoustic_index(table_name: str, field_name: str) -> None:
     """
     from indexing.SpimiAudio import SpimiAudioIndexer
 
-    indexer = SpimiAudioIndexer(
-        _table_path, field_name, index_table_name=f"{table_name}.{field_name}"
-    )
+    indexer = SpimiAudioIndexer(_table_path, field_name, index_table_name=f"{table_name}.{field_name}")
     indexer.build_index(table_name)
 
 
@@ -588,9 +553,7 @@ def build_acoustic_model(table_name: str, field_name: str, num_clusters: int):
         histogram = build_histogram(audio_path, codebook)
         if histogram is not None:
             # Convertir el histograma a una lista de tuplas (ID, COUNT)
-            histogram_tuples = [
-                (i, int(count)) for i, count in enumerate(histogram) if count > 0
-            ]
+            histogram_tuples = [(i, int(count)) for i, count in enumerate(histogram) if count > 0]
 
             # Insertar el histograma y obtener el offset
             histogram_offset = histogram_handler.insert(histogram_tuples)
@@ -604,9 +567,7 @@ def build_acoustic_model(table_name: str, field_name: str, num_clusters: int):
             heap_file.update_record(record)
 
 
-def knn_search(
-    table_name: str, field_name: str, query_audio_path: str, k: int
-) -> list[tuple[Record, float]]:
+def knn_search(table_name: str, field_name: str, query_audio_path: str, k: int) -> set[int]:
     """
     Realiza una búsqueda k-NN en un campo de audio.
     """
@@ -617,9 +578,7 @@ def knn_search(
     return knn_sequential_search(query_audio_path, heap_file, field_name, k)
 
 
-def knn_search_index(
-    table_name: str, field_name: str, query_audio_path: str, k: int
-) -> list[tuple[Record, float]]:
+def knn_search_index(table_name: str, field_name: str, query_audio_path: str, k: int) -> set[int]:
     """
     Realiza una búsqueda k-NN en un campo de audio utilizando el índice invertido.
     """
@@ -666,17 +625,11 @@ def knn_search_index(
                 relevant_docs.add(doc_id)
 
                 if doc_id not in doc_norms:
-                    norms_table = HeapFile(
-                        _table_path(f"{table_name}.{field_name}_norms")
-                    )
-                    hash_idx_norms = ExtendibleHashIndex(
-                        _table_path(f"{table_name}.{field_name}_norms"), "doc_id"
-                    )
+                    norms_table = HeapFile(_table_path(f"{table_name}.{field_name}_norms"))
+                    hash_idx_norms = ExtendibleHashIndex(_table_path(f"{table_name}.{field_name}_norms"), "doc_id")
                     norm_records = hash_idx_norms.search_record(doc_id)
                     if norm_records:
-                        record = norms_table.fetch_record_by_offset(
-                            norm_records[0].offset
-                        )
+                        record = norms_table.fetch_record_by_offset(norm_records[0].offset)
                         doc_norms[doc_id] = record.values[1]
 
     # 4. Calcular similitud coseno para documentos relevantes
@@ -712,11 +665,17 @@ def knn_search_index(
             results.append((matching_recs[0], 0.0))
 
     results.sort(key=lambda x: x[1], reverse=True)
-    offsets = set(offset for (offset, sim) in results)
 
-    Logger.log_debug(f"Obtained offsets: {offsets}")
+    offsets = set()
+    similarity_scores = {}
+    for offset, sim in results:
+        offsets.add(offset)
+        similarity_scores[offset] = sim
 
-    return results
+    Logger.log_debug(f"Audio indexed KNN obtained offsets: {offsets}")
+    Logger.log_debug(f"Audio indexed KNN results: {similarity_scores}")
+
+    return offsets
 
 
 def search_text(table_name: str, query: str, k: int = 5) -> set[int]:
@@ -793,9 +752,7 @@ def search_text(table_name: str, query: str, k: int = 5) -> set[int]:
 
     # 7. Recuperar registros completos
     heap_file = HeapFile(_table_path(table_name))
-    offsets: set[int] = {
-        heap_file.search_offsets_by_field("id", doc_id)[0] for doc_id, _ in top_k
-    }
+    offsets: set[int] = {heap_file.search_offsets_by_field("id", doc_id)[0] for doc_id, _ in top_k}
     Logger.log_debug(f"Obtained offsets: {offsets}")
 
     return offsets

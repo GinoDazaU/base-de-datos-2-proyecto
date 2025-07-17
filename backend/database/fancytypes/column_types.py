@@ -27,6 +27,7 @@ class OperationType(Enum):
     IN = auto()  # IN
     BETWEEN = auto()  # BETWEEN
     ATAT = auto()  # @@ for text search
+    DISTANCE = auto()  # <-> for distance search
 
     def __str__(self):
         match self:
@@ -48,6 +49,10 @@ class OperationType(Enum):
                 return "BETWEEN"
             case OperationType.ATAT:
                 return "@@"
+            case OperationType.DISTANCE:
+                return "<->"
+            case _:
+                raise ValueError(f"Unknown operation type: {self.name}")
 
 
 class IndexType(Enum):

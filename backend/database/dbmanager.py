@@ -62,9 +62,9 @@ class DBManager:
 
     @staticmethod
     def check_table_exists(table_name: str) -> bool:
-        return os.path.exists(
-            DBManager.table_path(table_name) + ".dat"
-        ) and os.path.exists(DBManager.table_path(table_name) + ".schema.json")
+        return os.path.exists(DBManager.table_path(table_name) + ".dat") and os.path.exists(
+            DBManager.table_path(table_name) + ".schema.json"
+        )
 
     @staticmethod
     def verify_table_exists(table_name: str) -> None:
@@ -127,9 +127,7 @@ class DBManager:
             case "sound":
                 return ColumnType.SOUND
             case _:
-                raise ValueError(
-                    f"Unknown format '{format}' for field '{field_name}' in table '{table_name}'"
-                )
+                raise ValueError(f"Unknown format '{format}' for field '{field_name}' in table '{table_name}'")
 
     @staticmethod
     def type_to_format(column_type: ColumnType, varchar_length: int = 0) -> str:
@@ -227,9 +225,7 @@ class DBManager:
     def create_seq_idx(table_name: str, field_name: str) -> None:
         type = DBManager.get_field_type(table_name, field_name)
         if type not in (ColumnType.INT, ColumnType.FLOAT, ColumnType.VARCHAR):
-            raise ValueError(
-                f"Unsupported index for field {field_name} of type {type} in table {table_name}."
-            )
+            raise ValueError(f"Unsupported index for field {field_name} of type {type} in table {table_name}.")
         path = DBManager.table_path(table_name)
         SequentialIndex.build_index(path, HeapFile(path).extract_index, field_name)
 
@@ -237,9 +233,7 @@ class DBManager:
     def create_hash_idx(table_name: str, field_name: str) -> None:
         type = DBManager.get_field_type(table_name, field_name)
         if type not in (ColumnType.INT, ColumnType.VARCHAR):
-            raise ValueError(
-                f"Unsupported hash index for field {field_name} of type {type} in table {table_name}."
-            )
+            raise ValueError(f"Unsupported hash index for field {field_name} of type {type} in table {table_name}.")
         path = DBManager.table_path(table_name)
         ExtendibleHashIndex.build_index(path, HeapFile(path).extract_index, field_name)
 
@@ -247,9 +241,7 @@ class DBManager:
     def create_btree_idx(table_name: str, field_name: str) -> None:
         type = DBManager.get_field_type(table_name, field_name)
         if type not in (ColumnType.INT, ColumnType.FLOAT, ColumnType.VARCHAR):
-            raise ValueError(
-                f"Índice B+Tree no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}."
-            )
+            raise ValueError(f"Índice B+Tree no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}.")
         path = DBManager.table_path(table_name)
         BPlusTreeIndex.build_index(path, HeapFile(path).extract_index, field_name)
 
@@ -257,9 +249,7 @@ class DBManager:
     def create_rtree_idx(table_name: str, field_name: str) -> None:
         type = DBManager.get_field_type(table_name, field_name)
         if type not in (ColumnType.POINT2D, ColumnType.POINT3D):
-            raise ValueError(
-                f"Índice R-Tree no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}."
-            )
+            raise ValueError(f"Índice R-Tree no soportado para el campo {field_name} de tipo {type} en la tabla {table_name}.")
         path = DBManager.table_path(table_name)
         RTreeIndex.build_index(path, HeapFile(path).extract_index, field_name)
 
@@ -286,9 +276,7 @@ class DBManager:
     @staticmethod
     def check_hash_idx(table_name: str, field: str) -> bool:
         table_path = DBManager.table_path(table_name)
-        index_paths = (
-            f"{table_path}.{field}.btree.{ext}" for ext in ("idx", "db", "tree")
-        )
+        index_paths = (f"{table_path}.{field}.btree.{ext}" for ext in ("idx", "db", "tree"))
         return all(os.path.exists(index_path) for index_path in index_paths)
 
     @staticmethod
@@ -309,42 +297,28 @@ class DBManager:
         table_path = DBManager.table_path(table_name)
         index_path = f"{table_path}.{field}.seq.idx"
         if not os.path.exists(index_path):
-            raise FileNotFoundError(
-                f"Índice secuencial para {field} en la tabla {table_name} no existe."
-            )
+            raise FileNotFoundError(f"Índice secuencial para {field} en la tabla {table_name} no existe.")
         os.remove(index_path)
-        Logger.log_dbmanager(
-            f"Índice secuencial para {field} en la tabla {table_name} eliminado con éxito."
-        )
+        Logger.log_dbmanager(f"Índice secuencial para {field} en la tabla {table_name} eliminado con éxito.")
 
     @staticmethod
     def drop_hash_idx(table_name: str, field) -> None:
         table_path = DBManager.table_path(table_name)
-        index_paths = (
-            f"{table_path}.{field}.btree.{ext}" for ext in ("idx", "db", "tree")
-        )
+        index_paths = (f"{table_path}.{field}.btree.{ext}" for ext in ("idx", "db", "tree"))
         for index_path in index_paths:
             if not os.path.exists(index_path):
-                raise FileNotFoundError(
-                    f"Índice Hash para {field} en la tabla {table_name} no existe."
-                )
+                raise FileNotFoundError(f"Índice Hash para {field} en la tabla {table_name} no existe.")
             os.remove(index_path)
-        Logger.log_dbmanager(
-            f"Índice hash para {field} en la tabla {table_name} eliminado con éxito."
-        )
+        Logger.log_dbmanager(f"Índice hash para {field} en la tabla {table_name} eliminado con éxito.")
 
     @staticmethod
     def drop_btree_idx(table_name: str, field) -> None:
         table_path = DBManager.table_path(table_name)
         index_path = f"{table_path}.{field}.btree.idx"
         if not os.path.exists(index_path):
-            raise FileNotFoundError(
-                f"Índice B+Tree para {field} en la tabla {table_name} no existe."
-            )
+            raise FileNotFoundError(f"Índice B+Tree para {field} en la tabla {table_name} no existe.")
         os.remove(index_path)
-        Logger.log_dbmanager(
-            f"Índice B+Tree para {field} en la tabla {table_name} eliminado con éxito."
-        )
+        Logger.log_dbmanager(f"Índice B+Tree para {field} en la tabla {table_name} eliminado con éxito.")
 
     @staticmethod
     def drop_rtree_idx(table_name: str, field) -> None:
@@ -352,13 +326,9 @@ class DBManager:
         index_paths = (f"{table_path}.{field}.rtree.{ext}" for ext in ("idx", "dat"))
         for index_path in index_paths:
             if not os.path.exists(index_path):
-                raise FileNotFoundError(
-                    f"Índice R-Tree para {field} en la tabla {table_name} no existe."
-                )
+                raise FileNotFoundError(f"Índice R-Tree para {field} en la tabla {table_name} no existe.")
             os.remove(index_path)
-        Logger.log_dbmanager(
-            f"Índice R-Tree para {field} en la tabla {table_name} eliminado con éxito."
-        )
+        Logger.log_dbmanager(f"Índice R-Tree para {field} en la tabla {table_name} eliminado con éxito.")
 
     @staticmethod
     def drop_all_indexes_field(table_name: str, field: str) -> None:
@@ -404,9 +374,7 @@ class DBManager:
                 RTreeIndex(table_path, field_name).insert_record(idx_rec)
 
     @staticmethod
-    def remove_from_secondary_indexes(
-        table_path: str, record: Optional[Record], offset: int
-    ) -> None:
+    def remove_from_secondary_indexes(table_path: str, record: Optional[Record], offset: int) -> None:
         if not record:
             return
         schema = record.schema
@@ -424,23 +392,17 @@ class DBManager:
             elif idx_type == "hash":
                 ExtendibleHashIndex(table_path, field_name).delete_record(value, offset)
             elif idx_type == "btree":
-                BPlusTreeIndexWrapper(table_path, field_name).delete_record(
-                    value, offset
-                )
+                BPlusTreeIndexWrapper(table_path, field_name).delete_record(value, offset)
             elif idx_type == "rtree":
                 RTreeIndex(table_path, field_name).delete_record(value, offset)
 
     # region Index search
     @staticmethod
     def search_by_field(table_name: str, field_name: str, value):
-        return HeapFile(DBManager.table_path(table_name)).search_by_field(
-            field_name, value
-        )
+        return HeapFile(DBManager.table_path(table_name)).search_by_field(field_name, value)
 
     @staticmethod
-    def search_seq_idx(
-        table_name: str, field_name: str, value: Union[int, float, str]
-    ) -> Set[int]:
+    def search_seq_idx(table_name: str, field_name: str, value: Union[int, float, str]) -> Set[int]:
         table_path = DBManager.table_path(table_name)
         idx = SequentialIndex(table_path, field_name)
         return {r.offset for r in idx.search_record(value)}
@@ -456,9 +418,7 @@ class DBManager:
         return {r.offset for r in idx.search_range(range[0], range[1])}
 
     @staticmethod
-    def search_hash_idx(
-        table_name: str, field_name: str, value: Union[int, str]
-    ) -> Set[int]:
+    def search_hash_idx(table_name: str, field_name: str, value: Union[int, str]) -> Set[int]:
         table_path = DBManager.table_path(table_name)
         idx = ExtendibleHashIndex(table_path, field_name)
         return {r.offset for r in idx.search_record(value)}
@@ -480,9 +440,7 @@ class DBManager:
         return set(idx.range_search(range[0], range[1]))
 
     @staticmethod
-    def search_rtree_record(
-        table_name: str, field_name: str, point: Tuple[Union[int, float], ...]
-    ) -> Set[int]:
+    def search_rtree_record(table_name: str, field_name: str, point: Tuple[Union[int, float], ...]) -> Set[int]:
         table_path = DBManager.table_path(table_name)
         idx = RTreeIndex(table_path, field_name)
         return {r.offset for r in idx.search_record(point)}
@@ -524,9 +482,7 @@ class DBManager:
         schema: List[Tuple[str, str]],
         primary_key: Optional[str] = None,
     ) -> None:
-        HeapFile.build_file(
-            DBManager.table_path(table_name), schema, primary_key
-        )  # "text" might be sent here
+        HeapFile.build_file(DBManager.table_path(table_name), schema, primary_key)  # "text" might be sent here
         Logger.log_dbmanager(f"Tabla {table_name} creada con éxito.")
 
     @staticmethod
@@ -566,21 +522,15 @@ class DBManager:
 
     # region Parser helpers
 
-    def create_table(
-        self, table_name: str, columns: list[CreateColumnDefinition]
-    ) -> None:
+    def create_table(self, table_name: str, columns: list[CreateColumnDefinition]) -> None:
         DBManager.verify_table_not_exists(table_name)
         schema: SchemaType = []
         pk: str = ""
         for column in columns:
-            format: str = DBManager.type_to_format(
-                column.column_type, column.varchar_length
-            )
+            format: str = DBManager.type_to_format(column.column_type, column.varchar_length)
             if column.is_pk:
                 if pk:
-                    raise ValueError(
-                        f"Multiple primary keys defined for table '{table_name}'."
-                    )
+                    raise ValueError(f"Multiple primary keys defined for table '{table_name}'.")
                 pk = column.column_name
             schema.append((column.column_name, format))
         for field_name, field_type in schema:
@@ -594,9 +544,7 @@ class DBManager:
             raise ValueError(f"La tabla '{table_name}' no existe.")
         DBManager.drop_table_aux(table_name)
 
-    def create_index(
-        self, table_name: str, field_name: str, index_type: IndexType
-    ) -> None:
+    def create_index(self, table_name: str, field_name: str, index_type: IndexType) -> None:
         DBManager.verify_table_exists(table_name)
         match index_type:
             case IndexType.SEQUENTIAL:
@@ -614,9 +562,7 @@ class DBManager:
             case _:
                 raise ValueError(f"Unknown index type: {index_type}")
 
-    def drop_index(
-        self, table_name: str, field_name: str, index_type: IndexType
-    ) -> None:
+    def drop_index(self, table_name: str, field_name: str, index_type: IndexType) -> None:
         DBManager.verify_table_exists(table_name)
         match index_type:
             case IndexType.SEQUENTIAL:
@@ -638,9 +584,7 @@ class DBManager:
         schema_dict: dict = dict(schema)
         for column, value in zip(columns, values):
             if column not in schema_dict:
-                raise ValueError(
-                    f"Column '{column}' does not exist in table '{table_name}'."
-                )
+                raise ValueError(f"Column '{column}' does not exist in table '{table_name}'.")
             column_type = DBManager.get_field_type(table_name, column)
             type_map: dict = {
                 ColumnType.INT: [int],
@@ -653,9 +597,7 @@ class DBManager:
                 ColumnType.SOUND: [str],
             }
             if type(value) not in type_map[column_type]:
-                raise TypeError(
-                    f"Value for column '{column}' must be of type {column_type}, got {type(value)}."
-                )
+                raise TypeError(f"Value for column '{column}' must be of type {column_type}, got {type(value)}.")
 
         # the values array might not be in the correct order for schema
         value_dict = dict(zip(columns, values, strict=True))
@@ -665,14 +607,10 @@ class DBManager:
             if name in value_dict:
                 ordered_values.append(value_dict[name])
             else:
-                raise ValueError(
-                    f"Column '{name}' is missing in the insert statement. NULL is not supported yet."
-                )
+                raise ValueError(f"Column '{name}' is missing in the insert statement. NULL is not supported yet.")
         DBManager.insert_record(table_name, Record(schema, ordered_values))
 
-    def fetch_condition_offsets(
-        self, table_name: str, left_value, op: OperationType, right_value, k: int
-    ) -> set[int]:
+    def fetch_condition_offsets(self, table_name: str, left_value, op: OperationType, right_value, k: int) -> set[int]:
         Logger.log_debug(f"LEFT SIDE TYPE: {type(left_value)}")
         Logger.log_debug(f"RIGHT SIDE TYPE: {type(right_value)}")
 
@@ -692,6 +630,12 @@ class DBManager:
             left_is_col = True
         if type(right_value) is str and right_value.startswith("§"):
             right_is_col = True
+
+        # override offsets for audio search too lol
+        if op == OperationType.DISTANCE and left_is_col and isinstance(right_value, str):
+            bica_es_poder = left_value[1:].split(".")[1]
+            Logger.log_debug(f"ENTERED DISTANCE SEARCH, {bica_es_poder}, {right_value}, {k}")
+            return self.do_audio_knn(table_name, bica_es_poder, right_value, k)
 
         # override offsets for text search
         if op == OperationType.ATAT and left_is_col and isinstance(right_value, str):
@@ -719,22 +663,17 @@ class DBManager:
                     case _:
                         raise ValueError(f"Unsupported operation {op}")
 
-            # If true, return all offsets; else, return empty set
             return self.fetch_all_offsets(table_name) if cmp() else set()
 
-        # If left is column, use left as field and right as value
+        # if left is column use left as field and right as value
         if left_is_col:
-            field = left_value[1:].split(".")[
-                1
-            ]  # remove the '§' and get the column name
+            field = left_value[1:].split(".")[1]  # remove § and get column name
             value = right_value
-        # If right is column, use right as field and left as value
+        # if right is column use right as field and left as value
         elif right_is_col:
-            field = right_value[1:].split(".")[
-                1
-            ]  # remove the '§' and get the column name
+            field = right_value[1:].split(".")[1]  # remove the § and get the column name
             value = left_value
-            # Reverse the operator for correct logic (e.g., 18 < age => age > 18)
+            # reverse toperator in case right is column
             op = {
                 OperationType.GREATER_THAN: OperationType.LESS_THAN,
                 OperationType.LESS_THAN: OperationType.GREATER_THAN,
@@ -742,7 +681,7 @@ class DBManager:
                 OperationType.LESS__EQUAL: OperationType.GREATER__EQUAL,
             }.get(op, op)
 
-        # Priority map for index usage
+        # mega big brain move
         priority_map: dict[OperationType, list[tuple]] = {
             OperationType.EQUAL: [
                 (self.check_hash_idx, self.search_hash_idx),
@@ -768,12 +707,12 @@ class DBManager:
             ],
         }
 
-        # Try index-based search
+        # mucha gracia jesval
         for check, search in priority_map.get(op, []):
             if check(table_name, field):
                 return search(table_name, field, value)
 
-        # Fallback: scan heap
+        # fallback sequential scan on heap
         def cmp(v):
             match op:
                 case OperationType.EQUAL:
@@ -791,9 +730,7 @@ class DBManager:
                 case OperationType.BETWEEN:
                     return value[0] <= v <= value[1]
                 case _:
-                    raise ValueError(
-                        f"Unsupported operation {op} for field {field} in table {table_name}."
-                    )
+                    raise ValueError(f"Unsupported operation {op} for field {field} in table {table_name}.")
 
         heap: HeapFile = DBManager.get_table_heap(table_name)
         all_pairs: List[Tuple[Union[int, float, str], int]] = heap.extract_index(field)
@@ -812,14 +749,10 @@ class DBManager:
         if columns:
             for col in columns:
                 if col not in names:
-                    raise ValueError(
-                        f"Column '{col}' does not exist in table '{table_name}'."
-                    )
+                    raise ValueError(f"Column '{col}' does not exist in table '{table_name}'.")
         else:
             columns = names
-        positions: list[int] = [
-            DBManager.get_column_position(table_name, col) for col in columns
-        ]
+        positions: list[int] = [DBManager.get_column_position(table_name, col) for col in columns]
         results: list[list] = []
         for offset in offsets:
             record: Record = heap.fetch_record_by_offset(offset)
@@ -841,13 +774,10 @@ class DBManager:
         return values
 
     def audio_spimi_exists(self, table_name: str, field_name: str) -> bool:
-        return os.path.exists(
-            os.path.join(self.tables_dir, f"{table_name}.{field_name}_norms.dat")
-        )
+        return os.path.exists(os.path.join(self.tables_dir, f"{table_name}.{field_name}_norms.dat"))
 
-    def do_audio_knn(
-        self, table_name: str, column_name: str, query_text: str, k: int
-    ) -> set[int]:
+    def do_audio_knn(self, table_name: str, column_name: str, query_text: str, k: int) -> set[int]:
+        Logger.log_debug("ALL GOOD")
         if self.audio_spimi_exists(table_name, column_name):
             return knn_search_index(table_name, column_name, query_text, k)
         else:
