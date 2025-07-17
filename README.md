@@ -402,23 +402,14 @@ Toda la metodología, resultados y análisis detallado se encuentran en el sigui
 
 Para ver tablas, gráficos y observaciones completas, revisa el notebook enlazado arriba.
 
-## 7. Datasets Utilizados
+## 7. Repositorio y Ejecución
 
-- Nombre del dataset  
-- Fuente (Kaggle, GitHub, etc.)  
-- Descripción del contenido  
-- Número de registros / imágenes / audios
-
----
-
-## 9. Repositorio y Ejecución
-
-### 9.1. Requisitos del Sistema
+### 7.1. Requisitos del Sistema
 
 - Python / versiones  
 - NextJS / dependencias  
 
-### 9.2. Instrucciones de Ejecución
+### 7.2. Instrucciones de Ejecución
 
 ```bash
 # Clonar el repositorio
@@ -466,7 +457,7 @@ Ejecutar la aplicacion
 npm run dev
 ```
 
-## 10. Visualización de frontend
+## 8. Visualización de frontend
 
 
 Disponemos de un panel donde agregar los audios visualizarlos
