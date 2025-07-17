@@ -483,3 +483,6 @@ De la misma forma podremos abrir todo el contenido de un campo textual para su v
     <img src="./images/08.jpg" alt="Proveedores Cloud" style="width: 100%;">
 </div>
 
+## 9. Presentación
+
+[Presentación en Google Slides](https://docs.google.com/presentation/d/1Sh3_Zdu2sY2Ezr4iffNdDeMJokrGmOBElVXuhvixoRQ/edit?usp=sharing)
