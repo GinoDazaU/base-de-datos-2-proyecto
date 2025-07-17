@@ -814,7 +814,19 @@ if __name__ == "__main__":
     ]
 
     spimi_test = [
-        "SELECT id, content FROM article WHERE content @@ 'ball' LIMIT 3",
+        "CREATE TABLE IF NOT EXISTS article(id INT PRIMARY KEY, content TEXT);",
+        "INSERT INTO article(id, content) VALUES(1, 'The cat jumped over the wall.');",
+        "INSERT INTO article(id, content) VALUES(2, 'The dog barked at the cat.');",
+        "INSERT INTO article(id, content) VALUES(3, 'The wall was painted blue yesterday.');",
+        "INSERT INTO article(id, content) VALUES(4, 'Yesterday the cat slept on the sofa.');",
+        "INSERT INTO article(id, content) VALUES(5, 'The dog chased the ball across the yard.');",
+        "INSERT INTO article(id, content) VALUES(6, 'The blue ball rolled under the sofa.');",
+        "INSERT INTO article(id, content) VALUES(7, 'The yard was quiet except for the cat.');",
+        "INSERT INTO article(id, content) VALUES(8, 'The wall and the yard were cleaned yesterday.');",
+        "INSERT INTO article(id, content) VALUES(9, 'The dog and cat shared the sofa.');",
+        "INSERT INTO article(id, content) VALUES(10, 'The ball bounced off the wall.');",
+        "CREATE SPIMI ON article;",
+        "SELECT id, content FROM article WHERE content @@ 'dog' LIMIT 5",
     ]  # Should return ids 1, 2, 4, 7, 9
 
     audio_spimi_test = [

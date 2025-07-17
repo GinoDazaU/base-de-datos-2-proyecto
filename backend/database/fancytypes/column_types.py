@@ -69,5 +69,7 @@ class QueryResult:
         self.data = data
 
     def __repr__(self):
+        if self.data is None:
+            return f"QueryResult(success = {self.success},{' ' if self.success else ''} message = {self.message})"
         data = tabulate(self.data, headers="keys", tablefmt="psql")
-        return f"QueryResult(success={self.success}, message='{self.message}', data=\n{data})"
+        return f"QueryResult(success = {self.success},{' ' if self.success else ''} message = {self.message})\n{data}"
