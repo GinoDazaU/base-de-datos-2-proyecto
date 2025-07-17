@@ -13,7 +13,7 @@ Statement -> CreateStatement | SelectStatement | DropStatement | DeleteStatement
 Identifier refers to anything that is not a token itself, like table names, types, etc
 
 
-CreateStatement -> CreateTableStatement | CreateIndexStatement
+CreateStatement -> CreateTableStatement | CreateIndexStatement | CreateSpimiStatement
 
 CreateTableStatement -> CREATE TABLE UserIdentifier(CreateTableColumns)
 CreateTableColumns -> CreateTableColumnDefinition[,CreateTableColumns]
@@ -22,7 +22,8 @@ DataType- > INT | FLOAT | VARCHAR | DATE | BOOL | POINT2D | POINT3D | DATE
 ArgumentList -> [PRIMARY KEY] [USING Method]
 
 CreateIndexStatement -> CREATE INDEX UserIdentifier ON UserIdentifier(UserIdentifier) [USING Method]
-Method -> {BPLUSTREE | EXTENDIBLEHASH | RTREE | SEQUENTIAL}
+Method -> {BPLUSTREE | EXTENDIBLEHASH | RTREE | SEQUENTIAL | SPIMIAUDIO}
+CreateSpimiStatement -> CREATE SPIMI ON UserIdentifier
 
 ==================================================================================
 
@@ -82,3 +83,11 @@ ValueList -> Constant[, ValueList]
 UpdateStatement -> UPDATE UserIdentifier SET UpdateList [WhereStatement]
 UpdateList -> SetExp[,UpdateList]
 SetExp -> UserIdentifier = ValueExp
+
+==================================================================================
+
+KnnStatement -> KNN(INT_CONSTANT) SOUND(STRING_CONSTANT) IN UserIdentifier.UserIdentifier
+
+==================================================================================
+
+TextSearchStatement -> TEXTSEARCH(INT_CONSTANT) STRING_CONSTANT IN UserIdentifier

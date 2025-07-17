@@ -1,6 +1,13 @@
 import numpy as np
 import pickle
 from multimedia.feature_extraction import extract_features
+import os
+import sys
+from global_utils import Utils
+from logger import Logger
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 
 def build_histogram(audio_path, codebook):
     """
@@ -19,9 +26,9 @@ def build_histogram(audio_path, codebook):
 
     # Predecir los clusters para cada descriptor
     from sklearn.metrics.pairwise import euclidean_distances
+
     distances = euclidean_distances(features.reshape(1, -1), codebook["centroids"])
     labels = np.argmin(distances, axis=1)
-
 
     # Construir el histograma
     histogram = np.zeros(len(codebook["centroids"]))
@@ -29,6 +36,7 @@ def build_histogram(audio_path, codebook):
         histogram[label] += 1
 
     return histogram
+
 
 def load_codebook(table_name, field_name):
     """
@@ -41,10 +49,12 @@ def load_codebook(table_name, field_name):
     Returns:
         dict: Codebook.
     """
-    codebook_path = f"{table_name}.{field_name}.codebook.pkl"
+    codebook_path = Utils.build_path(
+        "tables", f"{table_name}.{field_name}.codebook.pkl"
+    )
     try:
         with open(codebook_path, "rb") as f:
             return pickle.load(f)
     except FileNotFoundError:
-        print(f"Codebook not found at {codebook_path}")
+        Logger.log_error(f"Codebook not found at {codebook_path}")
         return None

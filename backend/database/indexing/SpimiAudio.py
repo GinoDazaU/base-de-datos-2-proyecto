@@ -6,16 +6,25 @@ import sys
 import json
 import heapq
 from typing import Dict, List, Tuple, DefaultDict, Any, Union, Iterator
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..",".."))) # Esto permite importar archivos de padres y no solo de hijos
 from storage.HeapFile import HeapFile
 from storage.HistogramFile import HistogramFile
 from .ExtendibleHashIndex import ExtendibleHashIndex
 from storage.Record import Record
+from global_utils import Utils
+from logger import Logger
+from pympler import asizeof  # <-- IMPORTANTE
+
 
 class SpimiAudioIndexer:
-    def __init__(self, _table_path, field_name: str, block_dir: str = "audio_index_blocks", index_table_name: str = "acoustic_index"):
-        self.block_dir = os.path.join("backend/database/tables", block_dir)
+    def __init__(
+        self,
+        _table_path,
+        field_name: str,
+        block_dir: str = "audio_index_blocks",
+        index_table_name: str = "acoustic_index",
+    ):
+        self.block_dir = Utils.build_path("tables", block_dir)
         self.index_table_name = index_table_name
         self._table_path = _table_path
         self.field_name = field_name
@@ -29,15 +38,17 @@ class SpimiAudioIndexer:
 
     def _process_documents(self, table_name: str) -> None:
         heapfile = HeapFile(self._table_path(table_name))
-        histogram_handler = HistogramFile(self._table_path(table_name), self.field_name)
+        histogram_handler = HistogramFile(table_name, self.field_name)
 
         term_dict = defaultdict(lambda: defaultdict(int))
         block_number = 0
-        memory_limit = 4 * 1024  # 4 KB
+        memory_limit = 1024 # 1024  # 1 KB
 
         for record in heapfile.get_all_records():
             self.doc_count += 1
-            _, histogram_offset = record.values[heapfile.schema.index((self.field_name, "SOUND"))]
+            _, histogram_offset = record.values[
+                heapfile.schema.index((self.field_name, "sound"))
+            ]
 
             if histogram_offset == -1:
                 continue
@@ -45,9 +56,9 @@ class SpimiAudioIndexer:
             histogram = histogram_handler.read(histogram_offset)
 
             for centroid_id, count in histogram:
-                term_dict[centroid_id][record.values[0]] += count # values[0] is the id
+                term_dict[centroid_id][record.values[0]] += count  # values[0] is the id
 
-                if sys.getsizeof(term_dict) >= memory_limit:
+                if asizeof.asizeof(term_dict) >= memory_limit:
                     self._dump_block(term_dict, block_number)
                     block_number += 1
                     term_dict.clear()
@@ -56,8 +67,13 @@ class SpimiAudioIndexer:
             self._dump_block(term_dict, block_number)
         self.total_blocks = block_number + 1
 
-    def _dump_block(self, term_dict: Dict[int, Dict[int, int]], block_number: int) -> None:
+    def _dump_block(
+        self, term_dict: Dict[int, Dict[int, int]], block_number: int
+    ) -> None:
         path = os.path.join(self.block_dir, f"block_{block_number}.json")
+        Logger.spimi_enabled=True
+        Logger.log_spimi(path)
+
         sorted_dict = dict(sorted(term_dict.items()))
         with open(path, "w") as f:
             json.dump(sorted_dict, f)
@@ -66,17 +82,21 @@ class SpimiAudioIndexer:
         """Merge externo con streaming que evita cargar todo en RAM"""
         # 1. Inicializar el archivo final de índice
         schema_idx = [("term", "i"), ("postings", "text")]
-        HeapFile.build_file(self._table_path(self.index_table_name), schema_idx, "term")
-        heapfile_idx = HeapFile(self._table_path(self.index_table_name))
+        HeapFile.build_file(Utils.build_path("tables",self.index_table_name), schema_idx, "term")
+        heapfile_idx = HeapFile(Utils.build_path("tables",self.index_table_name))
 
         # 2. Inicializar el archivo de normas
         schema_norms = [("doc_id", "i"), ("norm", "f")]
         norms_table_name = f"{self.index_table_name}_norms"
-        HeapFile.build_file(self._table_path(norms_table_name), schema_norms, "doc_id")
-        heapfile_norms = HeapFile(self._table_path(norms_table_name))
+        HeapFile.build_file(Utils.build_path("tables",norms_table_name), schema_norms, "doc_id")
+        heapfile_norms = HeapFile(Utils.build_path("tables",norms_table_name))
 
         # 3. Inicializar estructuras para el merge
-        block_paths = [os.path.join(self.block_dir, f) for f in os.listdir(self.block_dir) if f.endswith(".json")]
+        block_paths = [
+            os.path.join(self.block_dir, f)
+            for f in os.listdir(self.block_dir)
+            if f.endswith(".json")
+        ]
         block_iters = []
         current_terms = {}
         heap = []
@@ -121,10 +141,12 @@ class SpimiAudioIndexer:
                 tf = 1 + math.log10(freq) if freq > 0 else 0
                 tfidf = round(tf * idf, 5)
                 postings_tfidf.append((doc_id, tfidf))
-                document_norms[doc_id] += tfidf ** 2
+                document_norms[doc_id] += tfidf**2
 
             # Guardar término en el índice final (streaming)
-            postings_json = json.dumps([[doc_id, tfidf] for doc_id, tfidf in postings_tfidf])
+            postings_json = json.dumps(
+                [[doc_id, tfidf] for doc_id, tfidf in postings_tfidf]
+            )
             record = Record(schema_idx, [term, postings_json])
             heapfile_idx.insert_record_free(record)
 
@@ -148,12 +170,12 @@ class SpimiAudioIndexer:
         ExtendibleHashIndex.build_index(
             self._table_path(self.index_table_name),
             lambda field_name: heapfile_idx.extract_index(field_name),
-            "term"
+            "term",
         )
         ExtendibleHashIndex.build_index(
             self._table_path(norms_table_name),
             lambda field_name: heapfile_norms.extract_index(field_name),
-            "doc_id"
+            "doc_id",
         )
 
     def _clean_blocks(self):

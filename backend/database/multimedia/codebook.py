@@ -4,6 +4,13 @@ from sklearn.cluster import KMeans
 from storage.HeapFile import HeapFile
 from multimedia.feature_extraction import extract_features
 from storage.Sound import Sound
+import sys
+import os
+from global_utils import Utils
+from logger import Logger
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 
 def build_codebook(heap_file: HeapFile, field_name: str, num_clusters: int):
     """
@@ -17,26 +24,28 @@ def build_codebook(heap_file: HeapFile, field_name: str, num_clusters: int):
     all_features = []
     sound_handler = Sound(f"{heap_file.table_name}", field_name)
     for record in heap_file.get_all_records():
-        sound_offset, _ = record.values[heap_file.schema.index((field_name, "SOUND"))]
+        sound_offset, _ = record.values[heap_file.schema.index((field_name, "sound"))]
         audio_path = sound_handler.read(sound_offset)
         features = extract_features(audio_path)  # No longer need to prepend path
         if features is not None:
             all_features.append(features)
 
     if not all_features:
-        print("No features extracted, cannot build codebook.")
+        Logger.log_error("No features extracted, cannot build codebook.")
         return
 
     # Convertir a numpy array
     all_features = np.vstack(all_features)
 
     # Aplicar K-Means
-    kmeans = KMeans(n_clusters=num_clusters, random_state=0, n_init=10).fit(all_features)
+    kmeans = KMeans(n_clusters=num_clusters, random_state=0, n_init=10).fit(
+        all_features
+    )
 
     # Crear el codebook
     codebook = {
         "centroids": kmeans.cluster_centers_,
-        "doc_freq": np.zeros(num_clusters)
+        "doc_freq": np.zeros(num_clusters),
     }
 
     # Calcular la frecuencia de documentos
@@ -46,10 +55,11 @@ def build_codebook(heap_file: HeapFile, field_name: str, num_clusters: int):
         for label in unique_labels:
             codebook["doc_freq"][label] += 1
 
-
     # Guardar el codebook
-    codebook_path = f"{heap_file.table_name}.{field_name}.codebook.pkl"
+    codebook_path = Utils.build_path(
+        "tables", f"{heap_file.table_name}.{field_name}.codebook.pkl"
+    )
     with open(codebook_path, "wb") as f:
         pickle.dump(codebook, f)
 
-    print(f"Codebook created and saved to {codebook_path}")
+    Logger.log_debug(f"Codebook created and saved to {codebook_path}")

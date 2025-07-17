@@ -1,6 +1,12 @@
 import librosa
 import numpy as np
 import os
+import sys
+from global_utils import Utils
+from logger import Logger
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 
 def extract_features(audio_path):
     """
@@ -14,8 +20,7 @@ def extract_features(audio_path):
     """
     try:
         # Completa la ruta del archivo de audio si solo se proporciona el nombre
-        if not os.path.isabs(audio_path) and not audio_path.startswith("backend/database/sounds/"):
-            audio_path = os.path.join("backend/database/sounds/", audio_path)
+        audio_path = Utils.build_path("sounds", audio_path)
 
         y, sr = librosa.load(audio_path)
 
@@ -36,5 +41,5 @@ def extract_features(audio_path):
 
         return features
     except Exception as e:
-        print(f"Error extracting features from {audio_path}: {e}")
+        Logger.log_error(f"Error extracting features from {audio_path}: {e}")
         return None
