@@ -57,6 +57,8 @@ def operation_token_to_type(token_type: TokenType) -> OperationType:
         return OperationType.GREATER__EQUAL
     elif token_type == TokenType.LESS_EQUAL:
         return OperationType.LESS__EQUAL
+    elif token_type == TokenType.ATAT:  # @@ for text search
+        return OperationType.ATAT
     else:
         raise ValueError(f"Invalid operation token: {token_type}")
 
@@ -460,7 +462,12 @@ class Parser:
             table_name = None
             if self.match(TokenType.DOT):
                 table_name = column_name
+                if not self.match(TokenType.USER_IDENTIFIER):
+                    raise SyntaxError(
+                        f"Expected table name after '.', found {self.curr.text}"
+                    )
                 column_name = self.prev.text
+            Logger.log_parser(f"Column expression: {column_name}, table: {table_name}")
             return ColumnExpression(column_name, table_name)
         else:
             # TODO: handle function calls or nested subqueries (im not doing nested subqueries ty very much)
@@ -496,6 +503,7 @@ class Parser:
             or self.match(TokenType.LESS_EQUAL)
             or self.match(TokenType.GREATER_THAN)
             or self.match(TokenType.GREATER_EQUAL)
+            or self.match(TokenType.ATAT)  # @@ for text search
         ):
             op: OperationType = operation_token_to_type(self.prev.token_type)
             right_expr = self.parse_value_expression()
@@ -737,6 +745,7 @@ class Parser:
             return self.parse_update_statement()
         elif self.match(TokenType.DELETE):
             return self.parse_delete_statement()
+
         elif self.match(TokenType.KNN):
             return self.parse_knn_statement()  # TODO: implement KNN statement
         elif self.match(TokenType.TEXTSEARCH):
@@ -817,7 +826,7 @@ if __name__ == "__main__":
         "INSERT INTO article(id, content) VALUES(9, 'The dog and cat shared the sofa.');",
         "INSERT INTO article(id, content) VALUES(10, 'The ball bounced off the wall.');",
         "CREATE SPIMI ON article;",
-        "TEXTSEARCH(5) 'cat' IN article;",
+        "SELECT id, content FROM article WHERE content @@ 'ball' LIMIT 3",
     ]  # Should return ids 1, 2, 4, 7, 9
 
     audio_spimi_test = [
@@ -833,14 +842,15 @@ if __name__ == "__main__":
     ]
 
     test_query_sets = [
-        audio_spimi_test,
+        spimi_test,
     ]
 
     printVisitor = PrintVisitor()
     runVisitor = RunVisitor()
     instruction_delay = 0.1
 
-    Logger.debug_enabled = True
+    # Logger.debug_enabled = True
+    # Logger.info_enabled = True
 
     for queryset in test_query_sets:
         for query in queryset:
@@ -851,6 +861,4 @@ if __name__ == "__main__":
             # printVisitor.visit_program(program)
             result: QueryResult = runVisitor.visit_program(program)
             print(result)
-            if result.data is not None:
-                print(f"Query Result: {result.data}")
-            time.sleep(instruction_delay)
+            # time.sleep(instruction_delay)

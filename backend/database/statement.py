@@ -71,6 +71,11 @@ class ColumnExpression(ValueExpression):
     def __init__(self, column_name: str, table_name: str = None):
         self.column_name = column_name
         self.table_name = table_name
+        self.value = (
+            self.table_name + "." + self.column_name
+            if self.table_name
+            else self.column_name
+        )
 
     def __str__(self):
         if self.table_name:

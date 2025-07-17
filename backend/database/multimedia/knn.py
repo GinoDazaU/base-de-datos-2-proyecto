@@ -10,6 +10,7 @@ from logger import Logger
 import sys
 import os
 from storage import Record
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
@@ -38,7 +39,7 @@ def cosine_similarity(vec1, vec2):
 
 def knn_sequential_search(
     query_audio_path: str, heap_file: HeapFile, field_name: str, k: int
-) -> list[tuple[Record, float]]:
+) -> set[int]:
     """
     Realiza una búsqueda k-NN secuencial en un campo de audio.
     """
@@ -47,7 +48,7 @@ def knn_sequential_search(
     )
 
     Logger.log_debug("Heapfile data is:")
-    #heap_file.print_all()
+    # heap_file.print_all()
 
     codebook = load_codebook(heap_file.table_name, field_name)
     if codebook is None:
@@ -99,6 +100,9 @@ def knn_sequential_search(
     results = sorted(priority_queue, key=lambda x: x[0], reverse=True)
 
     # Obtener los registros completos
-    offsets: tuple[Record, float] = [(heap_file.search_by_field("id", record_id)[0],s) for s, record_id in results]
+    offsets: set[int] = {
+        heap_file.search_offsets_by_field("id", record_id)[0]
+        for _, record_id in results
+    }
 
     return offsets

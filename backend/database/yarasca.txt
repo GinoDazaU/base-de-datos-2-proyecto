@@ -37,7 +37,8 @@ WhereStatement -> WHERE OrCondition
 OrCondition -> AndCondition [OR OrCondition]
 AndCondition -> NotCondition [AND AndCondition]
 NotCondition -> [NOT] PrimaryCondition
-PrimaryCondition -> ConstantCondition | SimpleComparison | BetweenComparison | (OrCondition)
+TextSearchComparison -> ColumnReference @@ STRING_CONSTANT
+PrimaryCondition -> ConstantCondition | SimpleComparison | BetweenComparison | TextSearchComparison | (OrCondition)
 ConstantCondition -> TRUE | FALSE
 
 SimpleComparison -> ValueExp ComparisonOp ValueExp

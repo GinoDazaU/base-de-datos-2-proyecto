@@ -46,6 +46,7 @@ class Logger:
     def log_parser(message: str):
         if Logger.parser_enabled:
             print(f"[PARSER] {message}")
+
     @staticmethod
     def log_spimi(message: str):
         if Logger.spimi_enabled:

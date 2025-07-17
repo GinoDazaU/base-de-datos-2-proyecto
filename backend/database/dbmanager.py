@@ -3,6 +3,8 @@ import glob
 import time
 
 from typing import List, Tuple, Optional, Union, Set
+
+import pandas as pd
 from storage.HeapFile import HeapFile
 from storage.Record import Record
 from indexing.SequentialIndex import SequentialIndex
@@ -13,14 +15,24 @@ from indexing.RTreeIndex import RTreeIndex
 from indexing.Spimi import SPIMIIndexer
 from indexing.SpimiAudio import SpimiAudioIndexer
 from fancytypes.column_types import IndexType, ColumnType
-from statement import CreateColumnDefinition
+from statement import (
+    BoolExpression,
+    ColumnExpression,
+    CreateColumnDefinition,
+    FloatExpression,
+    IntExpression,
+    Point2DExpression,
+    Point3DExpression,
+    StringExpression,
+    ValueExpression,
+)
 from fancytypes.schema import SchemaType
 from fancytypes.column_types import OperationType
 from database import build_acoustic_model
 from storage.Sound import Sound
 from storage.HistogramFile import HistogramFile
 
-from database import build_acoustic_model, search_text, knn_search
+from database import build_acoustic_model, search_text, knn_search, knn_search_index
 
 from logger import Logger
 
@@ -142,64 +154,73 @@ class DBManager:
                 raise ValueError(f"Unsupported column type: {column_type}")
 
     @staticmethod
-    def validate_compare_value(
-        table_name: str, field_name: str, op: OperationType, value
-    ) -> None:
-        col_type: ColumnType = DBManager.get_field_type(table_name, field_name)
+    def validate_simplecomparison(
+        table_name: str,
+        left_value: ValueExpression,
+        op: OperationType,
+        right_value: ValueExpression,
+    ) -> bool:
+        left_type = None
+        right_type = None
 
-        def check_scalar(v) -> bool:
-            match col_type:
-                case ColumnType.INT:
-                    return isinstance(v, int)
-                case ColumnType.FLOAT:
-                    return isinstance(v, (int, float))
-                case ColumnType.BOOL:
-                    return isinstance(v, bool)
-                case ColumnType.VARCHAR:
-                    return isinstance(v, str)
-                case ColumnType.POINT2D:
-                    return (
-                        isinstance(v, tuple)
-                        and len(v) == 2
-                        and all(isinstance(x, (int, float)) for x in v)
-                    )
-                case ColumnType.POINT3D:
-                    return (
-                        isinstance(v, tuple)
-                        and len(v) == 3
-                        and all(isinstance(x, (int, float)) for x in v)
-                    )
-                case _:
-                    return False
+        exp_to_type = {
+            IntExpression: ColumnType.INT,
+            FloatExpression: ColumnType.FLOAT,
+            BoolExpression: ColumnType.BOOL,
+            StringExpression: ColumnType.VARCHAR,
+            Point2DExpression: ColumnType.POINT2D,
+            Point3DExpression: ColumnType.POINT3D,
+        }
 
-        if op in (
-            OperationType.EQUAL,
-            OperationType.NOT_EQUAL,
-            OperationType.GREATER_THAN,
-            OperationType.LESS_THAN,
-            OperationType.GREATER__EQUAL,
-            OperationType.LESS__EQUAL,
+        if type(left_value) is ColumnExpression:
+            left_value = (ColumnExpression)(left_value)
+            DBManager.verify_table_exists(left_value.column_name)
+            field_name = left_value.column_name
+            left_type: ColumnType = DBManager.get_field_type(table_name, field_name)
+        else:
+            left_type = exp_to_type.get(type(left_value))
+
+        if type(right_value) is ColumnExpression:
+            right_value = (ColumnExpression)(right_value)
+            DBManager.verify_table_exists(right_value.column_name)
+            field_name = right_value.column_name
+            right_type: ColumnType = DBManager.get_field_type(table_name, field_name)
+        else:
+            right_type = exp_to_type.get(type(right_value))
+
+        # ATAT: only TEXT @@ VARCHAR
+        if op == OperationType.ATAT:
+            return left_type == ColumnType.TEXT and right_type == ColumnType.VARCHAR
+
+        # poins equality only
+        if left_type in (ColumnType.POINT2D, ColumnType.POINT3D) or right_type in (
+            ColumnType.POINT2D,
+            ColumnType.POINT3D,
         ):
-            if not check_scalar(value):
-                raise TypeError(
-                    f"Invalid value for comparison with column '{field_name}' of type {col_type}, got {value!r}."
-                )
-            return
+            if op != OperationType.EQUAL:
+                return False
+            return left_type == right_type and left_type in (
+                ColumnType.POINT2D,
+                ColumnType.POINT3D,
+            )
 
-        if op is OperationType.BETWEEN:
-            if (
-                not isinstance(value, tuple)
-                or len(value) != 2
-                or not all(check_scalar(v) for v in value)
+        # Equality: any two equal types, plus int/float interchangeably, plus VARCHAR/TEXT
+        if op == OperationType.EQUAL or op == OperationType.NOT_EQUAL:
+            if left_type == right_type:
+                return True
+            if left_type in (ColumnType.INT, ColumnType.FLOAT) and right_type in (
+                ColumnType.INT,
+                ColumnType.FLOAT,
             ):
-                raise TypeError(
-                    f"Invalid value for BETWEEN, expected a pair of values matching {col_type}, got {value!r}."
-                )
-            return
+                return True
+            if (left_type, right_type) in [
+                (ColumnType.VARCHAR, ColumnType.TEXT),
+                (ColumnType.TEXT, ColumnType.VARCHAR),
+            ]:
+                return True
+            return False
 
-        raise ValueError(
-            f"Unsupported operation {op} for column '{field_name}' of type {col_type}."
-        )
+        return left_type == right_type
 
     # region Index creation
     @staticmethod
@@ -249,7 +270,11 @@ class DBManager:
     @staticmethod
     def create_spimi_audio_idx(table_name: str, field_name) -> None:
         build_acoustic_model(DBManager.table_path(table_name), field_name, 1)
-        SpimiAudioIndexer(DBManager.table_path, field_name,index_table_name=f"{table_name}.{field_name}").build_index(table_name)
+        SpimiAudioIndexer(
+            DBManager.table_path,
+            field_name,
+            index_table_name=f"{table_name}.{field_name}",
+        ).build_index(table_name)
 
     # region Index verification
     @staticmethod
@@ -646,11 +671,78 @@ class DBManager:
         DBManager.insert_record(table_name, Record(schema, ordered_values))
 
     def fetch_condition_offsets(
-        self, table_name: str, field: str, op: OperationType, value
+        self, table_name: str, left_value, op: OperationType, right_value, k: int
     ) -> set[int]:
-        DBManager.verify_table_exists(table_name)
-        DBManager.validate_compare_value(table_name, field, op, value)
+        Logger.log_debug(f"LEFT SIDE TYPE: {type(left_value)}")
+        Logger.log_debug(f"RIGHT SIDE TYPE: {type(right_value)}")
 
+        # I AM NOT VALIDATING TYPES I AM NOT VALIDATING TYPES, I AM NOT VALIDATING TYPES
+        # I. AM. NOT. VALIDATING. TYPES.
+
+        # both sides have actual values now, no references, just raw values (ints, strings)
+        # column references have the format §table_name.column_name
+        # pretty hacky solution but it'll do
+
+        # if neither side is a column, just evaluate the condition
+
+        left_is_col = False
+        right_is_col = False
+
+        if type(left_value) is str and left_value.startswith("§"):
+            left_is_col = True
+        if type(right_value) is str and right_value.startswith("§"):
+            right_is_col = True
+
+        # override offsets for text search
+        if op == OperationType.ATAT and left_is_col and isinstance(right_value, str):
+            return self.do_text_search(table_name, right_value, k)
+
+        # if neither side is a column, eval directly
+        if not left_is_col and not right_is_col:
+
+            def cmp():
+                match op:
+                    case OperationType.EQUAL:
+                        return left_value == right_value
+                    case OperationType.NOT_EQUAL:
+                        return left_value != right_value
+                    case OperationType.GREATER_THAN:
+                        return left_value > right_value
+                    case OperationType.LESS_THAN:
+                        return left_value < right_value
+                    case OperationType.GREATER__EQUAL:
+                        return left_value >= right_value
+                    case OperationType.LESS__EQUAL:
+                        return left_value <= right_value
+                    case OperationType.BETWEEN:
+                        return right_value[0] <= left_value <= right_value[1]
+                    case _:
+                        raise ValueError(f"Unsupported operation {op}")
+
+            # If true, return all offsets; else, return empty set
+            return self.fetch_all_offsets(table_name) if cmp() else set()
+
+        # If left is column, use left as field and right as value
+        if left_is_col:
+            field = left_value[1:].split(".")[
+                1
+            ]  # remove the '§' and get the column name
+            value = right_value
+        # If right is column, use right as field and left as value
+        elif right_is_col:
+            field = right_value[1:].split(".")[
+                1
+            ]  # remove the '§' and get the column name
+            value = left_value
+            # Reverse the operator for correct logic (e.g., 18 < age => age > 18)
+            op = {
+                OperationType.GREATER_THAN: OperationType.LESS_THAN,
+                OperationType.LESS_THAN: OperationType.GREATER_THAN,
+                OperationType.GREATER__EQUAL: OperationType.LESS__EQUAL,
+                OperationType.LESS__EQUAL: OperationType.GREATER__EQUAL,
+            }.get(op, op)
+
+        # Priority map for index usage
         priority_map: dict[OperationType, list[tuple]] = {
             OperationType.EQUAL: [
                 (self.check_hash_idx, self.search_hash_idx),
@@ -676,10 +768,12 @@ class DBManager:
             ],
         }
 
+        # Try index-based search
         for check, search in priority_map.get(op, []):
             if check(table_name, field):
                 return search(table_name, field, value)
 
+        # Fallback: scan heap
         def cmp(v):
             match op:
                 case OperationType.EQUAL:
@@ -703,12 +797,15 @@ class DBManager:
 
         heap: HeapFile = DBManager.get_table_heap(table_name)
         all_pairs: List[Tuple[Union[int, float, str], int]] = heap.extract_index(field)
-
         return {off for v, off in all_pairs if cmp(v)}
 
     def records_projection(
-        self, table_name: str, offsets: set[int], columns: list[str] | None
-    ) -> list[list]:
+        self,
+        table_name: str,
+        offsets: set[int],
+        columns: list[str] | None,
+        as_df: bool = False,
+    ) -> list[list] | pd.DataFrame:
         heap: HeapFile = DBManager.get_table_heap(table_name)
         schema: list[tuple] = DBManager.get_table_schema(table_name)
         names = [name for name, _ in schema]
@@ -727,14 +824,34 @@ class DBManager:
         for offset in offsets:
             record: Record = heap.fetch_record_by_offset(offset)
             results.append([record.values[pos] for pos in positions])
-        return results
+        return pd.DataFrame(results, columns=columns) if as_df else results
 
     def fetch_all_offsets(self, table_name: str) -> set[int]:
         DBManager.verify_table_exists(table_name)
         return HeapFile(DBManager.table_path(table_name)).get_all_offsets()
 
-    def do_audio_knn(self, table_name: str, column_name: str, query_text: str, k: int) -> set[int]:
-        return knn_search(table_name, column_name, query_text, k)
+    def column_to_list(self, table_name: str, column_name: str) -> list:
+        offsets = DBManager().fetch_all_offsets(table_name)
+        pos = DBManager.get_column_position(table_name, column_name)
+        heap = DBManager.get_table_heap(table_name)
+        values = []
+        for offset in offsets:
+            record = heap.fetch_record_by_offset(offset)
+            values.append(record.values[pos])
+        return values
+
+    def audio_spimi_exists(self, table_name: str, field_name: str) -> bool:
+        return os.path.exists(
+            os.path.join(self.tables_dir, f"{table_name}.{field_name}_norms.dat")
+        )
+
+    def do_audio_knn(
+        self, table_name: str, column_name: str, query_text: str, k: int
+    ) -> set[int]:
+        if self.audio_spimi_exists(table_name, column_name):
+            return knn_search_index(table_name, column_name, query_text, k)
+        else:
+            return knn_search(table_name, column_name, query_text, k)
 
     def do_text_search(self, table_name: str, query_text: str, k: int) -> set[int]:
         return search_text(table_name, query_text, k)

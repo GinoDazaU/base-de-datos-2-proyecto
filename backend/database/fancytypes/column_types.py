@@ -25,6 +25,7 @@ class OperationType(Enum):
     LESS__EQUAL = auto()  # <=
     IN = auto()  # IN
     BETWEEN = auto()  # BETWEEN
+    ATAT = auto()  # @@ for text search
 
     def __str__(self):
         match self:
@@ -44,6 +45,8 @@ class OperationType(Enum):
                 return "IN"
             case OperationType.BETWEEN:
                 return "BETWEEN"
+            case OperationType.ATAT:
+                return "@@"
 
 
 class IndexType(Enum):

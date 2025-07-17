@@ -39,6 +39,7 @@ from statement import (
 )
 
 from logger import Logger
+import pandas as pd
 
 
 def fmt_to_column_type(fmt: str) -> ColumnType:
@@ -93,6 +94,7 @@ class RunVisitor:
 
     def __init__(self):
         self.current_table: str = ""
+        self.k = 10  # default
 
     def generic_visit(self, node):
         if isinstance(node, Statement):
@@ -124,17 +126,17 @@ class RunVisitor:
         return (expr.x, expr.y, expr.z)
 
     def visit_columnexpression(self, expr: ColumnExpression):
-        return expr.column_name
+        return "§" + self.current_table + "." + expr.column_name
 
     def visit_program(self, program: Program):
         lastResult: QueryResult = None
         for st in program.statement_list:
             lastResult = st.accept(self)
-            """
+
             Logger.log_info(
                 f"Program parsed successfully with final message: {lastResult.message}"
             )
-            """
+
         return lastResult
 
     def visit_createtablestatement(self, st: CreateTableStatement):
@@ -217,6 +219,9 @@ class RunVisitor:
 
     def visit_selectstatement(self, st: SelectStatement):
         try:
+            if st.limit is not None:
+                Logger.log_debug(f"SET K TO {st.limit}")
+                self.k = st.limit  # awful
             self.current_table = st.from_table
             offsets: set[int] = (
                 DBManager().fetch_all_offsets(st.from_table)
@@ -224,9 +229,12 @@ class RunVisitor:
                 else st.where_statement.accept(self)
             )
             columns = None if st.select_all else st.select_columns
-            results = DBManager().records_projection(st.from_table, offsets, columns)
+            results: pd.DataFrame = DBManager().records_projection(
+                st.from_table, offsets, columns, as_df=True
+            )
             if st.limit is not None:
                 results = results[: st.limit]
+
             Logger.log_info(
                 f"Selected {len(results)} records from table '{st.from_table}'."
             )
@@ -247,7 +255,9 @@ class RunVisitor:
         return st.or_condition.accept(self)
 
     def visit_knnstatement(self, st: KnnStatement):
-        return DBManager().do_audio_knn(st.table_name, st.column_name, st.query_path, st.k)
+        return DBManager().do_audio_knn(
+            st.table_name, st.column_name, st.query_path, st.k
+        )
 
     def visit_textsearchstatement(self, st: TextSearchStatement):
         return DBManager().do_text_search(st.table_name, st.query_text, st.k)
@@ -282,18 +292,18 @@ class RunVisitor:
         )
 
     def visit_simplecomparison(self, condition: SimpleComparison):
-        column = condition.left_expression.accept(self)
-        value = condition.right_expression.accept(self)
+        left_value = condition.left_expression.accept(self)
+        right_value = condition.right_expression.accept(self)
         return DBManager().fetch_condition_offsets(
-            self.current_table, column, condition.operator, value
+            self.current_table, left_value, condition.operator, right_value, self.k
         )
 
     def visit_betweencomparison(self, condition: BetweenComparison):
-        column = condition.left_expression.accept(self)
+        left_value = condition.left_expression.accept(self)
         low = condition.lower_bound.accept(self)
         high = condition.upper_bound.accept(self)
         return DBManager().fetch_condition_offsets(
-            self.current_table, column, OperationType.BETWEEN, (low, high)
+            self.current_table, left_value, OperationType.BETWEEN, (low, high), self.k
         )
 
     def visit_primarycondition(self, condition: PrimaryCondition):

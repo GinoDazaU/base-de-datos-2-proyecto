@@ -24,6 +24,8 @@ from indexing.Spimi import SPIMIIndexer
 from indexing.utils_spimi import preprocess
 import pickle
 
+from logger import Logger
+
 # Ruta base para almacenamiento de tablas
 base_dir = os.path.dirname(os.path.abspath(__file__))
 tables_dir = os.path.join(base_dir, "tables")
@@ -542,7 +544,9 @@ def build_acoustic_index(table_name: str, field_name: str) -> None:
     """
     from indexing.SpimiAudio import SpimiAudioIndexer
 
-    indexer = SpimiAudioIndexer(_table_path, field_name,index_table_name=f"{table_name}.{field_name}")
+    indexer = SpimiAudioIndexer(
+        _table_path, field_name, index_table_name=f"{table_name}.{field_name}"
+    )
     indexer.build_index(table_name)
 
 
@@ -606,6 +610,7 @@ def knn_search(
     """
     Realiza una búsqueda k-NN en un campo de audio.
     """
+    Logger.log_debug("Starting sequential audio KNN")
     from multimedia.knn import knn_sequential_search
 
     heap_file = HeapFile(_table_path(table_name))
@@ -618,6 +623,7 @@ def knn_search_index(
     """
     Realiza una búsqueda k-NN en un campo de audio utilizando el índice invertido.
     """
+    Logger.log_debug("Starting indexed audio KNN")
     from multimedia.histogram import build_histogram, load_codebook
     from multimedia.knn import cosine_similarity, tf_idf
     import numpy as np
@@ -660,7 +666,9 @@ def knn_search_index(
                 relevant_docs.add(doc_id)
 
                 if doc_id not in doc_norms:
-                    norms_table = HeapFile(_table_path(f"{table_name}.{field_name}_norms"))
+                    norms_table = HeapFile(
+                        _table_path(f"{table_name}.{field_name}_norms")
+                    )
                     hash_idx_norms = ExtendibleHashIndex(
                         _table_path(f"{table_name}.{field_name}_norms"), "doc_id"
                     )
@@ -689,7 +697,7 @@ def knn_search_index(
     source_table = HeapFile(_table_path(table_name))
 
     for doc_id, score in top_k:
-        matching_recs = source_table.search_by_field("id", doc_id)
+        matching_recs = source_table.search_offsets_by_field("id", doc_id)
         if matching_recs:
             results.append((matching_recs[0], score))
 
@@ -699,13 +707,16 @@ def knn_search_index(
     missing_doc_ids = all_doc_ids - found_doc_ids
 
     for doc_id in missing_doc_ids:
-        matching_recs = source_table.search_by_field("id", doc_id)
+        matching_recs = source_table.search_offsets_by_field("id", doc_id)
         if matching_recs:
             results.append((matching_recs[0], 0.0))
 
     results.sort(key=lambda x: x[1], reverse=True)
+    offsets = set(offset for (offset, sim) in results)
 
-    return results[:k]
+    Logger.log_debug(f"Obtained offsets: {offsets}")
+
+    return results
 
 
 def search_text(table_name: str, query: str, k: int = 5) -> set[int]:
@@ -782,6 +793,9 @@ def search_text(table_name: str, query: str, k: int = 5) -> set[int]:
 
     # 7. Recuperar registros completos
     heap_file = HeapFile(_table_path(table_name))
-    offsets: set[int] = {heap_file.search_offsets_by_field("id", doc_id)[0] for doc_id, _ in top_k}
+    offsets: set[int] = {
+        heap_file.search_offsets_by_field("id", doc_id)[0] for doc_id, _ in top_k
+    }
+    Logger.log_debug(f"Obtained offsets: {offsets}")
 
     return offsets

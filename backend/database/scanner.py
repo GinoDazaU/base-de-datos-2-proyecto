@@ -84,17 +84,10 @@ class TokenType(Enum):
     IF = auto()
     EXISTS = auto()
 
+    ATAT = auto()
     KNN = auto()
     TEXTSEARCH = auto()
-    IN = auto()  # for KNN and TEXTSEARCH
-
-    # operators
-    PLUS = auto()
-    MINUS = auto()
-    MULTIPLY = auto()
-    DIVIDE = auto()
-    MODULO = auto()
-    DISTANCE = auto()  # <->
+    IN = auto()
 
 
 class Token:
@@ -169,6 +162,7 @@ class Token:
         TokenType.SOUND: "SOUND",
         TokenType.IF: "IF",
         TokenType.EXISTS: "EXISTS",
+        TokenType.ATAT: "ATAT",
         TokenType.KNN: "KNN",
         TokenType.TEXTSEARCH: "TEXTSEARCH",
         TokenType.IN: "IN",
@@ -265,6 +259,14 @@ class Scanner:
                     return Token(TokenType.INT_CONSTANT, text)
 
             # Handle operators and symbols
+            if self.current_char == "@":
+                if (
+                    self.position + 1 < len(self.source)
+                    and self.source[self.position + 1] == "@"
+                ):
+                    self.advance()
+                    self.advance()
+                    return Token(TokenType.ATAT, "@@")
             if self.current_char == "=":
                 if (
                     self.position + 1 < len(self.source)
