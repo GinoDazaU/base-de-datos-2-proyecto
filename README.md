@@ -1,4 +1,3 @@
-
 <h1 align="center">Mini DataBase Manager</h3>
 
 ---
@@ -387,9 +386,15 @@ La búsqueda textual se implementa usando el modelo vectorial con similitud de c
 
 ### 6.1. Comparación de Búsqueda en Texto
 
-- Consultas equivalentes entre nuestro sistema y PostgreSQL  
-- Tiempos de respuesta, precisión de resultados  
-- Tecnologías usadas por PostgreSQL (GIN, GiST, ts_rank, etc.)
+Para ver el experimento completo y los resultados detallados, consulta el siguiente notebook:
+
+**[Notebook de Evaluación de Desempeño: Búsqueda en Texto](./backend/database/testing/performance_testing.ipynb)**
+
+Este notebook contiene:
+- Descripción del dataset utilizado
+- Procesamiento de datos
+- Ejecución de consultas equivalentes en ambos sistemas
+- Resultados y análisis comparativo
 
 ### 6.2. Comparación en Búsqueda Multimedia
 
