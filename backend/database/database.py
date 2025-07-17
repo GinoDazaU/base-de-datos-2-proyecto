@@ -23,6 +23,7 @@ from indexing.RTreeIndex import RTreeIndex
 from indexing.Spimi import SPIMIIndexer
 from indexing.utils_spimi import preprocess
 import pickle
+from logger import Logger
 
 # Ruta base para almacenamiento de tablas
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -559,7 +560,6 @@ def build_acoustic_model(table_name: str, field_name: str, num_clusters: int):
 
     # 1. Construir el codebook
     from multimedia.codebook import build_codebook
-
     build_codebook(heap_file, field_name, num_clusters)
     # 2. Cargar el codebook
     from multimedia.histogram import load_codebook
@@ -587,16 +587,21 @@ def build_acoustic_model(table_name: str, field_name: str, num_clusters: int):
             histogram_tuples = [
                 (i, int(count)) for i, count in enumerate(histogram) if count > 0
             ]
+            #Logger.log_spimi(histogram_tuples)
 
             # Insertar el histograma y obtener el offset
             histogram_offset = histogram_handler.insert(histogram_tuples)
 
             # Actualizar el registro en el heap file con el offset del histograma
             record.values = list(record.values)
+            #Logger.log_spimi(record.values)
+
             record.values[heap_file.schema.index((field_name, "sound"))] = (
                 sound_offset,
                 histogram_offset,
             )
+            #sLogger.log_spimi(record.values)
+
             heap_file.update_record(record)
 
 
@@ -636,7 +641,7 @@ def knn_search_index(
     for i, count in enumerate(query_histogram):
         if count > 0:
             query_tfidf[i] = tf_idf(count, codebook["doc_freq"][i], N)
-
+    Logger.log_spimi(query_tfidf)
     # 2. Inicializar estructuras para el cálculo
     doc_scores = defaultdict(float)
     doc_norms = {}
@@ -645,38 +650,51 @@ def knn_search_index(
     # 3. Buscar términos en el índice acústico
     acoustic_index = HeapFile(_table_path(f"{table_name}.{field_name}"))
     hash_idx = ExtendibleHashIndex(_table_path(f"{table_name}.{field_name}"), "term")
-
+    #acoustic_index.print_all()
     for term_id, tfidf_query in enumerate(query_tfidf):
         if tfidf_query > 0:
             index_records = hash_idx.search_record(term_id)
             if not index_records:
                 continue
-
-            record = acoustic_index.fetch_record_by_offset(index_records[0].offset)
+            #record = acoustic_index.fetch_record_by_offset(index_records[0].offset)
+            record = acoustic_index.search_by_field("term", term_id)
+            record=record[0]
             postings = json.loads(record.values[1])
 
+            Logger.log_spimi(f"termid: {term_id} postngs")
+            Logger.log_spimi(postings)
+
+
             for doc_id, tfidf_doc in postings:
+                if doc_id==1:
+                    Logger.log_spimi(f"termid: {term_id} {tfidf_query} {tfidf_doc}")
+
                 doc_scores[doc_id] += tfidf_query * tfidf_doc
                 relevant_docs.add(doc_id)
 
                 if doc_id not in doc_norms:
                     norms_table = HeapFile(_table_path(f"{table_name}.{field_name}_norms"))
-                    hash_idx_norms = ExtendibleHashIndex(
-                        _table_path(f"{table_name}.{field_name}_norms"), "doc_id"
-                    )
+                    hash_idx_norms = ExtendibleHashIndex(_table_path(f"{table_name}.{field_name}_norms"), "doc_id")
+                    #norm_records=search_hash_idx(f"{table_name}.{field_name}_norms", "doc_id", doc_id)
                     norm_records = hash_idx_norms.search_record(doc_id)
                     if norm_records:
                         record = norms_table.fetch_record_by_offset(
                             norm_records[0].offset
                         )
                         doc_norms[doc_id] = record.values[1]
+    Logger.spimi_enabled=True
+    Logger.log_spimi(relevant_docs)
 
     # 4. Calcular similitud coseno para documentos relevantes
     query_norm = np.linalg.norm(query_tfidf)
     scored_docs = []
+    Logger.log_spimi("Norm docs")
 
     for doc_id in relevant_docs:
-        doc_norm = doc_norms.get(doc_id, 1e-10)
+        doc_norm = doc_norms.get(doc_id, doc_id)
+        if doc_id==1:
+            Logger.log_spimi(f"{doc_id} {doc_norm}")
+
         similarity = doc_scores[doc_id] / (query_norm * doc_norm)
         scored_docs.append((doc_id, similarity))
 

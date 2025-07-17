@@ -9,6 +9,7 @@ import pandas as pd
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from logger import Logger
+from storage.HeapFile import HeapFile
 
 
 from database import (
@@ -133,8 +134,7 @@ def main():
     Logger.log_spimi(f"\n== ÍNDICE ACÚSTICO ==")
     build_acoustic_index(table_name, field_name)
     Logger.log_spimi("Acoustic index built.")
-
-    query_audio = "000207.mp3"
+    query_audio = "000002.mp3"
 
     Logger.log_spimi("\n--- Sequential Search ---")
     results_seq = knn_search(table_name, field_name, query_audio, k)

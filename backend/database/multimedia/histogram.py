@@ -8,7 +8,6 @@ from logger import Logger
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-
 def build_histogram(audio_path, codebook):
     """
     Construye un histograma de palabras acústicas para un archivo de audio.
@@ -24,11 +23,11 @@ def build_histogram(audio_path, codebook):
     if features is None:
         return None
 
-    # Predecir los clusters para cada descriptor
+    # Predecir los clusters para cada descriptor (por frame)
     from sklearn.metrics.pairwise import euclidean_distances
 
-    distances = euclidean_distances(features.reshape(1, -1), codebook["centroids"])
-    labels = np.argmin(distances, axis=1)
+    distances = euclidean_distances(features, codebook["centroids"])  # (n_frames, n_clusters)
+    labels = np.argmin(distances, axis=1)  # (n_frames,)
 
     # Construir el histograma
     histogram = np.zeros(len(codebook["centroids"]))
@@ -36,6 +35,7 @@ def build_histogram(audio_path, codebook):
         histogram[label] += 1
 
     return histogram
+
 
 
 def load_codebook(table_name, field_name):
