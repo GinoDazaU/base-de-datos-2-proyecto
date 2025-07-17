@@ -11,3 +11,4 @@ pympler
 fastapi 
 uvicorn 
 python-multipart
+mutagen
