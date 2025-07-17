@@ -532,7 +532,7 @@ def build_spimi_index(table_name: str) -> None:
     """
     Construye el índice invertido SPIMI para los campos de tipo 'text' de la tabla.
     """
-    indexer = SPIMIIndexer(_table_path)
+    indexer = SPIMIIndexer()
     indexer.build_index(_table_path(table_name))
 
 
@@ -542,7 +542,7 @@ def build_acoustic_index(table_name: str, field_name: str) -> None:
     """
     from indexing.SpimiAudio import SpimiAudioIndexer
 
-    indexer = SpimiAudioIndexer(_table_path, field_name)
+    indexer = SpimiAudioIndexer(_table_path, field_name,index_table_name=f"{table_name}.{field_name}")
     indexer.build_index(table_name)
 
 
@@ -602,7 +602,7 @@ def build_acoustic_model(table_name: str, field_name: str, num_clusters: int):
 
 def knn_search(
     table_name: str, field_name: str, query_audio_path: str, k: int
-) -> set[int]:
+) -> list[tuple[Record, float]]:
     """
     Realiza una búsqueda k-NN en un campo de audio.
     """
@@ -643,8 +643,8 @@ def knn_search_index(
     relevant_docs = set()
 
     # 3. Buscar términos en el índice acústico
-    acoustic_index = HeapFile(_table_path("acoustic_index"))
-    hash_idx = ExtendibleHashIndex(_table_path("acoustic_index"), "term")
+    acoustic_index = HeapFile(_table_path(f"{table_name}.{field_name}"))
+    hash_idx = ExtendibleHashIndex(_table_path(f"{table_name}.{field_name}"), "term")
 
     for term_id, tfidf_query in enumerate(query_tfidf):
         if tfidf_query > 0:
@@ -660,9 +660,9 @@ def knn_search_index(
                 relevant_docs.add(doc_id)
 
                 if doc_id not in doc_norms:
-                    norms_table = HeapFile(_table_path("acoustic_index_norms"))
+                    norms_table = HeapFile(_table_path(f"{table_name}.{field_name}_norms"))
                     hash_idx_norms = ExtendibleHashIndex(
-                        _table_path("acoustic_index_norms"), "doc_id"
+                        _table_path(f"{table_name}.{field_name}_norms"), "doc_id"
                     )
                     norm_records = hash_idx_norms.search_record(doc_id)
                     if norm_records:

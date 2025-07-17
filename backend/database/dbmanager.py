@@ -249,7 +249,7 @@ class DBManager:
     @staticmethod
     def create_spimi_audio_idx(table_name: str, field_name) -> None:
         build_acoustic_model(DBManager.table_path(table_name), field_name, 1)
-        SpimiAudioIndexer(DBManager.table_path, field_name).build_index(table_name)
+        SpimiAudioIndexer(DBManager.table_path, field_name,index_table_name=f"{table_name}.{field_name}").build_index(table_name)
 
     # region Index verification
     @staticmethod

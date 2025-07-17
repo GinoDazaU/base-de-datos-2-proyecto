@@ -12,6 +12,9 @@ from storage.HistogramFile import HistogramFile
 from .ExtendibleHashIndex import ExtendibleHashIndex
 from storage.Record import Record
 from global_utils import Utils
+from logger import Logger
+from pympler import asizeof  # <-- IMPORTANTE
+
 
 class SpimiAudioIndexer:
     def __init__(
@@ -39,7 +42,7 @@ class SpimiAudioIndexer:
 
         term_dict = defaultdict(lambda: defaultdict(int))
         block_number = 0
-        memory_limit = 4 * 1024  # 4 KB
+        memory_limit = 1024 # 1024  # 1 KB
 
         for record in heapfile.get_all_records():
             self.doc_count += 1
@@ -55,7 +58,7 @@ class SpimiAudioIndexer:
             for centroid_id, count in histogram:
                 term_dict[centroid_id][record.values[0]] += count  # values[0] is the id
 
-                if sys.getsizeof(term_dict) >= memory_limit:
+                if asizeof.asizeof(term_dict) >= memory_limit:
                     self._dump_block(term_dict, block_number)
                     block_number += 1
                     term_dict.clear()
@@ -68,6 +71,9 @@ class SpimiAudioIndexer:
         self, term_dict: Dict[int, Dict[int, int]], block_number: int
     ) -> None:
         path = os.path.join(self.block_dir, f"block_{block_number}.json")
+        Logger.spimi_enabled=True
+        Logger.log_spimi(path)
+
         sorted_dict = dict(sorted(term_dict.items()))
         with open(path, "w") as f:
             json.dump(sorted_dict, f)

@@ -130,9 +130,11 @@ class RunVisitor:
         lastResult: QueryResult = None
         for st in program.statement_list:
             lastResult = st.accept(self)
+            """
             Logger.log_info(
                 f"Program parsed successfully with final message: {lastResult.message}"
             )
+            """
         return lastResult
 
     def visit_createtablestatement(self, st: CreateTableStatement):

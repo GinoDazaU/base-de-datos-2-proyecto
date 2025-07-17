@@ -44,7 +44,7 @@ class Record:
     def pack(self) -> bytes:
         processed = []
         for (_, fmt), val in zip(self.schema, self.values):
-            Logger.log_debug(f"Packing value '{val}' with format '{fmt}'")
+            #Logger.log_debug(f"Packing value '{val}' with format '{fmt}'")
             #print(f"Packing value '{val}' with format '{fmt}'")
             if fmt.upper() == "SOUND":
                 processed.extend(val)

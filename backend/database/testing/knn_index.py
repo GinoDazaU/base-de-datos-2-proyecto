@@ -5,10 +5,11 @@ import zipfile
 import gdown
 import pandas as pd
 
-from logger import Logger
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from logger import Logger
+
 
 from database import (
     create_table,
@@ -117,32 +118,33 @@ def main():
         )
         if os.path.exists(path):
             os.remove(path)
+    Logger.debug_enabled=False
+    Logger.spimi_enabled=True
+    Logger.log_debug(f"\n== CREANDO TABLA '{table_name}' ==")
+    create_table(table_name, schema, primary_key)
 
-    # Logger.log_debug(f"\n== CREANDO TABLA '{table_name}' ==")
-    # create_table(table_name, schema, primary_key)
-
-    csv_path = Utils.build_path("testing","canciones_dataset.csv")
+    csv_path = Utils.build_path("testing","canciones_dataset_100.csv")
     read_csv_and_insert_records(csv_path, table_name, schema)
 
-    # Logger.log_debug(f"\n== MODELO ACÚSTICO ==")
-    # build_acoustic_model(table_name, field_name, num_clusters)
-    # Logger.log_debug("Acoustic model built.")
+    Logger.log_debug(f"\n== MODELO ACÚSTICO ==")
+    build_acoustic_model(table_name, field_name, num_clusters)
+    Logger.log_debug("Acoustic model built.")
 
-    # Logger.log_debug(f"\n== ÍNDICE ACÚSTICO ==")
-    # build_acoustic_index(table_name, field_name)
-    # Logger.log_debug("Acoustic index built.")
+    Logger.log_spimi(f"\n== ÍNDICE ACÚSTICO ==")
+    build_acoustic_index(table_name, field_name)
+    Logger.log_spimi("Acoustic index built.")
 
     query_audio = "000207.mp3"
 
-    Logger.log_debug("\n--- Sequential Search ---")
+    Logger.log_spimi("\n--- Sequential Search ---")
     results_seq = knn_search(table_name, field_name, query_audio, k)
     for record, similarity in results_seq:
-        Logger.log_debug(f"  - Record: {record}, Similarity: {similarity:.4f}")
+        Logger.log_spimi(f"  - Record: {record}, Similarity: {similarity:.4f}")
 
-    Logger.log_debug("\n--- Index Search ---")
+    Logger.log_spimi("\n--- Index Search ---")
     results_idx = knn_search_index(table_name, field_name, query_audio, k)
     for record, similarity in results_idx:
-        Logger.log_debug(f"  - Record: {record}, Similarity: {similarity:.4f}")
+        Logger.log_spimi(f"  - Record: {record}, Similarity: {similarity:.4f}")
 
     results_seq_gt_0 = {r[0].values[0] for r in results_seq if r[1] > 0}
     results_idx_gt_0 = {r[0].values[0] for r in results_idx if r[1] > 0}
